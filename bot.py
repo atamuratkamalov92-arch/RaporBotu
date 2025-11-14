@@ -1,4 +1,3 @@
-```python
 import os
 import re
 import psycopg2
@@ -611,7 +610,7 @@ SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
 1. Önce mesajdaki ŞANTİYE adını bul (%95 emin değilsen "BELİRSİZ" yaz)
 2. Şantiye bulunduktan sonra, o şantiyenin SORUMLUSUNU bul
 3. Gönderen kişi önemsiz, önemli olan şantiye
-4. Eğer mesajda birden fazla şantiye varsa, her biri için ayrı kayıt oluştur
+4. Eğer mesajda birden fazla şantiye varsale, her biri için ayrı kayıt oluştur
 
 **ÇIKTI formatı:**
 {{
@@ -1671,6 +1670,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"`/hakkinda` - Bot hakkında\n\n"
             f"🛡️ **Admin Komutları:**\n"
             f"`/bugun` - Bugünün özeti\n"
+            f"`/dun` - Dünün özeti\n"
             f"`/haftalik_rapor` - Haftalık rapor\n"
             f"`/aylik_rapor` - Aylık rapor\n"
             f"`/tariharaligi [baslangic] [bitis]` - Tarih aralığı raporu\n"
@@ -1743,6 +1743,16 @@ async def bugun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     target_date = datetime.now(TZ).date()
+    await update.message.chat.send_action(action="typing")
+    rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
+    await update.message.reply_text(rapor_mesaji)
+
+async def dun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dünün rapor özeti"""
+    if not await admin_kontrol(update, context):
+        return
+    
+    target_date = datetime.now(TZ).date() - timedelta(days=1)
     await update.message.chat.send_action(action="typing")
     rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
     await update.message.reply_text(rapor_mesaji)
@@ -2429,6 +2439,7 @@ async def post_init(application: Application):
         BotCommand("hakkinda", "Bot hakkında bilgi"),
         
         BotCommand("bugun", "Bugünün özeti (Admin)"),
+        BotCommand("dun", "Dünün özeti (Admin)"),
         BotCommand("haftalik_rapor", "Haftalık rapor (Admin)"),
         BotCommand("aylik_rapor", "Aylık rapor (Admin)"),
         BotCommand("tariharaligi", "Tarih aralığı raporu (Admin)"),
@@ -2461,6 +2472,7 @@ def main():
     
     # Admin komutları
     app.add_handler(CommandHandler("bugun", bugun_cmd))
+    app.add_handler(CommandHandler("dun", dun_cmd))
     app.add_handler(CommandHandler("haftalik_rapor", haftalik_rapor_cmd))
     app.add_handler(CommandHandler("aylik_rapor", aylik_rapor_cmd))
     app.add_handler(CommandHandler("tariharaligi", tariharaligi_cmd))
@@ -2494,4 +2506,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
