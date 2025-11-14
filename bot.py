@@ -470,160 +470,128 @@ def get_db_connection():
     """PostgreSQL bağlantısını döndür"""
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
-# ----------------------------- ŞANTİYE-MERKEZLİ HTML IMPORT SİSTEMİ -----------------------------
-class SantiyeMerkezliHTMLImporter:
-    def __init__(self):
-        self.santiye_esleme_cache = {}
-        
-    def parse_html_file(self, html_file_path):
-        """HTML dosyasını parse eder - Şantiye merkezli versiyon"""
-        try:
-            with open(html_file_path, 'r', encoding='utf-8') as file:
-                soup = BeautifulSoup(file, 'html.parser')
-                return self.extract_santiye_bazli_mesajlar(soup)
-        except Exception as e:
-            logging.error(f"HTML dosyası okuma hatası: {e}")
-            return []
-    
-    def extract_santiye_bazli_mesajlar(self, soup):
-        """Şantiye bazlı mesaj çıkarma"""
-        messages = []
-        
-        message_containers = soup.find_all('div', class_=lambda x: x and 'message' in x)
-        
-        current_date = None
-        
-        for container in message_containers:
-            if 'service' in container.get('class', []):
-                date_text = container.get_text().strip()
-                try:
-                    current_date = datetime.strptime(date_text, '%d %B %Y').date()
-                    logging.info(f"📅 Tarih bulundu: {current_date}")
-                except ValueError:
-                    continue
-            
-            elif 'default' in container.get('class', []):
-                if current_date is None:
-                    continue
-                    
-                message_data = self.parse_message_for_santiye(container, current_date)
-                if message_data and self.is_valid_rapor_message(message_data):
-                    messages.append(message_data)
-        
-        return messages
-    
-    def parse_message_for_santiye(self, element, current_date):
-        """Mesajı şantiye bazlı parse et"""
-        try:
-            message_id = element.get('id', '').replace('message-', '')
-            if not message_id or not message_id.isdigit():
-                return None
-            
-            from_name_elem = element.find('div', class_='from_name')
-            if not from_name_elem:
-                return None
-                
-            from_name = from_name_elem.get_text().strip()
-            
-            text_elem = element.find('div', class_='text')
-            if not text_elem:
-                return None
-                
-            message_text = text_elem.get_text().strip()
-            
-            return {
-                'message_id': int(message_id),
-                'from_name': from_name,
-                'message_text': message_text,
-                'message_date': current_date,
-                'is_edited': False,
-                'delivered_date': current_date
-            }
-            
-        except Exception as e:
-            logging.error(f"Mesaj parse hatası: {e}")
-            return None
-    
-    def is_valid_rapor_message(self, message_data):
-        """Rapor mesajı olup olmadığını kontrol et - Şantiye bazlı"""
-        text = message_data['message_text'].lower()
-        
-        rapor_indicator = any([
-            'mobilizasyon' in text,
-            'kişi' in text,
-            'personel' in text,
-            'toplam' in text and any(char.isdigit() for char in text),
-            re.search(r'\d{1,2}\.\d{1,2}\.\d{4}', text),
-            any(santiye.lower() in text for santiye in santiye_sorumlulari.keys())
-        ])
-        
-        spam_indicators = [
-            'kolay gelsin',
-            'teşekkür',
-            'merhaba',
-            'selam',
-            'hakkında',
-            'komut',
-            'yedekleme',
-            'yedekle',
-            'chatid'
-        ]
-        
-        is_spam = any(indicator in text for indicator in spam_indicators)
-        
-        return rapor_indicator and not is_spam and len(text) > 20
-
-class SantiyeAIAnaliz:
+# ----------------------------- YENİ AI RAPOR ANALİZ SİSTEMİ -----------------------------
+class YeniRaporAnalizAI:
     def __init__(self, api_key):
         if HAS_OPENAI and api_key:
             self.client = openai.OpenAI(api_key=api_key)
             self.aktif = True
             self.model = "gpt-4o-mini"
             self.cache = {}
-            logging.info(f"🤖 Şantiye AI Analiz sistemi aktif! Model: {self.model}")
+            logging.info(f"🤖 YENİ AI Rapor Analiz sistemi aktif! Model: {self.model}")
         else:
             self.aktif = False
             logging.warning("OpenAI devre dışı.")
     
-    def santiye_ve_kullanici_analiz_et(self, mesaj_metni, gonderici_adi):
-        """Şantiye ve kullanıcı analizi"""
+    def rapor_tipi_analiz_et(self, mesaj_metni):
+        """Mesajın rapor olup olmadığını analiz et"""
         if not self.aktif:
-            return self._fallback_santiye_analiz()
+            return "rapor"  # Fallback olarak rapor kabul et
             
         try:
-            cache_key = f"santiye_{hash(mesaj_metni[:100])}"
+            cache_key = f"tip_{hash(mesaj_metni[:100])}"
             if cache_key in self.cache:
                 return self.cache[cache_key]
             
-            santiyeler_listesi = list(santiye_sorumlulari.keys())
-            kullanici_listesi = [f"{id_to_name.get(uid, 'Bilinmeyen')} (ID:{uid})" for uid in rapor_sorumlulari]
+            sistem_promtu = """
+SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE "rapor" VEYA "rapor değil" CEVABI VER.
+
+**KURALLAR:**
+- Eğer mesaj bir günlük şantiye/iş raporu, çalışma durumu, personel bilgisi, mobilizasyon, ilerleme raporu içeriyorsa → "rapor"
+- Eğer mesaj selam, teşekkür, sohbet, soru, genel bilgi, yorum veya rapor dışı içerik ise → "rapor değil"
+
+**RAPOR ÖRNEKLERİ:**
+- "Bugün 15 kişi ile temel kazısı yapıldı"
+- "Mobilizasyon devam ediyor, 8 personel"
+- "İzinliyim, rapor yok"
+- "5 kişi beton dökümü, 3 kişi kalıp"
+
+**RAPOR DEĞİL ÖRNEKLERİ:**
+- "Merhaba, kolay gelsin"
+- "Teşekkür ederim"
+- "Yarın görüşürüz"
+- "Bot nasıl çalışıyor?"
+
+SADECE "rapor" veya "rapor değil" yaz.
+"""
             
-            sistem_promtu = f"""
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": sistem_promtu},
+                    {"role": "user", "content": f"MESAJ: {mesaj_metni}"}
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+            
+            cevap = response.choices[0].message.content.strip().lower()
+            
+            if cevap in ["rapor", "rapor değil"]:
+                self.cache[cache_key] = cevap
+                logging.info(f"🤖 AI Rapor Analizi: '{cevap}'")
+                return cevap
+            else:
+                logging.warning(f"🤖 AI beklenmeyen cevap: '{cevap}', fallback: 'rapor'")
+                return "rapor"
+                
+        except Exception as e:
+            logging.error(f"🤖 Rapor tipi analiz hatası: {e}, fallback: 'rapor'")
+            return "rapor"
+    
+    def detayli_rapor_analizi(self, mesaj_metni, gonderici_adi):
+        """Detaylı rapor analizi"""
+        if not self.aktif:
+            return self._fallback_detayli_analiz()
+            
+        try:
+            cache_key = f"detay_{hash(mesaj_metni[:100])}"
+            if cache_key in self.cache:
+                return self.cache[cache_key]
+            
+            sistem_promtu = """
 SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
 
-**KRİTİK KURAL:** Raporun kimden geldiği DEĞİL, hangi şantiye için olduğu önemli!
+**GÖREV:**
+Rapordaki tüm bilgileri çıkar:
+- tarih (GG-AA-YYYY formatında)
+- şantiye adı
+- bina/blok işleri
+- personel dağılımı
+- mobilizasyon durumu
+- izinli/gececi/dış görev
+- toplam adam sayısı
+- ekip başı/ambarcı
+- diğer iş kalemleri
+- tüm sayı breakdown'ları
 
-**MEVCUT SANTİYELER:** {santiyeler_listesi}
-**MEVCUT KULLANICILAR:** {kullanici_listesi}
+**TARİH FORMATLARI:**
+01.1.2025, 1/01/25, 2025-1-1, 05/11/2025, 2025/11/05, 1-1-2025, 3.7, 7/5, 2025/07, 07-2025
 
-**ANALİZ KURALLARI:**
-1. Önce mesajdaki ŞANTİYE adını bul (%95 emin değilsen "BELİRSİZ" yaz)
-2. Şantiye bulunduktan sonra, o şantiyenin SORUMLUSUNU bul
-3. Gönderen kişi önemsiz, önemli olan şantiye
-4. Eğer mesajda birden fazla şantiye varsale, her biri için ayrı kayıt oluştur
+**TARİH ANALİZ KURALLARI:**
+- Sayı >12 → gün
+- İki sayı da ≤12 → bağlama göre karar ver
+- Gelecek tarihler → geçersiz
+- İmkânsız tarihler → geçersiz
 
 **ÇIKTI formatı:**
-{{
- "santiyeler": [
-   {{
-     "santiye_adi": "BWC",
-     "eminlik_orani": 0.98,
-     "rapor_metni": "BWC için kısaltılmış rapor",
-     "sorumlu_kullanici_id": 123456789
-   }}
- ],
- "aciklama": "Analiz detayı"
-}}
+{
+ "tarih": "GG-AA-YYYY",
+ "santiye_adi": "ad",
+ "bina_blok_isleri": ["iş1", "iş2"],
+ "personel_dagilimi": {"kalip": 5, "beton": 3},
+ "mobilizasyon": "devam ediyor/tamamlandı",
+ "izinli_sayisi": 2,
+ "gececi_sayisi": 0,
+ "dis_gorev_sayisi": 0,
+ "toplam_adam": 15,
+ "ekip_basi": 1,
+ "ambarci": 1,
+ "diger_is_kalemleri": ["iş3", "iş4"],
+ "aciklama": "analiz detayı",
+ "tarih_bulundu": true,
+ "tarih_gecerli": true
+}
 """
             
             response = self.client.chat.completions.create(
@@ -633,7 +601,7 @@ SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
                     {"role": "user", "content": f"GÖNDEREN: {gonderici_adi}\nMESAJ: {mesaj_metni}"}
                 ],
                 temperature=0.1,
-                max_tokens=500,
+                max_tokens=800,
                 response_format={ "type": "json_object" }
             )
             
@@ -641,311 +609,212 @@ SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
             sonuc = json.loads(cevap)
             sonuc["kaynak"] = "gpt"
             
-            for santiye_data in sonuc.get("santiyeler", []):
-                santiye_adi = santiye_data.get("santiye_adi")
-                if santiye_adi and santiye_adi != "BELİRSİZ":
-                    sorumlular = santiye_sorumlulari.get(santiye_adi, [])
-                    if sorumlular:
-                        santiye_data["sorumlu_kullanici_id"] = sorumlular[0]
-                    else:
-                        santiye_data["sorumlu_kullanici_id"] = None
-            
             self.cache[cache_key] = sonuc
-            logging.info(f"🤖 Şantiye analizi: {len(sonuc.get('santiyeler', []))} şantiye bulundu")
+            logging.info(f"🤖 Detaylı analiz: {sonuc.get('santiye_adi', 'BELİRSİZ')} - {sonuc.get('tarih', 'Tarihsiz')}")
             
             return sonuc
             
         except Exception as e:
-            logging.error(f"Şantiye AI analiz hatası: {e}")
-            sonuc = self._fallback_santiye_analiz()
+            logging.error(f"🤖 Detaylı analiz hatası: {e}")
+            sonuc = self._fallback_detayli_analiz()
             return sonuc
     
-    def _fallback_santiye_analiz(self):
-        """Fallback şantiye analizi"""
+    def _fallback_detayli_analiz(self):
+        """Fallback detaylı analiz"""
         return {
-            "santiyeler": [],
+            "tarih": datetime.now(TZ).strftime('%d-%m-%Y'),
+            "santiye_adi": "BELİRSİZ",
+            "bina_blok_isleri": [],
+            "personel_dagilimi": {},
+            "mobilizasyon": "",
+            "izinli_sayisi": 0,
+            "gececi_sayisi": 0,
+            "dis_gorev_sayisi": 0,
+            "toplam_adam": 1,
+            "ekip_basi": 0,
+            "ambarci": 0,
+            "diger_is_kalemleri": [],
             "aciklama": "Fallback analiz",
+            "tarih_bulundu": True,
+            "tarih_gecerli": True,
             "kaynak": "fallback"
         }
 
-class SantiyeImportManager:
-    def __init__(self):
-        self.processed_ids = set()
-        self.santiye_ai = SantiyeAIAnaliz(OPENAI_API_KEY)
-        self.load_existing_ids()
+# Global AI analiz sistemi
+yeni_ai_analiz = YeniRaporAnalizAI(OPENAI_API_KEY)
+
+# ----------------------------- YENİ RAPOR İŞLEME SİSTEMİ -----------------------------
+async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Yeni kurallara göre rapor işleme"""
+    msg = update.message or update.edited_message
+    if not msg:
+        return
+
+    user_id = msg.from_user.id
     
-    def load_existing_ids(self):
-        """Mevcut mesaj ID'lerini yükle"""
+    # Dosya veya fotoğraf mesajlarını ignore et
+    if msg.document or msg.photo:
+        return
+
+    metin = msg.text or msg.caption
+    if not metin:
+        return
+
+    # Komutları ignore et
+    if metin.startswith(('/', '.', '!', '\\')):
+        return
+
+    # 1. ADIM: AI ile rapor tipi analizi
+    rapor_tipi = yeni_ai_analiz.rapor_tipi_analiz_et(metin)
+    
+    # 2. ADIM: "rapor değil" ise sessiz kal
+    if rapor_tipi == "rapor değil":
+        logging.info(f"🤖 Rapor değil - Sessiz: {user_id}")
+        return
+    
+    # 3. ADIM: "rapor" ise detaylı analiz
+    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+    detayli_analiz = yeni_ai_analiz.detayli_rapor_analizi(metin, kullanici_adi)
+    
+    # 4. ADIM: Tarih kontrolü
+    tarih_gecerli = detayli_analiz.get("tarih_gecerli", False)
+    tarih_bulundu = detayli_analiz.get("tarih_bulundu", False)
+    
+    if not tarih_bulundu or not tarih_gecerli:
+        # Tarih anlaşılamadı - sadece gönderene özel mesaj
         try:
-            rows = _sync_fetchall("SELECT message_id FROM reports WHERE message_id IS NOT NULL")
-            self.processed_ids = set([row[0] for row in rows])
-            logging.info(f"📊 Mevcut {len(self.processed_ids)} mesaj ID'si yüklendi")
+            await msg.reply_text(
+                "🟡 **Gönderdiğiniz rapordaki tarihi net olarak algılayamadım.**\n\n"
+                "Lütfen tarihi gün-ay-yıl şeklinde yazıp tekrar gönderin.\n"
+                "Örn: 05-11-2025"
+            )
+            logging.info(f"🟡 Tarih anlaşılamadı - Kullanıcı {user_id} uyarıldı")
         except Exception as e:
-            logging.error(f"Mevcut ID yükleme hatası: {e}")
+            logging.error(f"🟡 Tarih uyarısı gönderilemedi: {e}")
+        return
     
-    async def get_rapor_alan_santiyeler(self, tarih):
-        """Belirli bir tarihte rapor alan şantiyeleri getir"""
+    # 5. ADIM: Rapor format kontrolü
+    if await rapor_format_kontrolu(detayli_analiz, metin):
+        # Format bozuk - sadece gönderene özel mesaj
         try:
-            rows = await async_fetchall("""
-                SELECT DISTINCT project_name FROM reports 
-                WHERE report_date = %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
-            """, (tarih,))
-            
-            return set([row[0] for row in rows])
+            await msg.reply_text(
+                "🟡 **Gönderdiğiniz rapor format olarak çok dağınık/eksik olduğu için işlenemedi.**\n\n"
+                "Lütfen raporu standart, anlaşılır şekilde tekrar gönderin."
+            )
+            logging.info(f"🟡 Format bozuk - Kullanıcı {user_id} uyarıldı")
         except Exception as e:
-            logging.error(f"Rapor alan şantiyeler sorgu hatası: {e}")
-            return set()
+            logging.error(f"🟡 Format uyarısı gönderilemedi: {e}")
+        return
     
-    async def import_santiye_mesajlari(self, messages, batch_size=30):
-        """Şantiye bazlı mesaj importu"""
-        imported_count = 0
-        skipped_count = 0
-        error_count = 0
+    # 6. ADIM: Raporu işle (SESSİZ)
+    try:
+        await raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg)
+        logging.info(f"✅ Rapor sessiz işlendi - Kullanıcı: {user_id}")
+    except Exception as e:
+        logging.error(f"❌ Rapor kaydetme hatası: {e}")
+
+async def rapor_format_kontrolu(detayli_analiz, metin):
+    """Rapor formatının yeterli olup olmadığını kontrol et"""
+    try:
+        # Temel bilgilerin olup olmadığını kontrol et
+        santiye_adi = detayli_analiz.get("santiye_adi", "")
+        toplam_adam = detayli_analiz.get("toplam_adam", 0)
+        personel_dagilimi = detayli_analiz.get("personel_dagilimi", {})
+        bina_blok_isleri = detayli_analiz.get("bina_blok_isleri", [])
         
-        for i in range(0, len(messages), batch_size):
-            batch = messages[i:i + batch_size]
+        # Çok kısa veya anlamsız mesaj kontrolü
+        if len(metin.strip()) < 10:
+            return True
+        
+        # Temel şantiye bilgisi yoksa
+        if santiye_adi == "BELİRSİZ" and toplam_adam == 0 and not personel_dagilimi and not bina_blok_isleri:
+            return True
+        
+        # Sadece selam/teşekkür içeriyorsa
+        selam_kelimeler = ["merhaba", "selam", "kolay gelsin", "teşekkür", "iyi akşamlar", "iyi günler"]
+        if any(kelime in metin.lower() for kelime in selam_kelimeler) and len(metin.strip()) < 30:
+            return True
             
-            for message_data in batch:
-                if await self.should_import_message(message_data):
-                    try:
-                        santiye_kayit_sayisi = await self.import_single_santiye_message(message_data)
-                        imported_count += santiye_kayit_sayisi
-                        
-                        if imported_count % 10 == 0:
-                            logging.info(f"📥 {imported_count} şantiye kaydı import edildi...")
-                            
-                    except Exception as e:
-                        logging.error(f"Şantiye import hatası: {e}")
-                        error_count += 1
-                else:
-                    skipped_count += 1
-            
-            await asyncio.sleep(0.1)
+        return False
         
-        await self.rapor_eksik_santiyeler(messages)
+    except Exception as e:
+        logging.error(f"Format kontrol hatası: {e}")
+        return False
+
+async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
+    """Raporu sessizce kaydet"""
+    try:
+        # Tarih parsing
+        tarih_str = detayli_analiz.get("tarih", "")
+        try:
+            rapor_tarihi = datetime.strptime(tarih_str, '%d-%m-%Y').date()
+        except:
+            # Farklı format denemesi
+            rapor_tarihi = parse_rapor_tarihi(metin)
+            if not rapor_tarihi:
+                rapor_tarihi = datetime.now(TZ).date()
         
-        return imported_count, skipped_count, error_count, {}
-    
-    async def should_import_message(self, message_data):
-        """Mesajın import edilip edilmeyeceğini kontrol et"""
-        message_id = message_data.get('message_id')
+        # Rapor tipi belirleme
+        rapor_tipi = 'IZIN/ISYOK' if detayli_analiz.get("izinli_sayisi", 0) > 0 else 'RAPOR'
         
-        if message_id in self.processed_ids:
-            return False
+        # Personel sayısı
+        person_count = detayli_analiz.get("toplam_adam", 1)
         
-        message_date = message_data.get('message_date')
-        if message_date and message_date < datetime(2025, 11, 1).date():
-            return False
+        # Proje adı
+        project_name = detayli_analiz.get("santiye_adi", "BELİRSİZ")
         
-        return True
-    
-    async def import_single_santiye_message(self, message_data):
-        """Tekil mesajı şantiye bazlı import et"""
-        message_text = message_data['message_text']
-        gonderici_adi = message_data['from_name']
-        message_date = message_data['message_date']
+        # İş açıklaması
+        work_description = metin[:500]
         
-        ai_sonuc = self.santiye_ai.santiye_ve_kullanici_analiz_et(message_text, gonderici_adi)
-        
-        kayit_sayisi = 0
-        
-        for santiye_data in ai_sonuc.get("santiyeler", []):
-            santiye_adi = santiye_data.get("santiye_adi")
-            sorumlu_kullanici_id = santiye_data.get("sorumlu_kullanici_id")
-            eminlik_orani = santiye_data.get("eminlik_orani", 0)
-            
-            if eminlik_orani < 0.95 or not santiye_adi or santiye_adi == "BELİRSİZ":
-                continue
-            
-            if not sorumlu_kullanici_id:
-                logging.warning(f"⚠️ {santiye_adi} şantiyesi için sorumlu bulunamadı")
-                continue
-            
-            try:
-                await self.kaydet_santiye_raporu(
-                    sorumlu_kullanici_id,
-                    santiye_adi,
-                    message_text,
-                    message_date,
-                    message_data,
-                    ai_sonuc
-                )
-                kayit_sayisi += 1
-                
-            except Exception as e:
-                logging.error(f"Şantiye rapor kaydetme hatası: {e}")
-        
-        self.processed_ids.add(message_data['message_id'])
-        
-        return kayit_sayisi
-    
-    async def kaydet_santiye_raporu(self, user_id, santiye_adi, message_text, message_date, message_data, ai_sonuc):
-        """Şantiye raporunu veritabanına kaydet"""
-        rapor_tipi = 'IZIN/ISYOK' if izin_mi(message_text) else 'RAPOR'
-        
-        kisi_sayisi = 1
-        kisi_match = re.search(r'(\d+)\s*(kişi|personel|çalışan)', message_text.lower())
-        if kisi_match:
-            kisi_sayisi = int(kisi_match.group(1))
-        
+        # Veritabanına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
-             work_category, personnel_type, delivered_date, is_edited, ai_analysis, message_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             work_category, personnel_type, delivered_date, is_edited, ai_analysis)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            user_id, santiye_adi, message_date, rapor_tipi, kisi_sayisi, 
-            message_text[:500], 'diğer', 'imalat', message_date,
+            user_id, project_name, rapor_tarihi, rapor_tipi, person_count, 
+            work_description, 'diğer', 'imalat', datetime.now(TZ).date(),
             False,
-            json.dumps(ai_sonuc, ensure_ascii=False) if ai_sonuc else None,
-            message_data['message_id']
+            json.dumps(detayli_analiz, ensure_ascii=False)
         ))
         
-        if ai_sonuc and 'kaynak' in ai_sonuc:
-            maliyet_analiz.kayit_ekle(ai_sonuc['kaynak'])
-        
-        logging.info(f"✅ Şantiye raporu kaydedildi: {santiye_adi} -> {id_to_name.get(user_id, 'Kullanıcı')}")
-    
-    async def rapor_eksik_santiyeler(self, tum_mesajlar):
-        """Hiç rapor gelmeyen şantiyeleri tespit et ve raporla"""
-        try:
-            tum_tarihler = set()
-            for msg in tum_mesajlar:
-                tum_tarihler.add(msg['message_date'])
+        # Maliyet analizi
+        if detayli_analiz and 'kaynak' in detayli_analiz:
+            maliyet_analiz.kayit_ekle(detayli_analiz['kaynak'])
             
-            for tarih in tum_tarihler:
-                rapor_alan_santiyeler = await self.get_rapor_alan_santiyeler(tarih)
-                tum_santiyeler = set(santiye_sorumlulari.keys())
-                eksik_santiyeler = tum_santiyeler - rapor_alan_santiyeler
-                
-                if eksik_santiyeler:
-                    logging.warning(f"📅 {tarih}: {len(eksik_santiyeler)} şantiye raporu eksik: {eksik_santiyeler}")
-                    
-        except Exception as e:
-            logging.error(f"Eksik şantiye analiz hatası: {e}")
-
-# Global şantiye import manager
-santiye_import_manager = SantiyeImportManager()
-
-# ----------------------------- MANUEL RAPOR IMPORT SİSTEMİ -----------------------------
-async def import_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Manuel rapor import komutu - Sadece Super Admin"""
-    if not await super_admin_kontrol(update, context):
-        return
-    
-    await update.message.reply_text(
-        "📁 **Manuel Rapor Import Sistemi**\n\n"
-        "1. **HTML dosyası yükleyin** (Telegram export) VEYA\n"
-        "2. **Direkt mesaj içeriklerini** gönderin\n\n"
-        "Bot otomatik olarak:\n"
-        "• Rapor içeriklerini tespit edecek\n"
-        "• Şantiyeleri belirleyecek\n"
-        "• Sorumluları atayacak\n"
-        "• Veritabanına kaydedecek\n\n"
-        "⏳ Lütfen HTML dosyasını yükleyin veya mesaj içeriklerini gönderin..."
-    )
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """HTML dosyası işleme"""
-    if not await super_admin_kontrol(update, context):
-        return
-    
-    document = update.message.document
-    if document.mime_type != 'text/html':
-        await update.message.reply_text("❌ Sadece HTML dosyaları destekleniyor.")
-        return
-    
-    file = await context.bot.get_file(document.file_id)
-    file_path = f"temp_import_{document.file_id}.html"
-    
-    await update.message.reply_text("📥 HTML dosyası indiriliyor...")
-    
-    try:
-        await file.download_to_drive(file_path)
-        await update.message.reply_text(f"✅ Dosya indirildi: {document.file_name}")
-        
-        await process_import_file(update, context, file_path)
-        
     except Exception as e:
-        await update.message.reply_text(f"❌ Dosya işleme hatası: {e}")
-    finally:
-        if os.path.exists(file_path):
-            os.unlink(file_path)
+        logging.error(f"Rapor kaydetme hatası: {e}")
+        raise e
 
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Metin mesajlarını rapor olarak işleme"""
-    user_id = update.message.from_user.id
-    if user_id != SUPER_ADMIN_ID:
-        return
-    
-    message_text = update.message.text
-    
-    if message_text.startswith('/'):
-        return
-    
-    await update.message.reply_text("📝 Metin içeriği rapor olarak işleniyor...")
-    
+# ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
+async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Yeni üye gruba katıldığında hoş geldin mesajı"""
     try:
-        importer = SantiyeMerkezliHTMLImporter()
-        
-        fake_message = {
-            'message_id': int(datetime.now().timestamp()),
-            'from_name': 'Manuel Import',
-            'message_text': message_text,
-            'message_date': datetime.now(TZ).date(),
-            'is_edited': False,
-            'delivered_date': datetime.now(TZ).date()
-        }
-        
-        messages = [fake_message]
-        
-        imported, skipped, errors, _ = await santiye_import_manager.import_santiye_mesajlari(messages)
-        
-        result_msg = (
-            f"✅ **Manuel Rapor Import Tamamlandı!**\n\n"
-            f"📊 **Sonuçlar:**\n"
-            f"• 📥 İşlenen: {imported} rapor\n"
-            f"• ⏭️ Atlanan: {skipped} mesaj\n"
-            f"• ❌ Hatalı: {errors} kayıt\n\n"
-            f"🎯 Rapor başarıyla veritabanına kaydedildi."
-        )
-        
-        await update.message.reply_text(result_msg)
-        
+        for member in update.message.new_chat_members:
+            if member.id == context.bot.id:
+                # Bot gruba eklendi
+                await update.message.reply_text(
+                    "🤖 **Rapor Botu Aktif!**\n\n"
+                    "Ben şantiye raporlarınızı otomatik olarak işleyen bir botum.\n"
+                    "Günlük çalışma raporlarınızı gönderebilirsiniz.\n\n"
+                    "📋 **Özellikler:**\n"
+                    "• Otomatik rapor analizi\n"
+                    "• Tarih tanıma\n"
+                    "• Personel sayımı\n"
+                    "• Şantiye takibi\n\n"
+                    "Kolay gelsin! 👷‍♂️"
+                )
+            else:
+                # Yeni insan üye katıldı
+                await update.message.reply_text(
+                    f"👋 Hoş geldin {member.first_name}!\n\n"
+                    f"🤖 Ben şantiye raporlarınızı otomatik işleyen bir botum.\n"
+                    f"Günlük çalışma raporlarınızı bu gruba gönderebilirsiniz.\n\n"
+                    f"Kolay gelsin! 👷‍♂️"
+                )
     except Exception as e:
-        await update.message.reply_text(f"❌ Manuel import hatası: {e}")
-
-async def process_import_file(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str):
-    """Import dosyasını işleme"""
-    try:
-        await update.message.reply_text("🔄 Rapor içerikleri analiz ediliyor...")
-        
-        importer = SantiyeMerkezliHTMLImporter()
-        messages = importer.parse_html_file(file_path)
-        
-        if not messages:
-            await update.message.reply_text("❌ İşlenecek rapor bulunamadı.")
-            return
-        
-        total_messages = len(messages)
-        await update.message.reply_text(f"📊 {total_messages} mesaj bulundu. Şantiye analizi başlıyor...")
-        
-        imported, skipped, errors, _ = await santiye_import_manager.import_santiye_mesajlari(messages)
-        
-        result_msg = (
-            f"✅ **Rapor Import Tamamlandı!**\n\n"
-            f"📈 **Detaylı Sonuçlar:**\n"
-            f"• 📋 Toplam Mesaj: {total_messages}\n"
-            f"• 📥 İşlenen Rapor: {imported}\n"
-            f"• ⏭️ Atlanan: {skipped}\n"
-            f"• ❌ Hatalı: {errors}\n\n"
-            f"🎯 Raporlar şantiye bazlı işlendi ve veritabanına kaydedildi."
-        )
-        
-        await update.message.reply_text(result_msg)
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ Import işlemi hatası: {e}")
+        logging.error(f"Yeni üye karşılama hatası: {e}")
 
 # ----------------------------- VERİTABANI ŞEMA GÜNCELLEMESİ -----------------------------
 def update_database_schema():
@@ -2098,93 +1967,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-# ----------------------------- OPTİMİZE RAPOR İŞLEME -----------------------------
-async def optimize_rapor_kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message or update.edited_message
-    if not msg:
-        return
-
-    user_id = msg.from_user.id
-    
-    if msg.document or msg.photo:
-        return
-
-    metin = msg.text or msg.caption
-    if not metin:
-        return
-
-    if metin.startswith(('/', '.', '!', '\\')):
-        return
-
-    is_edited = bool(update.edited_message)
-    delivered_dt = msg.date or datetime.utcnow()
-    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-    kullanici_projeleri = id_to_projects.get(user_id, [])
-
-    ai_sonuc = ai_analiz.gelismis_analiz_et(metin, kullanici_adi, kullanici_projeleri)
-    
-    if ai_sonuc and 'rapor_tarihi' in ai_sonuc:
-        try:
-            tarih_str = ai_sonuc['rapor_tarihi']
-            if re.match(r'\d{2}\.\d{2}\.\d{4}', tarih_str):
-                rapor_tarihi = datetime.strptime(tarih_str, '%d.%m.%Y').date()
-            else:
-                rapor_tarihi = parse_rapor_tarihi(metin)
-        except:
-            rapor_tarihi = parse_rapor_tarihi(metin)
-    else:
-        rapor_tarihi = parse_rapor_tarihi(metin)
-
-    if not rapor_tarihi:
-        await msg.reply_text("❌ **Tarih bulunamadı.** Lütfen raporunuzda tarih belirtiniz.")
-        return
-
-    tarih_gecerli, hata_mesaji = await tarih_kontrol_et(rapor_tarihi, user_id)
-    if not tarih_gecerli:
-        await msg.reply_text(hata_mesaji)
-        return
-
-    rapor_tipi = ai_sonuc.get('rapor_tipi', 'IZIN/ISYOK' if izin_mi(metin) else 'RAPOR')
-    
-    await rapor_kaydet_async(user_id, rapor_tipi, metin, rapor_tarihi, delivered_dt, is_edited, ai_sonuc)
-    
-    kaynak = ai_sonuc.get('kaynak', 'unknown')
-    emoji = "🤖" if kaynak == 'gpt' else "⚠️"
-    
-    await msg.reply_text(
-        f"{emoji} **Rapor Kaydedildi** - {kullanici_adi}\n"
-        f"**Tarih:** {rapor_tarihi.strftime('%d.%m.%Y')}\n"
-        f"**Tip:** {rapor_tipi}\n"
-        f"**Proje:** {ai_sonuc.get('proje_adi', 'Belirsiz')}\n"
-        f"**Kişi:** {ai_sonuc.get('kisi_sayisi', 'Belirsiz')}"
-    )
-
-async def rapor_kaydet_async(user_id: int, rapor_type: str, content_summary: str,
-                 rapor_tarihi, delivered_dt: datetime, is_edited: bool, ai_analiz_data=None):
-    """Async rapor kaydetme"""
-    delivered_date = delivered_dt.astimezone(TZ).date() if delivered_dt else datetime.now(TZ).date()
-    
-    project_name = ai_analiz_data.get('proje_adi', 'BELİRSİZ') if ai_analiz_data else 'BELİRSİZ'
-    person_count = ai_analiz_data.get('kisi_sayisi', 1) if ai_analiz_data else 1
-    work_description = ai_analiz_data.get('yapilan_is', content_summary) if ai_analiz_data else content_summary
-    work_category = ai_analiz_data.get('is_kategorisi', 'diğer') if ai_analiz_data else 'diğer'
-    personnel_type = ai_analiz_data.get('personel_tipi', 'imalat') if ai_analiz_data else 'imalat'
-    
-    await async_execute("""
-        INSERT INTO reports 
-        (user_id, project_name, report_date, report_type, person_count, work_description, 
-         work_category, personnel_type, delivered_date, is_edited, ai_analysis)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        user_id, project_name, rapor_tarihi, rapor_type, person_count, 
-        work_description[:500], work_category, personnel_type, delivered_date,
-        1 if is_edited else 0,
-        json.dumps(ai_analiz_data, ensure_ascii=False) if ai_analiz_data else None
-    ))
-    
-    if ai_analiz_data and 'kaynak' in ai_analiz_data:
-        maliyet_analiz.kayit_ekle(ai_analiz_data['kaynak'])
-
 # ----------------------------- ZAMANLAMA -----------------------------
 def schedule_jobs(app):
     jq = app.job_queue
@@ -2491,16 +2273,15 @@ def main():
     app.add_handler(CommandHandler("chatid", chatid_cmd))
     app.add_handler(CommandHandler("import_rapor", import_rapor_cmd))
     
-    # Manuel import handler'ları
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    # Yeni üye karşılama
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
     
-    # Rapor işleme
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, optimize_rapor_kontrol))
-    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, optimize_rapor_kontrol))
+    # YENİ RAPOR İŞLEME SİSTEMİ - Tüm mesajları dinle ama sessiz çalış
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_rapor_isleme))
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, yeni_rapor_isleme))
     
     schedule_jobs(app)
-    logging.info("🚀 GÜNCELLENMİŞ Rapor Botu başlatılıyor...")
+    logging.info("🚀 YENİ KURALLARLA Rapor Botu başlatılıyor...")
     
     app.run_polling(drop_pending_updates=True)
 
