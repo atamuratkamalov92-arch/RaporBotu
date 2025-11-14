@@ -1598,45 +1598,23 @@ def main():
     if not BOT_TOKEN:
         logging.error("BOT_TOKEN ayarlı değil. process sonlandırıldı.")
         return
+
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    # Temel komutlar
+
+    # Sadece gerçekten tanımlı komutlar
     app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("info", info_cmd))
-    app.add_handler(CommandHandler("hakkinda", hakkinda_cmd))
-    
-    # Admin komutları
-    app.add_handler(CommandHandler("bugun", bugun_cmd))
-    app.add_handler(CommandHandler("dun", dun_cmd))
-    app.add_handler(CommandHandler("haftalik_rapor", haftalik_rapor_cmd))
-    app.add_handler(CommandHandler("aylik_rapor", aylik_rapor_cmd))
-    app.add_handler(CommandHandler("tariharaligi", tariharaligi_cmd))
-    app.add_handler(CommandHandler("haftalik_istatistik", haftalik_istatistik_cmd))
-    app.add_handler(CommandHandler("aylik_istatistik", aylik_istatistik_cmd))
-    app.add_handler(CommandHandler("excel_tariharaligi", excel_tariharaligi_cmd))
-    app.add_handler(CommandHandler("maliyet", maliyet_cmd))
-    app.add_handler(CommandHandler("ai_rapor", ai_rapor_cmd))
-    app.add_handler(CommandHandler("kullanicilar", kullanicilar_cmd))
-    app.add_handler(CommandHandler("santiyeler", santiyeler_cmd))
-    app.add_handler(CommandHandler("santiye_durum", santiye_durum_cmd))
-    
-    # Super Admin komutları
-    app.add_handler(CommandHandler("reload", reload_cmd))
-    app.add_handler(CommandHandler("yedekle", yedekle_cmd))
-    app.add_handler(CommandHandler("chatid", chatid_cmd))
     app.add_handler(CommandHandler("import_rapor", import_rapor_cmd))
-    
+    app.add_handler(CommandHandler("yedekle", yedekle_cmd))
+
     # Yeni üye karşılama
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
-    
-    # YENİ RAPOR İŞLEME SİSTEMİ - Tüm mesajları dinle ama sessiz çalış
+
+    # Yeni rapor işleme sistemi (sessiz)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_rapor_isleme))
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, yeni_rapor_isleme))
-    
+
     schedule_jobs(app)
     logging.info("🚀 YENİ KURALLARLA Rapor Botu başlatılıyor...")
-    
+
     app.run_polling(drop_pending_updates=True)
 
-if __name__ == "__main__":
-    main()
