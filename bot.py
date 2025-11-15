@@ -36,7 +36,7 @@ PORT = int(os.environ.get('PORT', 8443))
 DB_POOL = None
 
 def init_db_pool():
-    """Database connection pool'u başlat - OPTİMİZE EDİLDİ"""
+    """Database connection pool'u başlat"""
     global DB_POOL
     try:
         if DB_POOL is None:
@@ -52,19 +52,19 @@ def init_db_pool():
         raise
 
 def get_conn_from_pool():
-    """Pool'dan connection al - OPTİMİZE EDİLDİ"""
+    """Pool'dan connection al"""
     if DB_POOL is None:
         init_db_pool()
     return DB_POOL.getconn()
 
 def put_conn_back(conn):
-    """Connection'ı pool'a geri ver - OPTİMİZE EDİLDİ"""
+    """Connection'ı pool'a geri ver"""
     if DB_POOL and conn:
         DB_POOL.putconn(conn)
 
 # ----------------------------- ASYNC DATABASE HELPERS -----------------------------
 def _sync_fetchall(query, params=()):
-    """Sync fetchall fonksiyonu - OPTİMİZE EDİLDİ"""
+    """Sync fetchall fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -81,7 +81,7 @@ def _sync_fetchall(query, params=()):
         put_conn_back(conn)
 
 def _sync_execute(query, params=()):
-    """Sync execute fonksiyonu - OPTİMİZE EDİLDİ"""
+    """Sync execute fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -99,7 +99,7 @@ def _sync_execute(query, params=()):
         put_conn_back(conn)
 
 def _sync_fetchone(query, params=()):
-    """Sync fetchone fonksiyonu - OPTİMİZE EDİLDİ"""
+    """Sync fetchone fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -116,7 +116,7 @@ def _sync_fetchone(query, params=()):
         put_conn_back(conn)
 
 async def async_db_query(func, *args, **kwargs):
-    """Async database sorgusu - OPTİMİZE EDİLDİ"""
+    """Async database sorgusu"""
     loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
@@ -125,22 +125,22 @@ async def async_db_query(func, *args, **kwargs):
         raise
 
 async def async_fetchall(query, params=()):
-    """Async fetchall - OPTİMİZE EDİLDİ"""
+    """Async fetchall"""
     return await async_db_query(_sync_fetchall, query, params)
 
 async def async_execute(query, params=()):
-    """Async execute - OPTİMİZE EDİLDİ"""
+    """Async execute"""
     return await async_db_query(_sync_execute, query, params)
 
 async def async_fetchone(query, params=()):
-    """Async fetchone - OPTİMİZE EDİLDİ"""
+    """Async fetchone"""
     return await async_db_query(_sync_fetchone, query, params)
 
 # ----------------------------- YANDEX DISK YEDEKLEME -----------------------------
 YANDEX_DISK_TOKEN = os.getenv("YANDEX_DISK_TOKEN")
 
 def upload_to_yandex(file_path, yandex_path):
-    """Dosyayı Yandex.Disk'e yükler - OPTİMİZE EDİLDİ (RETRY + TIMEOUT)"""
+    """Dosyayı Yandex.Disk'e yükler"""
     if not YANDEX_DISK_TOKEN:
         logging.error("❌ Yandex.Disk token bulunamadı!")
         return False
@@ -156,7 +156,6 @@ def upload_to_yandex(file_path, yandex_path):
             upload_url = "https://cloud-api.yandex.net/v1/disk/resources/upload"
             params = {"path": yandex_path, "overwrite": "true"}
             
-            # Upload URL alma
             resp = requests.get(upload_url, headers=headers, params=params, timeout=30)
             
             if resp.status_code != 200:
@@ -173,7 +172,6 @@ def upload_to_yandex(file_path, yandex_path):
                     continue
                 return False
             
-            # Dosya yükleme
             with open(file_path, "rb") as f:
                 upload_resp = requests.put(href, data=f, timeout=60)
                 
@@ -201,12 +199,12 @@ def upload_to_yandex(file_path, yandex_path):
     return False
 
 async def async_upload_to_yandex(file_path, yandex_path):
-    """Async Yandex upload - OPTİMİZE EDİLDİ"""
+    """Async Yandex upload"""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, upload_to_yandex, file_path, yandex_path)
 
 async def yandex_yedekleme_gorevi(context: ContextTypes.DEFAULT_TYPE):
-    """Her gün 23:00'de otomatik yedekleme - OPTİMİZE EDİLDİ"""
+    """Her gün 23:00'de otomatik yedekleme"""
     try:
         logging.info("💾 Yandex.Disk yedekleme işlemi başlatılıyor...")
         
@@ -370,11 +368,11 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 async def get_user_role(user_id):
-    """Cache'li user rol kontrolü - OPTİMİZE EDİLDİ"""
+    """Cache'li user rol kontrolü"""
     global user_role_cache, user_role_cache_time
     
     current_time = time.time()
-    if current_time - user_role_cache_time > 300:  # 5 dakika
+    if current_time - user_role_cache_time > 300:
         user_role_cache = {}
         user_role_cache_time = current_time
     
@@ -391,7 +389,7 @@ async def get_user_role(user_id):
     return role
 
 def _to_int_or_none(x):
-    """Excel'den ID okumak için geliştirilmiş fonksiyon - OPTİMİZE EDİLDİ"""
+    """Excel'den ID okumak için geliştirilmiş fonksiyon"""
     if x is None or pd.isna(x):
         return None
     
@@ -399,17 +397,15 @@ def _to_int_or_none(x):
     if not s:
         return None
     
-    # Bilimsel gösterim kontrolü
     if "e+" in s.lower():
         try:
             return int(float(s))
         except (ValueError, TypeError):
             return None
     
-    # Sadece sayıları al
     s_clean = re.sub(r'[^\d]', '', s)
     
-    if len(s_clean) < 8:  # Telegram ID en az 8 haneli
+    if len(s_clean) < 8:
         return None
     
     try:
@@ -419,7 +415,7 @@ def _to_int_or_none(x):
 
 # ----------------------------- ŞANTİYE BAZLI SORUMLULUK SİSTEMİ -----------------------------
 def load_excel():
-    """Excel okunamazsa fallback kullanıcı listesini kullan - OPTİMİZE EDİLDİ"""
+    """Excel okunamazsa fallback kullanıcı listesini kullan"""
     global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol, ADMINS, IZLEYICILER, TUM_KULLANICILAR, last_excel_update
     global santiye_sorumlulari, santiye_rapor_durumu
     
@@ -465,7 +461,6 @@ def load_excel():
             if rol == "İZLEYİCİ":
                 temp_izleyiciler.append(tid)
             
-            # Proje/Şantiye parsing - daha esnek
             raw = str(r.get("Proje / Şantiye") or "")
             parts = [p.strip() for p in re.split(r'[/,\-\|]', raw) if p.strip()]
             temp_id_to_projects[tid] = parts
@@ -513,7 +508,7 @@ class YeniRaporAnalizAI:
             self.aktif = True
             self.model = "gpt-4o-mini"
             self.cache = {}
-            self.cache_size = 100  # Cache boyutu sınırı
+            self.cache_size = 100
             logging.info(f"🤖 YENİ AI Rapor Analiz sistemi aktif! Model: {self.model}")
         else:
             self.aktif = False
@@ -522,22 +517,20 @@ class YeniRaporAnalizAI:
     def _clean_cache(self):
         """Cache'i temizle - performans için"""
         if len(self.cache) > self.cache_size:
-            # En eski 20%'yi temizle
             keys_to_remove = list(self.cache.keys())[:self.cache_size // 5]
             for key in keys_to_remove:
                 del self.cache[key]
     
     def rapor_tipi_analiz_et(self, mesaj_metni):
-        """Mesajın rapor olup olmadığını analiz et - OPTİMİZE EDİLDİ"""
+        """Mesajın rapor olup olmadığını analiz et"""
         if not self.aktif:
-            return "rapor"  # Fallback olarak rapor kabul et
+            return "rapor"
             
         try:
             cache_key = f"tip_{hash(mesaj_metni[:100])}"
             if cache_key in self.cache:
                 return self.cache[cache_key]
             
-            # Hızlı manuel kontrol - gereksiz API çağrılarını azalt
             mesaj_lower = mesaj_metni.lower()
             rapor_indicator = any(word in mesaj_lower for word in 
                                 ['kişi', 'personel', 'mobilizasyon', 'beton', 'kalıp', 'demir', 'şantiye', 'izin'])
@@ -597,7 +590,7 @@ SADECE "rapor" veya "rapor değil" yaz.
             return "rapor"
     
     def detayli_rapor_analizi(self, mesaj_metni, gonderici_adi):
-        """Detaylı rapor analizi - OPTİMİZE EDİLDİ"""
+        """Detaylı rapor analizi"""
         if not self.aktif:
             return self._fallback_detayli_analiz()
             
@@ -703,14 +696,13 @@ yeni_ai_analiz = YeniRaporAnalizAI(OPENAI_API_KEY)
 
 # ----------------------------- YENİ RAPOR İŞLEME SİSTEMİ -----------------------------
 async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni kurallara göre rapor işleme - OPTİMİZE EDİLDİ"""
+    """Yeni kurallara göre rapor işleme"""
     msg = update.message or update.edited_message
     if not msg:
         return
 
     user_id = msg.from_user.id
     
-    # Dosya veya fotoğraf mesajlarını ignore et
     if msg.document or msg.photo:
         return
 
@@ -718,29 +710,23 @@ async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not metin:
         return
 
-    # Komutları ignore et
     if metin.startswith(('/', '.', '!', '\\')):
         return
 
     try:
-        # 1. ADIM: AI ile rapor tipi analizi
         rapor_tipi = yeni_ai_analiz.rapor_tipi_analiz_et(metin)
         
-        # 2. ADIM: "rapor değil" ise sessiz kal
         if rapor_tipi == "rapor değil":
             logging.info(f"🤖 Rapor değil - Sessiz: {user_id}")
             return
         
-        # 3. ADIM: "rapor" ise detaylı analiz
         kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
         detayli_analiz = yeni_ai_analiz.detayli_rapor_analizi(metin, kullanici_adi)
         
-        # 4. ADIM: Tarih kontrolü
         tarih_gecerli = detayli_analiz.get("tarih_gecerli", False)
         tarih_bulundu = detayli_analiz.get("tarih_bulundu", False)
         
         if not tarih_bulundu or not tarih_gecerli:
-            # Tarih anlaşılamadı - sadece gönderene özel mesaj
             try:
                 await msg.reply_text(
                     "🟡 **Gönderdiğiniz rapordaki tarihi net olarak algılayamadım.**\n\n"
@@ -752,9 +738,7 @@ async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.error(f"🟡 Tarih uyarısı gönderilemedi: {e}")
             return
         
-        # 5. ADIM: Rapor format kontrolü
         if await rapor_format_kontrolu(detayli_analiz, metin):
-            # Format bozuk - sadece gönderene özel mesaj
             try:
                 await msg.reply_text(
                     "🟡 **Gönderdiğiniz rapor format olarak çok dağınık/eksik olduğu için işlenemedi.**\n\n"
@@ -765,7 +749,6 @@ async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.error(f"🟡 Format uyarısı gönderilemedi: {e}")
             return
         
-        # 6. ADIM: Raporu işle (SESSİZ)
         await raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg)
         logging.info(f"✅ Rapor sessiz işlendi - Kullanıcı: {user_id}")
         
@@ -773,27 +756,22 @@ async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"❌ Rapor işleme hatası: {e}")
 
 async def rapor_format_kontrolu(detayli_analiz, metin):
-    """Rapor formatının yeterli olup olmadığını kontrol et - OPTİMİZE EDİLDİ"""
+    """Rapor formatının yeterli olup olmadığını kontrol et"""
     try:
-        # Temel bilgilerin olup olmadığını kontrol et
         santiye_adi = detayli_analiz.get("santiye_adi", "")
         toplam_adam = detayli_analiz.get("toplam_adam", 0)
         personel_dagilimi = detayli_analiz.get("personel_dagilimi", {})
         bina_blok_isleri = detayli_analiz.get("bina_blok_isleri", [])
         
-        # Çok kısa veya anlamsız mesaj kontrolü
         if len(metin.strip()) < 10:
             return True
         
-        # Sadece tarih içeriyorsa
         if len(metin.strip()) < 25 and re.search(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin):
             return True
         
-        # Temel şantiye bilgisi yoksa
         if santiye_adi == "BELİRSİZ" and toplam_adam <= 1 and not personel_dagilimi and not bina_blok_isleri:
             return True
         
-        # Sadece selam/teşekkür içeriyorsa
         selam_kelimeler = ["merhaba", "selam", "kolay gelsin", "teşekkür", "iyi akşamlar", "iyi günler", "hayırlı işler"]
         if any(kelime in metin.lower() for kelime in selam_kelimeler) and len(metin.strip()) < 30:
             return True
@@ -805,13 +783,11 @@ async def rapor_format_kontrolu(detayli_analiz, metin):
         return False
 
 async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
-    """Raporu sessizce kaydet - OPTİMİZE EDİLDİ"""
+    """Raporu sessizce kaydet"""
     try:
-        # Tarih parsing
         tarih_str = detayli_analiz.get("tarih", "")
         rapor_tarihi = None
         
-        # Tarih parsing optimizasyonu
         for fmt in ['%d-%m-%Y', '%d.%m.%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y.%m.%d', '%Y/%m/%d']:
             try:
                 rapor_tarihi = datetime.strptime(tarih_str, fmt).date()
@@ -820,30 +796,23 @@ async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
                 continue
         
         if not rapor_tarihi:
-            # Fallback: metinden tarih çıkar
             rapor_tarihi = parse_rapor_tarihi(metin)
             if not rapor_tarihi:
                 rapor_tarihi = datetime.now(TZ).date()
         
-        # Rapor tipi belirleme
         izinli_sayisi = detayli_analiz.get("izinli_sayisi", 0)
         rapor_tipi = 'IZIN/ISYOK' if izinli_sayisi > 0 or 'izin' in metin.lower() or 'rapor yok' in metin.lower() else 'RAPOR'
         
-        # Personel sayısı
-        person_count = max(detayli_analiz.get("toplam_adam", 1), 1)  # En az 1
+        person_count = max(detayli_analiz.get("toplam_adam", 1), 1)
         
-        # Proje adı
         project_name = detayli_analiz.get("santiye_adi", "BELİRSİZ")
         if project_name == "BELİRSİZ":
-            # Kullanıcının projelerinden birini seç
             user_projects = id_to_projects.get(user_id, [])
             if user_projects:
                 project_name = user_projects[0]
         
-        # İş açıklaması - daha optimize
-        work_description = metin[:400]  # Daha kısa tut
+        work_description = metin[:400]
         
-        # Veritabanına kaydet - parametre binding ile
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
@@ -856,7 +825,6 @@ async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
             json.dumps(detayli_analiz, ensure_ascii=False)
         ))
         
-        # Maliyet analizi
         if detayli_analiz and 'kaynak' in detayli_analiz:
             maliyet_analiz.kayit_ekle(detayli_analiz['kaynak'])
             
@@ -866,11 +834,10 @@ async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
 
 # ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
 async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni üye gruba katıldığında hoş geldin mesajı - OPTİMİZE EDİLDİ"""
+    """Yeni üye gruba katıldığında hoş geldin mesajı"""
     try:
         for member in update.message.new_chat_members:
             if member.id == context.bot.id:
-                # Bot gruba eklendi
                 await update.message.reply_text(
                     "🤖 **Rapor Botu Aktif!**\n\n"
                     "Ben şantiye raporlarınızı otomatik olarak işleyen bir botum.\n"
@@ -883,7 +850,6 @@ async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "Kolay gelsin! 👷‍♂️"
                 )
             else:
-                # Yeni insan üye katıldı
                 await update.message.reply_text(
                     f"👋 Hoş geldin {member.first_name}!\n\n"
                     f"🤖 Ben şantiye raporlarınızı otomatik işleyen bir botum.\n"
@@ -895,9 +861,8 @@ async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ----------------------------- VERİTABANI ŞEMA GÜNCELLEMESİ -----------------------------
 def update_database_schema():
-    """Gerekli veritabanı şema güncellemelerini yap - OPTİMİZE EDİLDİ"""
+    """Gerekli veritabanı şema güncellemelerini yap"""
     try:
-        # Daha verimli index kontrolleri
         index_queries = [
             "CREATE INDEX IF NOT EXISTS idx_reports_date_user ON reports(report_date, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_reports_project_date ON reports(project_name, report_date)",
@@ -918,9 +883,8 @@ def update_database_schema():
 
 # ----------------------------- YENİ VERİTABANI YAPISI -----------------------------
 def init_database():
-    """Yeni normalleştirilmiş veritabanı yapısını oluştur - OPTİMİZE EDİLDİ"""
+    """Yeni normalleştirilmiş veritabanı yapısını oluştur"""
     try:
-        # Schema version kontrolü
         _sync_execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 id INTEGER PRIMARY KEY CHECK (id=1), 
@@ -934,7 +898,6 @@ def init_database():
             WHERE NOT EXISTS(SELECT 1 FROM schema_version WHERE id=1)
         """)
         
-        # Ana reports tablosu
         _sync_execute("""
             CREATE TABLE IF NOT EXISTS reports (
                 id SERIAL PRIMARY KEY,
@@ -954,7 +917,6 @@ def init_database():
             )
         """)
         
-        # AI logs tablosu
         _sync_execute("""
             CREATE TABLE IF NOT EXISTS ai_logs (
                 id SERIAL PRIMARY KEY,
@@ -980,9 +942,8 @@ init_db_pool()
 
 # ----------------------------- ŞANTİYE BAZLI RAPOR KONTROLÜ -----------------------------
 async def get_santiye_rapor_durumu(bugun):
-    """Bugünkü şantiye rapor durumu - OPTİMİZE EDİLDİ"""
+    """Bugünkü şantiye rapor durumu"""
     try:
-        # EXISTS kullanarak daha hızlı sorgu
         rows = await async_fetchall("""
             SELECT DISTINCT project_name FROM reports 
             WHERE report_date = %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
@@ -994,7 +955,7 @@ async def get_santiye_rapor_durumu(bugun):
         return set()
 
 async def get_eksik_santiyeler(bugun):
-    """Raporu eksik olan şantiyeleri ve sorumlularını getir - OPTİMİZE EDİLDİ"""
+    """Raporu eksik olan şantiyeleri ve sorumlularını getir"""
     try:
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
@@ -1006,12 +967,11 @@ async def get_eksik_santiyeler(bugun):
         return {}
 
 async def get_santiye_bazli_rapor_durumu(bugun):
-    """Şantiye bazlı detaylı rapor durumu - OPTİMİZE EDİLDİ"""
+    """Şantiye bazlı detaylı rapor durumu"""
     try:
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         
-        # Tek sorguda rapor veren kullanıcıları al
         rows = await async_fetchall("""
             SELECT project_name, user_id FROM reports 
             WHERE report_date = %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
@@ -1055,7 +1015,7 @@ class OptimizeAkilliRaporAnalizAI:
                 del self.cache[key]
     
     def gelismis_analiz_et(self, rapor_metni, kullanici_adi, kullanici_projeleri=None):
-        """Yeni veritabanı yapısına uygun analiz - OPTİMİZE EDİLDİ"""
+        """Yeni veritabanı yapısına uygun analiz"""
         if not self.aktif:
             sonuc = self._fallback_analiz()
             self._log_ai_kullanimi(rapor_metni, sonuc, False, "OpenAI devre dışı")
@@ -1142,7 +1102,7 @@ Aşağıdaki kurallara %100 UY:
         }
     
     def _log_ai_kullanimi(self, rapor_metni, ai_sonuc, basarili, hata_mesaji=None):
-        """AI kullanımını database'e logla - OPTİMİZE EDİLDİ"""
+        """AI kullanımını database'e logla"""
         try:
             _sync_execute("""
                 INSERT INTO ai_logs (timestamp, user_id, rapor_metni, ai_cevap, basarili, hata_mesaji)
@@ -1150,8 +1110,8 @@ Aşağıdaki kurallara %100 UY:
             """, (
                 datetime.now(TZ).isoformat(),
                 0,
-                rapor_metni[:400],  # Daha kısa
-                json.dumps(ai_sonuc, ensure_ascii=False)[:500],  # Daha kısa
+                rapor_metni[:400],
+                json.dumps(ai_sonuc, ensure_ascii=False)[:500],
                 1 if basarili else 0,
                 hata_mesaji
             ))
@@ -1189,9 +1149,8 @@ class MaliyetAnaliz:
         )
     
     def detayli_ai_raporu(self):
-        """Detaylı AI kullanım raporu - OPTİMİZE EDİLDİ"""
+        """Detaylı AI kullanım raporu"""
         try:
-            # Tek sorguda tüm istatistikleri al
             result = _sync_fetchone("""
                 SELECT 
                     COUNT(*) as toplam,
@@ -1207,7 +1166,6 @@ class MaliyetAnaliz:
             
             toplam, basarili, basarisiz, ilk_tarih, son_tarih = result
             
-            # Son 7 gün için optimize sorgu
             rows = _sync_fetchall("""
                 SELECT DATE(timestamp::timestamp) as gun, 
                        COUNT(*) as toplam,
@@ -1240,22 +1198,20 @@ maliyet_analiz = MaliyetAnaliz()
 
 # ----------------------------- TARİH FONKSİYONLARI -----------------------------
 def parse_rapor_tarihi(metin):
-    """Tarih parsing fonksiyonu - OPTİMİZE EDİLDİ (daha hızlı ve esnek)"""
+    """Tarih parsing fonksiyonu"""
     try:
         bugun = datetime.now(TZ).date()
         metin_lower = metin.lower()
         
-        # Hızlı kontrol: bugün/dün
         if 'bugün' in metin_lower or 'bugun' in metin_lower:
             return bugun
         if 'dün' in metin_lower or 'dun' in metin_lower:
             return bugun - timedelta(days=1)
         
-        # Tarih formatları için optimize regex
         date_patterns = [
-            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',  # GG.AA.YYYY
-            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',  # GG.AA.YY
-            r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',  # YYYY.AA.GG
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',
+            r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',
         ]
         
         for pattern in date_patterns:
@@ -1263,19 +1219,16 @@ def parse_rapor_tarihi(metin):
             if match:
                 groups = match.groups()
                 if len(groups) == 3:
-                    # Format tespiti ve parsing
-                    if len(groups[2]) == 4:  # GG.AA.YYYY
+                    if len(groups[2]) == 4:
                         day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
-                    elif len(groups[0]) == 4:  # YYYY.AA.GG
+                    elif len(groups[0]) == 4:
                         year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-                    else:  # GG.AA.YY
+                    else:
                         day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
-                        year += 2000  # 2 haneli yılı 4 haneye çevir
+                        year += 2000
                     
-                    # Geçerli tarih kontrolü
                     try:
                         parsed_date = datetime(year, month, day).date()
-                        # Gelecek tarih kontrolü
                         if parsed_date <= bugun:
                             return parsed_date
                     except ValueError:
@@ -1286,13 +1239,13 @@ def parse_rapor_tarihi(metin):
         return None
 
 def izin_mi(metin):
-    """Basit izin kontrolü - OPTİMİZE EDİLDİ"""
+    """Basit izin kontrolü"""
     metin_lower = metin.lower()
     izin_kelimeler = ['izin', 'rapor yok', 'iş yok', 'çalışma yok', 'tatil', 'hasta', 'izindeyim']
     return any(kelime in metin_lower for kelime in izin_kelimeler)
 
 async def tarih_kontrol_et(rapor_tarihi, user_id):
-    """Tarih kontrolü - OPTİMİZE EDİLDİ"""
+    """Tarih kontrolü"""
     bugun = datetime.now(TZ).date()
     
     if not rapor_tarihi:
@@ -1305,7 +1258,6 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     if rapor_tarihi < iki_ay_once:
         return False, "❌ **Çok eski tarihli rapor.** Lütfen son 2 ay içinde bir tarih kullanınız."
     
-    # EXISTS kullanarak daha hızlı kontrol
     result = await async_fetchone("SELECT EXISTS(SELECT 1 FROM reports WHERE user_id = %s AND report_date = %s)", 
                   (user_id, rapor_tarihi))
     
@@ -1315,7 +1267,7 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     return True, ""
 
 def parse_tr_date(date_str):
-    """Tüm tarih formatlarını destekle - OPTİMİZE EDİLDİ"""
+    """Tüm tarih formatlarını destekle"""
     try:
         normalized_date = date_str.replace('/', '.').replace('-', '.')
         parts = normalized_date.split('.')
@@ -1359,23 +1311,21 @@ async def super_admin_kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE
     return True
 
 async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
-    """Hata mesajını adminlere gönder - OPTİMİZE EDİLDİ"""
+    """Hata mesajını adminlere gönder"""
     for admin_id in ADMINS:
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
                 text=f"⚠️ **Sistem Hatası**: {hata_mesaji}"
             )
-            # Küçük bekleme - rate limit için
             await asyncio.sleep(0.1)
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
 # ----------------------------- EKSİK FONKSİYONLARI EKLE -----------------------------
 async def generate_gelismis_personel_ozeti(target_date):
-    """📊 Günlük personel özeti oluştur - OPTİMİZE EDİLDİ"""
+    """📊 Günlük personel özeti oluştur"""
     try:
-        # Tek sorguda tüm verileri al
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description
             FROM reports WHERE report_date = %s
@@ -1396,7 +1346,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     'toplam_kisi': 0, 'calisan': 0, 'izinli': 0, 'hastalik': 0
                 }
             
-            # Rapor tipine göre dağılım
             if rapor_tipi == "RAPOR":
                 proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
             elif rapor_tipi == "IZIN/ISYOK":
@@ -1415,7 +1364,6 @@ async def generate_gelismis_personel_ozeti(target_date):
         genel_izinli = 0
         genel_hastalik = 0
         
-        # Sıralı şekilde projeleri işle
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam_kisi'], reverse=True):
             if analiz['toplam_kisi'] > 0:
                 genel_toplam += analiz['toplam_kisi']
@@ -1426,7 +1374,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
                 mesaj += f"{emoji} **{proje_adi}**: {analiz['toplam_kisi']} kişi\n"
                 
-                # Durum detayları
                 durum_detay = []
                 if analiz['calisan'] > 0: 
                     durum_detay.append(f"Çalışan:{analiz['calisan']}")
@@ -1457,9 +1404,8 @@ async def generate_gelismis_personel_ozeti(target_date):
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
-    """Haftalık rapor mesajı oluştur - OPTİMİZE EDİLDİ"""
+    """Haftalık rapor mesajı oluştur"""
     try:
-        # Tek sorguda tüm istatistikler
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi,
                    SUM(CASE WHEN report_type = 'RAPOR' THEN 1 ELSE 0 END) as calisma_raporu
@@ -1480,7 +1426,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         en_aktif = rows[:3]
         
-        # Proje bazlı personel - tek sorgu
         proje_rows = await async_fetchall("""
             SELECT project_name, SUM(person_count) as toplam_kisi
             FROM reports 
@@ -1517,7 +1462,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
 async def generate_aylik_rapor_mesaji(start_date, end_date):
-    """Aylık rapor mesajı oluştur - OPTİMİZE EDİLDİ"""
+    """Aylık rapor mesajı oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi,
@@ -1568,7 +1513,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         return f"❌ Aylık rapor oluşturulurken hata: {e}"
 
 async def generate_tarih_araligi_raporu(start_date, end_date):
-    """Tarih aralığı raporu oluştur - OPTİMİZE EDİLDİ"""
+    """Tarih aralığı raporu oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi,
@@ -1588,7 +1533,6 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         
         en_aktif = rows[:3]
         
-        # Tek sorguda toplam personel
         personel_result = await async_fetchone("""
             SELECT SUM(person_count) as toplam_kisi
             FROM reports 
@@ -1661,8 +1605,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚡ **Super Admin Komutları:**\n"
             f"`/reload` - Excel dosyasını yenile\n"
             f"`/yedekle` - Manuel yedekleme\n"
-            f"`/chatid` - Chat ID göster\n"
-            f"`/import_rapor` - Manuel rapor import\n\n"
+            f"`/chatid` - Chat ID göster\n\n"
             f"🔒 **Not:** Komutlar yetkinize göre çalışacaktır."
         )
     else:
@@ -1691,8 +1634,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Otomatik hatırlatma sistemi\n"
         "• Excel raporları\n"
         "• Yandex.Disk yedekleme\n"
-        "• Gerçek zamanlı takip\n"
-        "• Manuel rapor import\n\n"
+        "• Gerçek zamanlı takip\n\n"
         "💡 **Teknoloji:** Python, PostgreSQL, OpenAI GPT-4\n"
         "⚡ **Performans:** Optimize edilmiş sorgular"
     )
@@ -1970,7 +1912,7 @@ async def reload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ----------------------------- RAPOR ÜRETİCİ FONKSİYONLAR -----------------------------
 async def create_excel_report(start_date, end_date, rapor_baslik):
-    """Excel rapor oluştur - OPTİMİZE EDİLDİ"""
+    """Excel rapor oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT r.user_id, r.report_date, r.report_type, r.work_description, 
@@ -2077,7 +2019,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
 
 # ----------------------------- ZAMANLAMA -----------------------------
 def schedule_jobs(app):
-    """Zamanlanmış görevleri ayarla - OPTİMİZE EDİLDİ"""
+    """Zamanlanmış görevleri ayarla"""
     jq = app.job_queue
     
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
@@ -2096,7 +2038,7 @@ def schedule_jobs(app):
     logging.info("⏰ Tüm zamanlamalar ayarlandı")
 
 async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
-    """Excel dosyası otomatik izleme - OPTİMİZE EDİLDİ"""
+    """Excel dosyası otomatik izleme"""
     global last_excel_update
     try:
         if os.path.exists(USERS_FILE):
@@ -2108,7 +2050,7 @@ async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Excel otomatik izleme hatası: {e}")
 
 async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
-    """🕘 09:00 - Sadece Eren ve Atamurat'a DM gönder - OPTİMİZE EDİLDİ"""
+    """🕘 09:00 - Sadece Eren ve Atamurat'a DM gönder"""
     try:
         dun = (datetime.now(TZ) - timedelta(days=1)).date()
         rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
@@ -2119,7 +2061,7 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=user_id, text=rapor_mesaji)
                 logging.info(f"🕘 09:00 özeti {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.5)  # Rate limit için
+                await asyncio.sleep(0.5)
             except Exception as e:
                 logging.error(f"🕘 {user_id} kullanıcısına özet gönderilemedi: {e}")
                 
@@ -2128,7 +2070,7 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"09:00 rapor hatası: {e}")
 
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    """🟡 12:30 - Gün ortası şantiye bazlı hatırlatma mesajı - OPTİMİZE EDİLDİ"""
+    """🟡 12:30 - Gün ortası şantiye bazlı hatırlatma mesajı"""
     try:
         bugun = datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2151,7 +2093,7 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=user_id, text=mesaj)
                 logging.info(f"🟡 Şantiye hatırlatma mesajı {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)  # Rate limit için
+                await asyncio.sleep(0.3)
             except Exception as e:
                 logging.error(f"🟡 {user_id} kullanıcısına şantiye hatırlatma gönderilemedi: {e}")
         
@@ -2160,7 +2102,7 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye hatırlatma mesajı hatası: {e}")
 
 async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🟠 15:00 - İlk rapor kontrolü (şantiye bazlı) - OPTİMİZE EDİLDİ"""
+    """🟠 15:00 - İlk rapor kontrolü (şantiye bazlı)"""
     try:
         bugun = datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2195,7 +2137,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=user_id, text=mesaj)
                 logging.info(f"🟠 Şantiye kontrol mesajı {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)  # Rate limit için
+                await asyncio.sleep(0.3)
             except Exception as e:
                 logging.error(f"🟠 {user_id} kullanıcısına şantiye kontrol mesajı gönderilemedi: {e}")
         
@@ -2204,7 +2146,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
 
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi - OPTİMİZE EDİLDİ"""
+    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi"""
     try:
         bugun = datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2231,7 +2173,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=user_id, text=mesaj)
                 logging.info(f"🔴 Şantiye gün sonu analizi {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)  # Rate limit için
+                await asyncio.sleep(0.3)
             except Exception as e:
                 logging.error(f"🔴 {user_id} kullanıcısına şantiye gün sonu analizi gönderilemedi: {e}")
         
@@ -2255,7 +2197,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(chat_id=admin_id, text=admin_mesaj)
                 logging.info(f"🔴 Şantiye gün sonu özeti {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)  # Rate limit için
+                await asyncio.sleep(0.5)
             except Exception as e:
                 logging.error(f"🔴 {admin_id} adminine şantiye gün sonu özeti gönderilemedi: {e}")
         
@@ -2264,7 +2206,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye son rapor kontrol hatası: {e}")
 
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Haftalık grup raporu - OPTİMİZE EDİLDİ"""
+    """Haftalık grup raporu"""
     try:
         today = datetime.now(TZ).date()
         start_date = today - timedelta(days=today.weekday() + 7)
@@ -2293,7 +2235,7 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
 
 async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Aylık grup raporu - OPTİMİZE EDİLDİ"""
+    """Aylık grup raporu"""
     try:
         today = datetime.now(TZ).date()
         start_date = today.replace(day=1) - timedelta(days=1)
@@ -2323,7 +2265,7 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Aylık grup raporu hatası: {e}")
 
 async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    """Bot başlatıcı mesaj - OPTİMİZE EDİLDİ"""
+    """Bot başlatıcı mesaj"""
     try:
         mesaj = "🤖 **Rapor Kontrol Botu Aktif!**\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
         
@@ -2339,7 +2281,7 @@ async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Bot başlatıcı mesaj hatası: {e}")
 
 async def post_init(application: Application):
-    """Bot başlangıç ayarları - OPTİMİZE EDİLDİ"""
+    """Bot başlangıç ayarları"""
     commands = [
         BotCommand("start", "Botu başlat"),
         BotCommand("info", "Komut bilgisi (Tüm kullanıcılar)"),
@@ -2362,7 +2304,6 @@ async def post_init(application: Application):
         BotCommand("reload", "Excel yenile (Super Admin)"),
         BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
         BotCommand("chatid", "Chat ID göster (Super Admin)"),
-        BotCommand("import_rapor", "Manuel rapor import (Super Admin)"),
     ]
     await application.bot.set_my_commands(commands)
     
@@ -2370,7 +2311,7 @@ async def post_init(application: Application):
 
 # ----------------------------- MAIN -----------------------------
 def main():
-    """Ana fonksiyon - OPTİMİZE EDİLDİ"""
+    """Ana fonksiyon"""
     try:
         app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
         
@@ -2398,7 +2339,6 @@ def main():
         app.add_handler(CommandHandler("reload", reload_cmd))
         app.add_handler(CommandHandler("yedekle", yedekle_cmd))
         app.add_handler(CommandHandler("chatid", chatid_cmd))
-        app.add_handler(CommandHandler("import_rapor", import_rapor_cmd))
         
         # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
