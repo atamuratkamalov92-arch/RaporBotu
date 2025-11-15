@@ -365,7 +365,7 @@ async def get_user_role(user_id):
     """Cache'li user rol kontrolü"""
     global user_role_cache, user_role_cache_time
     
-    current_time = time.time()
+    current_time = time_module.time()
     if current_time - user_role_cache_time > 300:
         user_role_cache = {}
         user_role_cache_time = current_time
@@ -494,77 +494,85 @@ def get_db_connection():
     """PostgreSQL bağlantısını döndür"""
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
-# ----------------------------- GPT-4-MINI SİSTEM PROMPT (FİNAL SÜRÜM) -----------------------------
-SYSTEM_PROMPT = """You are a deterministic construction-site daily report extraction engine. 
-Your ONLY job is to analyze an incoming message and return a JSON array.
-
-Your behavior is strictly controlled and MUST follow the rules below.
+# ----------------------------- GPT-4-MINI SİSTEM PROMPT (FINAL CI/CD SÜRÜMÜ) -----------------------------
+SYSTEM_PROMPT = """You are a deterministic construction report extraction engine.
+Your behavior strictly depends on the provided chat_type.
 
 ==================================================
-CORE GLOBAL RULES
+CHAT TYPE LOGIC (MANDATORY)
 ==================================================
-• You must ALWAYS return ONLY a JSON array.
-• You must NEVER output explanations, comments, text, emojis, or anything outside JSON.
-• If the message contains valid reports → extract and return them.
-• If the message contains NO reports → your output depends on chat type:
+You will ALWAYS be given `chat_type` inside the user message.
 
-  1) GROUP CHAT → return an empty array: []
-     (The bot will remain silent. This is REQUIRED.)
+Allowed values:
+• "group"
+• "supergroup"
+• "private"
 
-  2) DIRECT / PRIVATE CHAT → return:
-     [
-       { "dm_info": "no_report_detected" }
-     ]
-     (This tells the bot to inform the user that this is not a report.)
+Your required behavior:
+
+1) If chat_type = "group" or "supergroup":
+   • If NO valid report exists → return []  
+     (Bot will stay silent. This is REQUIRED.)
+   • If 1 or more reports exist → return a JSON array of report objects.
+
+2) If chat_type = "private":
+   • If NO valid report exists → return:
+       [
+         { "dm_info": "no_report_detected" }
+       ]
+   • If valid reports exist → return a JSON array of report objects.
+
+You MUST obey this behavior exactly. No exceptions.
 
 ==================================================
 WHAT COUNTS AS A REPORT?
 ==================================================
-A message is considered a report if it contains ANY combination of:
-• A recognizable date  
-  (DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, "1 November 2025", weekdays, etc.)
-• A construction site name  
-  (LOT13, LOT71, BWC, SKP, Piramit Tower, Chalet, Otel, Villa, VIP Lojman, SPA, Staff…)
-• Personnel distribution  
-  (Mühendis, Tekniker, Formen, Ambarcı, Nöbetçi, İzinli, Hasta, Gececi…)
-• Work descriptions  
-  (kablo çekimi, montaj, test, borulama, reglaj, bağlantı…)
-• Building or block sections  
-  (OTEL(…), VILLA(…), A Blok, B Blok, C Blok, 6.kat…)
+A message counts as a report ONLY if it contains at least ONE of:
 
-If none of these appear → this is NOT a report.
+• A detectable date  
+  (DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, 1 November 2025, "03.11.2025 Pazartesi")
+• A known construction site name  
+  (LOT13, LOT71, SKP, BWC, Piramit Tower, Staff, Chalet, Otel, Villa, SPA...)
+• Work descriptions  
+  (montaj, test, kablo çekimi, reglaj, bağlantı…)
+• Personnel distribution  
+  (Mühendis, Tekniker, Formen, Gececi, İzinli, Hasta…)
+• Section headers  
+  (ŞANTİYE:, TARİH:, PERSONEL DURUMU, GENEL ÖZET, OTEL(), VILLA(), A BLOK…)
+
+If NONE of these exist → it is NOT a report.
 
 ==================================================
-MULTI-REPORT DETECTION
+MULTI-REPORT SPLITTING
 ==================================================
 A single message may contain multiple reports.
 
-You MUST start a new report whenever ANY of these occur:
-1) A new date appears  
-2) A new site name appears  
-3) New section headers:
-   "📍 ŞANTİYE:", "📅 TARİH:", "PERSONEL DURUMU", "GENEL ÖZET"
-4) Block headers:
-   OTEL(…), VILLA(…), SPA(…), VIP Lojman(…), A Blok, B Blok…
-5) Pattern repetition:
-   Date → list → totals → Date → list → totals
+Start a new report whenever ANY of these appear:
+• A new date  
+• A new site name  
+• Section headers  
+• Block headers (OTEL(), VILLA(), SPA(), A/B/C Blok)
+• Repeated patterns:
+     Date → job list → totals → Date → job list → totals
 
-Each detected report MUST become one JSON object.
+Each detected block MUST become a separate JSON object.
 
 ==================================================
 DATE RULES
 ==================================================
-• Accept all date formats.
-• Convert to ISO YYYY-MM-DD if possible.
-• If multiple dates → separate reports.
-• If date cannot be determined → reported_at = null.
-• If date is in the future → EXCLUDE that report entirely.
-• If date is older than 365 days → include but set confidence ≤ 0.40.
+• Accept ANY date format.  
+• Convert to "YYYY-MM-DD" when possible.  
+• If date cannot be determined → reported_at = null.  
+• If date > current_date → EXCLUDE THE REPORT.  
+• If date older than 365 days → include but set confidence ≤ 0.40.  
 
 ==================================================
-OUTPUT JSON SCHEMA
+OUTPUT FORMAT RULES  (MANDATORY)
 ==================================================
-Each valid report MUST match this EXACT structure:
+You MUST output ONLY a JSON array.  
+Never return text, comments, code formatting, explanations, warnings.
+
+Each valid report must match this EXACT schema:
 
 {
   "report_id": null,
@@ -584,63 +592,50 @@ Each valid report MUST match this EXACT structure:
 }
 
 ==================================================
-FIELD LOGIC
+FIELD EXTRACTION RULES
 ==================================================
-• "Toplam X" → present_workers = X
-• "İzinli X" or "Hasta X" → absent_workers = X
-• Summation allowed for grouped structures (OTEL, VILLA, SPA, etc.)
-• Issues = extracted short problem phrases
-• actions_requested = verbs such as:
-  montaj, test, bağlantı, kontrol, çekimi, hazırlık, düzenleme, rötuş
-• reporter = null (the bot resolves reporter mapping itself)
-• raw_text = exact original section text
-• confidence must be 0.0–1.0
+• "Toplam X" → present_workers = X  
+• "İzinli X" / "Hasta X" → absent_workers = X  
+• For grouped sites (Otel, Villa, SPA, SKP, BWC…) you may sum sub-group values  
+• Issues = short problem-type phrases  
+• actions_requested = verbs like montaj, test, kontrol, hazırlık, bağlantı  
+• reporter = null (always)  
+• raw_text = exact text slice belonging to that report
 
 ==================================================
-BEHAVIOR BY CHAT TYPE (MANDATORY)
+ABSOLUTE FINAL RULES
 ==================================================
+• ALWAYS return valid JSON array.
+• NEVER hallucinate values. Unknown → null.
+• NEVER generate notes or explanations.
+• NEVER merge multiple reports.
+• ALWAYS keep report order as in the original message.
 
-1) GROUP CHAT (supergroups & groups):
-   • If at least one report detected → return JSON array normally.
-   • If NO report detected → return [].
-     (Bot will remain silent. REQUIRED.)
-
-2) DIRECT / PRIVATE CHAT:
-   • If at least one report detected → return JSON array.
-     (Bot will reply with success/warning messages.)
-   • If NO report detected → return:
-       [
-         { "dm_info": "no_report_detected" }
-       ]
-     (Bot will tell the user that the message is not a report.)
-
-==================================================
-FINAL RULES
-==================================================
-• NEVER produce anything except a JSON array.
-• NEVER guess missing data; use null.
-• NEVER merge separate report blocks.
-• ALWAYS keep the reports in the order they appear.
-• ALWAYS return valid UTF-8 JSON and nothing else.
-
-END OF SYSTEM PROMPT"""
+End of instructions."""
 
 USER_PROMPT_TEMPLATE = """
-Extract ALL construction-site reports from the following raw message.
-Return ONLY a valid JSON array.
-Raw message:
+chat_type: "<<<CHAT_TYPE>>>"
+raw_message: """
 <<<RAW_MESSAGE>>>
+"""
+
+Extract all valid reports according to the system rules.
+Return ONLY a JSON array.
 """
 
 # OpenAI istemcisini başlat
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Gelen mesajı işle - DM/Group ayrımı ile"""
+    """Gelen mesajı işle - DM/Group ayrımı ile - FINAL CI/CD VERSİYONU"""
     today = datetime.date.today()
     
     try:
-        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<RAW_MESSAGE>>>", raw_text)
+        # Chat type'ı belirle
+        chat_type = "group" if is_group else "private"
+        
+        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
+        user_prompt = user_prompt.replace("<<<RAW_MESSAGE>>>", raw_text)
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -656,18 +651,33 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
 
         try:
             data = json.loads(content)
+            
+            # ---- FINAL CI/CD MANTIĞI ----
             if isinstance(data, list):
-                # DM_INFO kontrolü - DM'de rapor yoksa bilgilendirme
-                if not is_group and len(data) == 1 and data[0].get('dm_info') == 'no_report_detected':
-                    return {'dm_info': 'no_report_detected'}
+                # Grup modu - rapor yoksa [] döndür
+                if is_group:
+                    if len(data) == 0:
+                        return []  # Grup + rapor yok = sessiz çıkış
+                    # Grup + dm_info varsa bile sessiz çık
+                    if len(data) == 1 and data[0].get("dm_info"):
+                        return []
                 
-                # Normal raporları filtrele
+                # DM modu - rapor yoksa dm_info döndür
+                if not is_group:
+                    if len(data) == 1 and data[0].get("dm_info") == "no_report_detected":
+                        return {"dm_info": "no_report_detected"}
+                    # DM'de dm_info dışında boş array gelirse de dm_info'ya çevir
+                    if len(data) == 0:
+                        return {"dm_info": "no_report_detected"}
+
+                # ---- Rapor filtreleme ----
                 filtered_reports = []
                 for report in data:
-                    # dm_info içeren raporları atla (zaten yukarıda handle edildi)
+                    # dm_info içerenleri atla
                     if report.get('dm_info'):
                         continue
-                        
+
+                    # Gelecek tarih kontrolü
                     reported_at = report.get('reported_at')
                     if reported_at:
                         try:
@@ -676,7 +686,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                                 continue  # Gelecek tarihli raporları atla
                         except ValueError:
                             pass
-                    
+
                     # Confidence değeri ekle
                     if 'confidence' not in report:
                         report['confidence'] = 0.9
@@ -684,18 +694,23 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     filtered_reports.append(report)
                 
                 return filtered_reports
+            
+            # JSON array değilse boş döndür
             return []
+
         except json.JSONDecodeError:
             logging.error(f"GPT JSON parse hatası: {content}")
-            return []
+            # JSON hatasında chat type'a göre davran
+            return [] if is_group else {"dm_info": "no_report_detected"}
             
     except Exception as e:
         logging.error(f"GPT analiz hatası: {e}")
-        return []
+        # Genel hatada chat type'a göre davran
+        return [] if is_group else {"dm_info": "no_report_detected"}
 
-# ----------------------------- YENİ GPT-4-MINI RAPOR İŞLEME -----------------------------
+# ----------------------------- YENİ GPT-4-MINI RAPOR İŞLEME (FINAL CI/CD) -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni GPT-4-mini ile çoklu rapor işleme - Grup/DM ayrımı ile"""
+    """Yeni GPT-4-mini ile çoklu rapor işleme - FINAL CI/CD VERSİYONU"""
     msg = update.message or update.edited_message
     if not msg:
         return
@@ -732,11 +747,11 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
         
-        # Normal rapor listesi kontrolü
-        if not raporlar:
+        # Normal rapor listesi kontrolü - Grup için sessiz, DM için bilgi
+        if not raporlar or (isinstance(raporlar, list) and len(raporlar) == 0):
             logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
             
-            # Sadece DM'de ve grup olmayan durumlarda bilgi ver
+            # Sadece DM'de bilgi ver
             if is_dm:
                 await msg.reply_text(
                     "❌ **Rapor bulunamadı.**\n\n"
@@ -864,6 +879,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
     except Exception as e:
         logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
         raise e
+
+# ... (DİĞER TÜM FONKSİYONLAR AYNI KALIYOR - sadece yukarıdaki kısım değişti)
 
 # ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
 async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
