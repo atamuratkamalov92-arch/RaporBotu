@@ -656,45 +656,49 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     """Gelen mesajı işle - DM/Group ayrımı ile - FINAL CI/CD VERSİYONU"""
     today = dt.date.today()
     
-    try:
-        # Chat type'ı belirle
-        chat_type = "group" if is_group else "private"
-        
-        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
-        user_prompt = user_prompt.replace("<<<RAW_MESSAGE>>>", raw_text)
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0,
-            max_tokens=2000
-        )
-
-        content = response.choices[0].message.content.strip()
-
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
         try:
-            data = json.loads(content)
+            # Chat type'ı belirle
+            chat_type = "group" if is_group else "private"
             
-            # ---- FINAL CI/CD MANTIĞI ----
-            if isinstance(data, list):
-                # Grup modu - rapor yoksa [] döndür
-                if is_group:
-                    if len(data) == 0:
-                        return []  # Grup + rapor yok = sessiz çıkış
-                    # Grup + dm_info varsa bile sessiz çık
-                    if len(data) == 1 and data[0].get("dm_info"):
-                        return []
+            user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
+            user_prompt = user_prompt.replace("<<<RAW_MESSAGE>>>", raw_text)
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0,
+                max_tokens=2000
+            )
+
+            content = response.choices[0].message.content.strip()
+
+            try:
+                data = json.loads(content)
                 
-                # DM modu - rapor yoksa dm_info döndür
-                if not is_group:
-                    if len(data) == 1 and data[0].get("dm_info") == "no_report_detected":
-                        return {"dm_info": "no_report_detected"}
-                    # DM'de dm_info dışında boş array gelirse de dm_info'ya çevir
-                    if len(data) == 0:
-                        return {"dm_info": "no_report_detected"}
+                # ---- FINAL CI/CD MANTIĞI ----
+                if isinstance(data, list):
+                    # Grup modu - rapor yoksa [] döndür
+                    if is_group:
+                        if len(data) == 0:
+                            return []  # Grup + rapor yok = sessiz çıkış
+                        # Grup + dm_info varsa bile sessiz çık
+                        if len(data) == 1 and data[0].get("dm_info"):
+                            return []
+                    
+                    # DM modu - rapor yoksa dm_info döndür
+                    if not is_group:
+                        if len(data) == 1 and data[0].get("dm_info") == "no_report_detected":
+                            return {"dm_info": "no_report_detected"}
+                        # DM'de dm_info dışında boş array gelirse de dm_info'ya çevir
+                        if len(data) == 0:
+                            return {"dm_info": "no_report_detected"}
 
                 # ---- Rapor filtreleme ----
                 filtered_reports = []
@@ -721,18 +725,21 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 
                 return filtered_reports
             
-            # JSON array değilse boş döndür
-            return []
-
-        except json.JSONDecodeError:
-            logging.error(f"GPT JSON parse hatası: {content}")
-            # JSON hatasında chat type'a göre davran
+            except json.JSONDecodeError:
+                logging.error(f"GPT JSON parse hatası: {content}")
+                if attempt < max_retries - 1:
+                    time_module.sleep(retry_delay)
+                    continue
+                # JSON hatasında chat type'a göre davran
+                return [] if is_group else {"dm_info": "no_report_detected"}
+                
+        except Exception as e:
+            logging.error(f"GPT analiz hatası (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time_module.sleep(retry_delay)
+                continue
+            # Genel hatada chat type'a göre davran
             return [] if is_group else {"dm_info": "no_report_detected"}
-            
-    except Exception as e:
-        logging.error(f"GPT analiz hatası: {e}")
-        # Genel hatada chat type'a göre davran
-        return [] if is_group else {"dm_info": "no_report_detected"}
 
 # ----------------------------- YENİ GPT-4-MINI RAPOR İŞLEME (FINAL CI/CD) -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
