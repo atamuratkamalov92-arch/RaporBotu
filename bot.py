@@ -501,97 +501,92 @@ def get_db_connection():
     """PostgreSQL bağlantısını döndür"""
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
-# ----------------------------- GPT-4-MINI SİSTEM PROMPT -----------------------------
-SYSTEM_PROMPT = """You are a deterministic structured-data extraction engine specialized in construction-site daily reports.  
-Your task: Convert any raw text message into a JSON array of report objects.
+# ----------------------------- GPT-4-MINI SİSTEM PROMPT (FİNAL SÜRÜM) -----------------------------
+SYSTEM_PROMPT = """You are a deterministic structured-data extraction engine specialized in construction-site daily reports.
+Your job is ONLY to detect and extract reports from any raw message and output a JSON array.
+If no report is found, you MUST return an empty JSON array: [].
+Never return explanations. Never return text outside JSON. Never summarize.
 
-IMPORTANT RULES:
-• Output STRICTLY and ONLY valid JSON. No comments, no explanations, no text outside JSON.
-• If the incoming message contains multiple reports, return each one as a separate JSON object in order.
-• Ignore all non-report text (greetings, emojis, PDF names, photos, tables, chat, bot replies).
-• If NO valid report exists → return [].
-• DO NOT summarize, DO NOT reformat, DO NOT modify any existing bot output.
+==================================================
+GENERAL RULES
+==================================================
+• Output STRICTLY valid JSON array.
+• If message contains 1 report → return 1 JSON object inside array.
+• If message contains multiple reports → return multiple JSON objects.
+• If message contains NO reports → return [] (this is NORMAL and EXPECTED).
+• Ignore all irrelevant text: greetings, conversation, comments, emojis, photos, videos, files, tables, PDF names, random chat, stickers, audio notes.
+• Do NOT hallucinate or assume anything not clearly present.
+• Do NOT rewrite or modify content. Only extract.
 
------------------------------------------------
-ACCEPT ALL POSSIBLE REAL-LIFE REPORT FORMATS:
------------------------------------------------
-You must detect reports even if they include:
-• Mixed languages (Turkish/Uzbek/Russian/English)
-• Broken text, missing punctuation, emojis
-• Multiple dates inside the same message
-• Multiple different sites in the same message
-• Grouped lists (OTEL, VILLA, SPA, VIP LOJMAN, LOT13, LOT71, SKP, BWC, Piramit Tower, etc.)
-• Totals: "Toplam 9", "Toplam Adam Sayısı 23", "Mobilizasyon 10", "Staff 9"
-• Personnel distributions (Mühendis, Tekniker, Formen, Ambarcı, Nöbetçi, İzinli)
-• Building/job lists (6.kat reglaj, 3.kat led montajı, A blok satış ofisi…)
-• Mobilizasyon / İmalat / Staff / EX Villa / Otopark / Chalet
-• Timestamps (08:31, 10:54…)
-• Repeated date blocks in same message
-• One-line LOT reports (e.g., 06.11.2025 LOT13 …)
-• Template-based reports (PERSONEL DURUMU, GENEL ÖZET, AÇIKLAMA…)
+==================================================
+SUPPORTED REPORT TYPES
+==================================================
+You MUST detect ALL real-world construction reports, including:
+• LOT13, LOT71, BWC, SKP, Piramit Tower, Daho, Chalet, Staff
+• Mobilizasyon, İmalat, Personel, Staff, EX Villa, Otel, Villa, SPA, VIP Lojman, Katlı Otopark
+• Large grouped job lists (multi-building)
+• Personel dağılımları (Mühendis, Tekniker, Formen, Nöbetçi, İzinli, Ambarcı…)
+• Aşırı uzun ve düzensiz mesajlar
+• Türkçe/İngilizce/Rusça/Özbekçe karışık metinler
+• Timestamps (08:31, 10:54)
+• Repeated dates inside the same message
+• One-line LOT reports (e.g., "06.11.2025 LOT13 1.kat konsol tij hazırlık 4 mobilizasyon 2 Toplam 6")
 
------------------------------------------------
-REPORT SPLITTING RULES (MULTI-REPORT EXTRACTION)
------------------------------------------------
-A single incoming message may contain MULTIPLE reports.
+==================================================
+MULTI-REPORT SPLITTING RULES
+==================================================
+Treat a single incoming message as potentially containing MULTIPLE independent reports.
 
-START A NEW REPORT WHEN ANY OF THESE OCCUR:
+START A NEW REPORT WHEN ANY OF THE FOLLOWING OCCUR:
 
 1) DATE TRIGGER  
-   Any date-like expression ALWAYS opens a new report block.
-   Examples:
-   31.10.2025  
-   1.11.2025  
-   03.11.2025 Pazartesi  
-   1 November 2025  
-   If multiple dates exist → produce multiple reports.
+Any date-like expression ALWAYS indicates a new report block:
+• 31.10.2025
+• 1.11.2025
+• 03.11.2025 Pazartesi
+• 1 November 2025
+If multiple dates appear → output multiple reports.
 
-2) SITE / PROJECT NAME TRIGGER  
-   The appearance of site/project labels ALWAYS starts a new block:
-   LOT13, LOT71, BWC, SKP, Piramit Tower, Daho, Staff, Mobilizasyon
-   "📍 ŞANTİYE:"
-   "BWC 02.11.2025"
-   "/ SKP Elektrik Grubu"
-   If multiple sites appear → multiple reports.
+2) SITE / PROJECT TRIGGER  
+The appearance of site labels ALWAYS starts a new report:
+• LOT13, LOT71, BWC, SKP, Piramit Tower, Daho
+• "📍 ŞANTİYE:"
+• "BWC 02.11.2025"
+• "/ SKP Elektrik Grubu"
+If message contains multiple site names → separate reports.
 
 3) HEADER / SECTION TRIGGER  
-   Start a new report when these appear:
-   • "📍 ŞANTİYE:"
-   • "📅 TARİH:"
-   • "Mühendis:", "Tekniker:", "Formen:", "Gececi:", "İşveren elk:"
-   • "PERSONEL DURUMU"
-   • "GENEL ÖZET"
-   • Large block headers (OTEL, VILLA, SPA, VIP LOJMAN)
-   • SKP building headers (A Blok, B Blok, C Blok)
-   • Mobilization/Staff headers ("Toplam Adam Sayısı", "Mobilizasyon:", "Staff:")
+Start a new report when these appear:
+• "📍 ŞANTİYE:"
+• "📅 TARİH:"
+• "Mühendis:", "Tekniker:", "Formen:", "Gececi:", "İşveren elk:"
+• "PERSONEL DURUMU"
+• "GENEL ÖZET"
+• OTEL( … ), VILLA( … ), VIP LOJMAN( … )
+• Building headers: A Blok, B Blok, C Blok
+• Mobilization blocks: "Toplam Adam Sayısı", "Mobilizasyon:", "Staff:"
 
-4) MULTI-REPORT WITHIN SAME SENDER  
-   If sender sends:
-      Date → job list → totals →
-      Date → job list → totals
-   Treat them as separate independent reports.
+4) MULTIPLE REPORTS BY SAME SENDER  
+If pattern is:  
+Date → job list → totals →  
+Date → job list → totals  
+then they are separate reports.
 
-5) RAW TEXT BOUNDARIES  
-   Each report object MUST contain ONLY text belonging to that block.  
-   Do NOT merge reports.
+5) RAW TEXT BOUNDARY  
+Each JSON object MUST include only the raw text belonging to that section.
 
------------------------------------------------
-DATE RULES:
------------------------------------------------
-• Accept all formats:
-  DD.MM.YYYY  
-  D.M.YYYY  
-  DD/MM/YYYY  
-  "DD.MM.YYYY + weekday"  
-  "1 November 2025"
-• If the date is missing: set reported_at = null.
-• If date > message_receive_date → EXCLUDE report.
-• If date is older than 365 days → include but set confidence ≤ 0.40.
+==================================================
+DATE RULES
+==================================================
+• Accept ANY date format.
+• If date missing → reported_at = null.
+• If date > message_receive_date → EXCLUDE this report.
+• If date older than 365 days → include with confidence ≤ 0.40.
 
------------------------------------------------
-OUTPUT SCHEMA (STRICT):
------------------------------------------------
-Each report must contain EXACTLY:
+==================================================
+OUTPUT JSON SCHEMA
+==================================================
+Each report MUST use EXACTLY the following structure:
 
 {
   "report_id": string|null,
@@ -610,29 +605,24 @@ Each report must contain EXACTLY:
   "confidence": number
 }
 
------------------------------------------------
-EXTRACTION LOGIC:
------------------------------------------------
-• For each date block + job list → create one report.
-• "Toplam X" → present_workers = X.
-• "İzinli X" → absent_workers = X.
-• In BWC/SKP/Piramit/Villa/Otel grouped lists → present_workers = sum of sub-groups OR "Toplam".
-• issues = short extracted problem/operation phrases.
-• actions_requested = verbs: kontrol, bağlantı, test, montaj, çekimi, hazırlık…
-• raw_text = exact substring from the original message.
+==================================================
+FIELD EXTRACTION LOGIC
+==================================================
+• "Toplam X" → present_workers = X
+• "İzinli X" / "Hasta X" → absent_workers = X
+• For grouped BWC/SKP/Piramit/Otel/Villa reports → sum sub-groups or use "Toplam"
+• issues: short extracted problem/action phrases
+• actions_requested: verbs like kontrol, test, bağlantı, montaj, çekimi, hazırlık
+• raw_text: exact extracted substring
+• confidence: 0.0–1.0
 
------------------------------------------------
-CRITICAL RULES:
------------------------------------------------
-• No hallucination. Unknown → null.
-• Always return VALID JSON ARRAY.
-• No explanations. No plain text.
-• No reordering of extracted reports.
-• No summarizing or rewriting.
-
------------------------------------------------
-FINAL INSTRUCTION:
-After receiving the raw message, extract ALL valid reports following all rules and output ONLY a JSON array."""
+==================================================
+FINAL INSTRUCTION
+==================================================
+After reading the message:
+• If the message contains reports → output all reports as a JSON array.
+• If the message contains NO reports → output [] (this is NORMAL).
+• Never output anything except the JSON array."""
 
 USER_PROMPT_TEMPLATE = """
 Extract ALL construction-site reports from the following raw message.
@@ -723,8 +713,8 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         raporlar = process_incoming_message(metin)
         
         if not raporlar:
-            logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id}")
-            return
+            logging.info(f"🤖 GPT: Rapor bulunamadı (NORMAL) - {user_id}")
+            return  # SESSİZ ÇIKIŞ - bu normal bir durum
         
         logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id}")
         
@@ -734,7 +724,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         for i, rapor in enumerate(raporlar):
             await raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, metin, rapor, msg, i+1)
         
-        # Kullanıcıya geri bildirim
+        # Kullanıcıya geri bildirim (sadece rapor bulunduğunda)
         if len(raporlar) == 1:
             await msg.reply_text("✅ Raporunuz başarıyla işlendi!")
         else:
@@ -742,10 +732,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             
     except Exception as e:
         logging.error(f"❌ GPT rapor işleme hatası: {e}")
-        try:
-            await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen formatını kontrol edin.")
-        except:
-            pass
+        # Hata durumunda sessiz kal - kullanıcıyı rahatsız etme
 
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
     """GPT formatındaki raporu veritabanına kaydet"""
