@@ -3,7 +3,7 @@ import re
 import psycopg2
 import pandas as pd
 import json
-import datetime
+import datetime as dt
 import logging
 import asyncio
 import functools
@@ -12,7 +12,6 @@ import requests
 import html
 import base64
 import time as time_module
-from datetime import datetime, time, timedelta
 from unicodedata import normalize
 from dotenv import load_dotenv
 from telegram import Update, BotCommand
@@ -240,7 +239,7 @@ async def yandex_yedekleme_gorevi(context: ContextTypes.DEFAULT_TYPE):
                 logging.warning(f"⚠️ Yedeklenecek dosya bulunamadı: {local_file}")
         
         status_msg = f"💾 **Gece Yedekleme Raporu**\n\n"
-        status_msg += f"📅 Tarih: {datetime.now(TZ).strftime('%d.%m.%Y %H:%M')}\n"
+        status_msg += f"📅 Tarih: {dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')}\n"
         status_msg += f"📁 Dosya: {success_count}/{total_count} başarılı\n"
         
         if success_count == total_count:
@@ -495,6 +494,34 @@ def get_db_connection():
     """PostgreSQL bağlantısını döndür"""
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
+# ----------------------------- MEDIA FİLTRE BLOĞU -----------------------------
+def is_media_message(message) -> bool:
+    """
+    MEDIA FILTER BLOCK
+    Foto, video, ses, belge, caption-only gibi mesajların
+    rapor analizine girmesini engeller.
+    """
+    if message.photo:
+        return True
+    if message.video:
+        return True
+    if message.audio:
+        return True
+    if message.voice:
+        return True
+    if message.animation:
+        return True
+    if message.video_note:
+        return True
+    if message.document:
+        return True
+
+    # Caption-only media (örnek: yalnızca foto + kısa açıklama)
+    if (message.caption and not message.text):
+        return True
+
+    return False
+
 # ----------------------------- GPT-4-MINI SİSTEM PROMPT (FINAL CI/CD SÜRÜMÜ) -----------------------------
 SYSTEM_PROMPT = """You are a deterministic construction report extraction engine.
 Your behavior strictly depends on the provided chat_type.
@@ -627,7 +654,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 def process_incoming_message(raw_text: str, is_group: bool = False):
     """Gelen mesajı işle - DM/Group ayrımı ile - FINAL CI/CD VERSİYONU"""
-    today = datetime.date.today()
+    today = dt.date.today()
     
     try:
         # Chat type'ı belirle
@@ -680,7 +707,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     reported_at = report.get('reported_at')
                     if reported_at:
                         try:
-                            report_date = datetime.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                            report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
                             if report_date > today:
                                 continue  # Gelecek tarihli raporları atla
                         except ValueError:
@@ -721,8 +748,9 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
     is_group = chat_type in ["group", "supergroup"]
     is_dm = chat_type == "private"
 
-    # Doküman ve fotoğrafları atla
-    if msg.document or msg.photo:
+    # ✅ MEDIA FILTER BLOCK - Tüm medya mesajlarını sessizce geç
+    if is_media_message(msg):
+        logging.info(f"⛔ Medya mesajı tespit edildi → AI analizi yapılmayacak. User: {user_id}, Chat Type: {chat_type}")
         return
 
     metin = msg.text or msg.caption
@@ -804,12 +832,12 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         reported_at = gpt_rapor.get('reported_at')
         if reported_at:
             try:
-                rapor_tarihi = datetime.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                rapor_tarihi = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
             except ValueError:
                 pass
         
         if not rapor_tarihi:
-            rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or datetime.now(TZ).date()
+            rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
         # Proje adı - GPT'den geleni kullan, yoksa kullanıcının şantiyelerinden al
         project_name = gpt_rapor.get('site')
@@ -866,7 +894,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             user_id, project_name, rapor_tarihi, rapor_tipi, person_count, 
-            work_description[:400], 'diğer', 'imalat', datetime.now(TZ).date(),
+            work_description[:400], 'diğer', 'imalat', dt.datetime.now(TZ).date(),
             False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
@@ -1120,13 +1148,13 @@ maliyet_analiz = MaliyetAnaliz()
 def parse_rapor_tarihi(metin):
     """Tarih parsing fonksiyonu"""
     try:
-        bugun = datetime.now(TZ).date()
+        bugun = dt.datetime.now(TZ).date()
         metin_lower = metin.lower()
         
         if 'bugün' in metin_lower or 'bugun' in metin_lower:
             return bugun
         if 'dün' in metin_lower or 'dun' in metin_lower:
-            return bugun - timedelta(days=1)
+            return bugun - dt.timedelta(days=1)
         
         date_patterns = [
             r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
@@ -1148,7 +1176,7 @@ def parse_rapor_tarihi(metin):
                         year += 2000
                     
                     try:
-                        parsed_date = datetime(year, month, day).date()
+                        parsed_date = dt.datetime(year, month, day).date()
                         if parsed_date <= bugun:
                             return parsed_date
                     except ValueError:
@@ -1166,7 +1194,7 @@ def izin_mi(metin):
 
 async def tarih_kontrol_et(rapor_tarihi, user_id):
     """Tarih kontrolü"""
-    bugun = datetime.now(TZ).date()
+    bugun = dt.datetime.now(TZ).date()
     
     if not rapor_tarihi:
         return False, "❌ **Tarih bulunamadı.** Lütfen raporunuzda tarih belirtiniz."
@@ -1174,7 +1202,7 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     if rapor_tarihi > bugun:
         return False, "❌ **Gelecek tarihli rapor.** Lütfen bugün veya geçmiş tarih kullanınız."
     
-    iki_ay_once = bugun - timedelta(days=60)
+    iki_ay_once = bugun - dt.timedelta(days=60)
     if rapor_tarihi < iki_ay_once:
         return False, "❌ **Çok eski tarihli rapor.** Lütfen son 2 ay içinde bir tarih kullanınız."
     
@@ -1193,17 +1221,17 @@ def parse_tr_date(date_str):
         parts = normalized_date.split('.')
         if len(parts) == 3:
             if len(parts[2]) == 4:
-                return datetime.strptime(normalized_date, '%d.%m.%Y').date()
+                return dt.datetime.strptime(normalized_date, '%d.%m.%Y').date()
             elif len(parts[0]) == 4:
-                return datetime.strptime(normalized_date, '%Y.%m.%d').date()
+                return dt.datetime.strptime(normalized_date, '%Y.%m.%d').date()
         raise ValueError("Geçersiz tarih formatı")
     except:
         raise ValueError("Geçersiz tarih formatı")
 
 def week_window_to_today():
     """Bugünden geriye doğru 7 günlük pencere"""
-    end_date = datetime.now(TZ).date()
-    start_date = end_date - timedelta(days=6)
+    end_date = dt.datetime.now(TZ).date()
+    start_date = end_date - dt.timedelta(days=6)
     return start_date, end_date
 
 # ----------------------------- YARDIMCI FONKSİYONLAR -----------------------------
@@ -1580,7 +1608,7 @@ async def bugun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    target_date = datetime.now(TZ).date()
+    target_date = dt.datetime.now(TZ).date()
     await update.message.chat.send_action(action="typing")
     rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
     await update.message.reply_text(rapor_mesaji)
@@ -1590,7 +1618,7 @@ async def dun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    target_date = datetime.now(TZ).date() - timedelta(days=1)
+    target_date = dt.datetime.now(TZ).date() - dt.timedelta(days=1)
     await update.message.chat.send_action(action="typing")
     rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
     await update.message.reply_text(rapor_mesaji)
@@ -1602,9 +1630,9 @@ async def haftalik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await update.message.chat.send_action(action="typing")
     
-    today = datetime.now(TZ).date()
-    start_date = today - timedelta(days=today.weekday())
-    end_date = start_date + timedelta(days=6)
+    today = dt.datetime.now(TZ).date()
+    start_date = today - dt.timedelta(days=today.weekday())
+    end_date = start_date + dt.timedelta(days=6)
     
     mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj, parse_mode='Markdown')
@@ -1616,7 +1644,7 @@ async def aylik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
-    today = datetime.now(TZ).date()
+    today = dt.datetime.now(TZ).date()
     start_date = today.replace(day=1)
     end_date = today
     
@@ -1630,9 +1658,9 @@ async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_
     
     await update.message.chat.send_action(action="typing")
     
-    today = datetime.now(TZ).date()
-    start_date = today - timedelta(days=today.weekday())
-    end_date = start_date + timedelta(days=6)
+    today = dt.datetime.now(TZ).date()
+    start_date = today - dt.timedelta(days=today.weekday())
+    end_date = start_date + dt.timedelta(days=6)
     
     mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj, parse_mode='Markdown')
@@ -1644,7 +1672,7 @@ async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await update.message.chat.send_action(action="typing")
     
-    today = datetime.now(TZ).date()
+    today = dt.datetime.now(TZ).date()
     start_date = today.replace(day=1)
     end_date = today
     
@@ -1779,7 +1807,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    bugun = datetime.now(TZ).date()
+    bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
     mesaj = f"📊 **Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')}**\n\n"
@@ -1851,8 +1879,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             kullanici_adi = id_to_name.get(user_id, f"Kullanıcı")
             
             try:
-                rapor_tarihi = tarih.strftime('%d.%m.%Y') if isinstance(tarih, datetime) else str(tarih)
-                gonderme_tarihi = delivered_date.strftime('%d.%m.%Y') if delivered_date and isinstance(delivered_date, datetime) else str(delivered_date) if delivered_date else ""
+                rapor_tarihi = tarih.strftime('%d.%m.%Y') if isinstance(tarih, dt.datetime) else str(tarih)
+                gonderme_tarihi = delivered_date.strftime('%d.%m.%Y') if delivered_date and isinstance(delivered_date, dt.datetime) else str(delivered_date) if delivered_date else ""
             except:
                 rapor_tarihi = str(tarih)
                 gonderme_tarihi = str(delivered_date) if delivered_date else ""
@@ -1919,7 +1947,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ['📊 Toplam Rapor', toplam_rapor],
             ['👥 Toplam Kullanıcı', toplam_kullanici],
             ['📅 İş Günü Sayısı', gun_sayisi],
-            ['🕒 Oluşturulma', datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
+            ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
         ]
         
         for row_idx, (label, value) in enumerate(summary_data, 3):
@@ -1943,17 +1971,17 @@ def schedule_jobs(app):
     jq = app.job_queue
     
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
-    jq.run_daily(gunluk_rapor_ozeti, time=time(9, 0, tzinfo=TZ))
+    jq.run_daily(gunluk_rapor_ozeti, time=dt.time(9, 0, tzinfo=TZ))
     
-    jq.run_daily(hatirlatma_mesaji, time=time(12, 30, tzinfo=TZ))
-    jq.run_daily(ilk_rapor_kontrol, time=time(15, 0, tzinfo=TZ))
-    jq.run_daily(son_rapor_kontrol, time=time(17, 30, tzinfo=TZ))
+    jq.run_daily(hatirlatma_mesaji, time=dt.time(12, 30, tzinfo=TZ))
+    jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
+    jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    jq.run_daily(yandex_yedekleme_gorevi, time=time(23, 0, tzinfo=TZ))
+    jq.run_daily(yandex_yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     
-    jq.run_daily(haftalik_grup_raporu, time=time(17, 40, tzinfo=TZ), days=(4,))
+    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 40, tzinfo=TZ), days=(4,))
     
-    jq.run_monthly(aylik_grup_raporu, when=time(17, 45, tzinfo=TZ), day=28)
+    jq.run_monthly(aylik_grup_raporu, when=dt.time(17, 45, tzinfo=TZ), day=28)
     
     logging.info("⏰ Tüm zamanlamalar ayarlandı")
 
@@ -1972,7 +2000,7 @@ async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
 async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
     """🕘 09:00 - Sadece Eren ve Atamurat'a DM gönder"""
     try:
-        dun = (datetime.now(TZ) - timedelta(days=1)).date()
+        dun = (dt.datetime.now(TZ) - dt.timedelta(days=1)).date()
         rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
         
         hedef_kullanicilar = [709746899, 1000157326]
@@ -1992,7 +2020,7 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
     """🟡 12:30 - Gün ortası şantiye bazlı hatırlatma mesajı"""
     try:
-        bugun = datetime.now(TZ).date()
+        bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         if not durum['eksik_santiyeler']:
@@ -2024,7 +2052,7 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
 async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     """🟠 15:00 - İlk rapor kontrolü (şantiye bazlı)"""
     try:
-        bugun = datetime.now(TZ).date()
+        bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         mesaj = "🕒 **15:00 Şantiye Rapor Durumu**\n\n"
@@ -2068,7 +2096,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi"""
     try:
-        bugun = datetime.now(TZ).date()
+        bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         result = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
@@ -2128,9 +2156,9 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
     """Haftalık grup raporu"""
     try:
-        today = datetime.now(TZ).date()
-        start_date = today - timedelta(days=today.weekday() + 7)
-        end_date = start_date + timedelta(days=6)
+        today = dt.datetime.now(TZ).date()
+        start_date = today - dt.timedelta(days=today.weekday() + 7)
+        end_date = start_date + dt.timedelta(days=6)
         
         mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
         mesaj += "\n\n📝 **Lütfen eksiksiz rapor paylaşımına devam edelim. Teşekkürler.**"
@@ -2157,10 +2185,10 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
 async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
     """Aylık grup raporu"""
     try:
-        today = datetime.now(TZ).date()
-        start_date = today.replace(day=1) - timedelta(days=1)
+        today = dt.datetime.now(TZ).date()
+        start_date = today.replace(day=1) - dt.timedelta(days=1)
         start_date = start_date.replace(day=1)
-        end_date = today.replace(day=1) - timedelta(days=1)
+        end_date = today.replace(day=1) - dt.timedelta(days=1)
         
         mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
         mesaj += "\n\n📝 **Lütfen eksiksiz rapor paylaşımına devam edelim. Teşekkürler.**"
