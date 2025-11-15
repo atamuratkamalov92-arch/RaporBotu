@@ -11,6 +11,7 @@ import tempfile
 import requests
 import html
 import base64
+import time as time_module
 from datetime import datetime, time, timedelta
 from unicodedata import normalize
 from dotenv import load_dotenv
@@ -505,7 +506,7 @@ You will ALWAYS be given `chat_type` inside the user message.
 
 Allowed values:
 • "group"
-• "supergroup"
+• "supergroup" 
 • "private"
 
 Your required behavior:
@@ -615,9 +616,7 @@ End of instructions."""
 
 USER_PROMPT_TEMPLATE = """
 chat_type: "<<<CHAT_TYPE>>>"
-raw_message: """
-<<<RAW_MESSAGE>>>
-"""
+raw_message: "<<<RAW_MESSAGE>>>"
 
 Extract all valid reports according to the system rules.
 Return ONLY a JSON array.
@@ -879,8 +878,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
     except Exception as e:
         logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
         raise e
-
-# ... (DİĞER TÜM FONKSİYONLAR AYNI KALIYOR - sadece yukarıdaki kısım değişti)
 
 # ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
 async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
