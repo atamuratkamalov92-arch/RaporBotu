@@ -3,6 +3,14 @@ import re
 import psycopg2
 import pandas as pd
 import json
+import datetime
+import logging
+import asyncio
+import functools
+import tempfile
+import requests
+import html
+import base64
 from datetime import datetime, time, timedelta
 from unicodedata import normalize
 from dotenv import load_dotenv
@@ -16,18 +24,11 @@ except Exception:
 from telegram.ext import (
     Application, MessageHandler, CommandHandler, ContextTypes, filters
 )
-import logging
 from zoneinfo import ZoneInfo
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-import tempfile
-import requests
-import asyncio
-import functools
 from psycopg2 import pool
-import html
 from bs4 import BeautifulSoup
-import base64
 from openai import OpenAI
 
 # ----------------------------- PORT AYARI (RAILWAY İÇİN) -----------------------------
@@ -301,14 +302,6 @@ async def yedekle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Yedekleme hatası: {e}")
 
-# ----------------------------- OPENAI -----------------------------
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    HAS_OPENAI = False
-    logging.warning("OpenAI paketi yüklü değil. AI özellikleri devre dışı.")
-
 # ----------------------------- LOGGING (RAILWAY İÇİN) -----------------------------
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
@@ -502,98 +495,83 @@ def get_db_connection():
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
 # ----------------------------- GPT-4-MINI SİSTEM PROMPT (FİNAL SÜRÜM) -----------------------------
-SYSTEM_PROMPT = """You are a deterministic structured-data extraction engine specialized in construction-site daily reports.
-Your job is ONLY to detect and extract reports from any raw message and output a JSON array.
-If no report is found, you MUST return an empty JSON array: [].
-Never return explanations. Never return text outside JSON. Never summarize.
+SYSTEM_PROMPT = """You are a deterministic construction-site daily report extraction engine. 
+Your ONLY job is to analyze an incoming message and return a JSON array.
+
+Your behavior is strictly controlled and MUST follow the rules below.
 
 ==================================================
-GENERAL RULES
+CORE GLOBAL RULES
 ==================================================
-• Output STRICTLY valid JSON array.
-• If message contains 1 report → return 1 JSON object inside array.
-• If message contains multiple reports → return multiple JSON objects.
-• If message contains NO reports → return [] (this is NORMAL and EXPECTED).
-• Ignore all irrelevant text: greetings, conversation, comments, emojis, photos, videos, files, tables, PDF names, random chat, stickers, audio notes.
-• Do NOT hallucinate or assume anything not clearly present.
-• Do NOT rewrite or modify content. Only extract.
+• You must ALWAYS return ONLY a JSON array.
+• You must NEVER output explanations, comments, text, emojis, or anything outside JSON.
+• If the message contains valid reports → extract and return them.
+• If the message contains NO reports → your output depends on chat type:
 
-==================================================
-SUPPORTED REPORT TYPES
-==================================================
-You MUST detect ALL real-world construction reports, including:
-• LOT13, LOT71, BWC, SKP, Piramit Tower, Daho, Chalet, Staff
-• Mobilizasyon, İmalat, Personel, Staff, EX Villa, Otel, Villa, SPA, VIP Lojman, Katlı Otopark
-• Large grouped job lists (multi-building)
-• Personel dağılımları (Mühendis, Tekniker, Formen, Nöbetçi, İzinli, Ambarcı…)
-• Aşırı uzun ve düzensiz mesajlar
-• Türkçe/İngilizce/Rusça/Özbekçe karışık metinler
-• Timestamps (08:31, 10:54)
-• Repeated dates inside the same message
-• One-line LOT reports (e.g., "06.11.2025 LOT13 1.kat konsol tij hazırlık 4 mobilizasyon 2 Toplam 6")
+  1) GROUP CHAT → return an empty array: []
+     (The bot will remain silent. This is REQUIRED.)
+
+  2) DIRECT / PRIVATE CHAT → return:
+     [
+       { "dm_info": "no_report_detected" }
+     ]
+     (This tells the bot to inform the user that this is not a report.)
 
 ==================================================
-MULTI-REPORT SPLITTING RULES
+WHAT COUNTS AS A REPORT?
 ==================================================
-Treat a single incoming message as potentially containing MULTIPLE independent reports.
+A message is considered a report if it contains ANY combination of:
+• A recognizable date  
+  (DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, "1 November 2025", weekdays, etc.)
+• A construction site name  
+  (LOT13, LOT71, BWC, SKP, Piramit Tower, Chalet, Otel, Villa, VIP Lojman, SPA, Staff…)
+• Personnel distribution  
+  (Mühendis, Tekniker, Formen, Ambarcı, Nöbetçi, İzinli, Hasta, Gececi…)
+• Work descriptions  
+  (kablo çekimi, montaj, test, borulama, reglaj, bağlantı…)
+• Building or block sections  
+  (OTEL(…), VILLA(…), A Blok, B Blok, C Blok, 6.kat…)
 
-START A NEW REPORT WHEN ANY OF THE FOLLOWING OCCUR:
+If none of these appear → this is NOT a report.
 
-1) DATE TRIGGER  
-Any date-like expression ALWAYS indicates a new report block:
-• 31.10.2025
-• 1.11.2025
-• 03.11.2025 Pazartesi
-• 1 November 2025
-If multiple dates appear → output multiple reports.
+==================================================
+MULTI-REPORT DETECTION
+==================================================
+A single message may contain multiple reports.
 
-2) SITE / PROJECT TRIGGER  
-The appearance of site labels ALWAYS starts a new report:
-• LOT13, LOT71, BWC, SKP, Piramit Tower, Daho
-• "📍 ŞANTİYE:"
-• "BWC 02.11.2025"
-• "/ SKP Elektrik Grubu"
-If message contains multiple site names → separate reports.
+You MUST start a new report whenever ANY of these occur:
+1) A new date appears  
+2) A new site name appears  
+3) New section headers:
+   "📍 ŞANTİYE:", "📅 TARİH:", "PERSONEL DURUMU", "GENEL ÖZET"
+4) Block headers:
+   OTEL(…), VILLA(…), SPA(…), VIP Lojman(…), A Blok, B Blok…
+5) Pattern repetition:
+   Date → list → totals → Date → list → totals
 
-3) HEADER / SECTION TRIGGER  
-Start a new report when these appear:
-• "📍 ŞANTİYE:"
-• "📅 TARİH:"
-• "Mühendis:", "Tekniker:", "Formen:", "Gececi:", "İşveren elk:"
-• "PERSONEL DURUMU"
-• "GENEL ÖZET"
-• OTEL( … ), VILLA( … ), VIP LOJMAN( … )
-• Building headers: A Blok, B Blok, C Blok
-• Mobilization blocks: "Toplam Adam Sayısı", "Mobilizasyon:", "Staff:"
-
-4) MULTIPLE REPORTS BY SAME SENDER  
-If pattern is:  
-Date → job list → totals →  
-Date → job list → totals  
-then they are separate reports.
-
-5) RAW TEXT BOUNDARY  
-Each JSON object MUST include only the raw text belonging to that section.
+Each detected report MUST become one JSON object.
 
 ==================================================
 DATE RULES
 ==================================================
-• Accept ANY date format.
-• If date missing → reported_at = null.
-• If date > message_receive_date → EXCLUDE this report.
-• If date older than 365 days → include with confidence ≤ 0.40.
+• Accept all date formats.
+• Convert to ISO YYYY-MM-DD if possible.
+• If multiple dates → separate reports.
+• If date cannot be determined → reported_at = null.
+• If date is in the future → EXCLUDE that report entirely.
+• If date is older than 365 days → include but set confidence ≤ 0.40.
 
 ==================================================
 OUTPUT JSON SCHEMA
 ==================================================
-Each report MUST use EXACTLY the following structure:
+Each valid report MUST match this EXACT structure:
 
 {
-  "report_id": string|null,
+  "report_id": null,
   "site": string|null,
   "reported_at": "YYYY-MM-DD" | null,
   "reported_time": "HH:MM" | null,
-  "reporter": string|null,
+  "reporter": null,
   "report_type": string|null,
   "status_summary": string|null,
   "present_workers": integer|null,
@@ -606,23 +584,46 @@ Each report MUST use EXACTLY the following structure:
 }
 
 ==================================================
-FIELD EXTRACTION LOGIC
+FIELD LOGIC
 ==================================================
 • "Toplam X" → present_workers = X
-• "İzinli X" / "Hasta X" → absent_workers = X
-• For grouped BWC/SKP/Piramit/Otel/Villa reports → sum sub-groups or use "Toplam"
-• issues: short extracted problem/action phrases
-• actions_requested: verbs like kontrol, test, bağlantı, montaj, çekimi, hazırlık
-• raw_text: exact extracted substring
-• confidence: 0.0–1.0
+• "İzinli X" or "Hasta X" → absent_workers = X
+• Summation allowed for grouped structures (OTEL, VILLA, SPA, etc.)
+• Issues = extracted short problem phrases
+• actions_requested = verbs such as:
+  montaj, test, bağlantı, kontrol, çekimi, hazırlık, düzenleme, rötuş
+• reporter = null (the bot resolves reporter mapping itself)
+• raw_text = exact original section text
+• confidence must be 0.0–1.0
 
 ==================================================
-FINAL INSTRUCTION
+BEHAVIOR BY CHAT TYPE (MANDATORY)
 ==================================================
-After reading the message:
-• If the message contains reports → output all reports as a JSON array.
-• If the message contains NO reports → output [] (this is NORMAL).
-• Never output anything except the JSON array."""
+
+1) GROUP CHAT (supergroups & groups):
+   • If at least one report detected → return JSON array normally.
+   • If NO report detected → return [].
+     (Bot will remain silent. REQUIRED.)
+
+2) DIRECT / PRIVATE CHAT:
+   • If at least one report detected → return JSON array.
+     (Bot will reply with success/warning messages.)
+   • If NO report detected → return:
+       [
+         { "dm_info": "no_report_detected" }
+       ]
+     (Bot will tell the user that the message is not a report.)
+
+==================================================
+FINAL RULES
+==================================================
+• NEVER produce anything except a JSON array.
+• NEVER guess missing data; use null.
+• NEVER merge separate report blocks.
+• ALWAYS keep the reports in the order they appear.
+• ALWAYS return valid UTF-8 JSON and nothing else.
+
+END OF SYSTEM PROMPT"""
 
 USER_PROMPT_TEMPLATE = """
 Extract ALL construction-site reports from the following raw message.
@@ -634,10 +635,12 @@ Raw message:
 # OpenAI istemcisini başlat
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-def parse_reports_with_gpt(raw_message: str, receive_date: datetime.date):
-    """GPT-4-mini ile çoklu rapor çıkarımı"""
+def process_incoming_message(raw_text: str, is_group: bool = False):
+    """Gelen mesajı işle - DM/Group ayrımı ile"""
+    today = datetime.date.today()
+    
     try:
-        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<RAW_MESSAGE>>>", raw_message)
+        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<RAW_MESSAGE>>>", raw_text)
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -654,14 +657,22 @@ def parse_reports_with_gpt(raw_message: str, receive_date: datetime.date):
         try:
             data = json.loads(content)
             if isinstance(data, list):
-                # Tarih filtresi uygula
+                # DM_INFO kontrolü - DM'de rapor yoksa bilgilendirme
+                if not is_group and len(data) == 1 and data[0].get('dm_info') == 'no_report_detected':
+                    return {'dm_info': 'no_report_detected'}
+                
+                # Normal raporları filtrele
                 filtered_reports = []
                 for report in data:
+                    # dm_info içeren raporları atla (zaten yukarıda handle edildi)
+                    if report.get('dm_info'):
+                        continue
+                        
                     reported_at = report.get('reported_at')
                     if reported_at:
                         try:
                             report_date = datetime.datetime.strptime(reported_at, '%Y-%m-%d').date()
-                            if report_date > receive_date:
+                            if report_date > today:
                                 continue  # Gelecek tarihli raporları atla
                         except ValueError:
                             pass
@@ -682,20 +693,20 @@ def parse_reports_with_gpt(raw_message: str, receive_date: datetime.date):
         logging.error(f"GPT analiz hatası: {e}")
         return []
 
-def process_incoming_message(raw_text: str):
-    """Gelen mesajı işle"""
-    today = datetime.date.today()
-    return parse_reports_with_gpt(raw_text, today)
-
 # ----------------------------- YENİ GPT-4-MINI RAPOR İŞLEME -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni GPT-4-mini ile çoklu rapor işleme"""
+    """Yeni GPT-4-mini ile çoklu rapor işleme - Grup/DM ayrımı ile"""
     msg = update.message or update.edited_message
     if not msg:
         return
 
     user_id = msg.from_user.id
+    chat_type = msg.chat.type
     
+    # Chat tipini belirle
+    is_group = chat_type in ["group", "supergroup"]
+    is_dm = chat_type == "private"
+
     # Doküman ve fotoğrafları atla
     if msg.document or msg.photo:
         return
@@ -709,33 +720,70 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     try:
-        # GPT-4-mini ile rapor çıkarımı
-        raporlar = process_incoming_message(metin)
+        # GPT-4-mini ile rapor çıkarımı (is_group bilgisini ver)
+        raporlar = process_incoming_message(metin, is_group)
         
+        # DM_INFO kontrolü - DM'de rapor yoksa kullanıcıyı bilgilendir
+        if is_dm and isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
+            await msg.reply_text(
+                "❌ **Bu mesaj bir rapor olarak algılanmadı.**\n\n"
+                "Lütfen şantiye, tarih ve iş bilgilerini içeren bir rapor gönderin.\n"
+                "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
+            )
+            return
+        
+        # Normal rapor listesi kontrolü
         if not raporlar:
-            logging.info(f"🤖 GPT: Rapor bulunamadı (NORMAL) - {user_id}")
-            return  # SESSİZ ÇIKIŞ - bu normal bir durum
-        
-        logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id}")
+            logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
+            
+            # Sadece DM'de ve grup olmayan durumlarda bilgi ver
+            if is_dm:
+                await msg.reply_text(
+                    "❌ **Rapor bulunamadı.**\n\n"
+                    "Lütfen şantiye raporunuzu aşağıdaki formatta gönderin:\n"
+                    "• Tarih (01.01.2025)\n" 
+                    "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
+                    "• Yapılan işler\n"
+                    "• Personel bilgisi\n\n"
+                    "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
+                )
+            # Grup mesajlarında SESSİZ ÇIKIŞ
+            return
+
+        logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id} (Chat Type: {chat_type})")
         
         kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
         
         # Her raporu ayrı ayrı işle
+        basarili_kayitlar = 0
         for i, rapor in enumerate(raporlar):
-            await raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, metin, rapor, msg, i+1)
+            try:
+                await raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, metin, rapor, msg, i+1)
+                basarili_kayitlar += 1
+            except Exception as e:
+                logging.error(f"❌ Rapor {i+1} kaydetme hatası: {e}")
         
-        # Kullanıcıya geri bildirim (sadece rapor bulunduğunda)
-        if len(raporlar) == 1:
-            await msg.reply_text("✅ Raporunuz başarıyla işlendi!")
-        else:
-            await msg.reply_text(f"✅ {len(raporlar)} rapor başarıyla işlendi!")
+        # Kullanıcıya geri bildirim (sadece DM'de)
+        if is_dm:
+            if basarili_kayitlar == len(raporlar):
+                if len(raporlar) == 1:
+                    await msg.reply_text("✅ Raporunuz başarıyla işlendi!")
+                else:
+                    await msg.reply_text(f"✅ {len(raporlar)} rapor başarıyla işlendi!")
+            else:
+                await msg.reply_text(f"⚠️ {basarili_kayitlar}/{len(raporlar)} rapor işlendi. Bazı raporlar kaydedilemedi.")
+        
+        # Grup mesajlarında sessiz kal, sadece log
+        logging.info(f"📊 Grup raporu işlendi: {basarili_kayitlar}/{len(raporlar)} başarılı")
             
     except Exception as e:
         logging.error(f"❌ GPT rapor işleme hatası: {e}")
-        # Hata durumunda sessiz kal - kullanıcıyı rahatsız etme
+        # Hata durumunda sadece DM'de bilgi ver
+        if is_dm:
+            await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
 
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
-    """GPT formatındaki raporu veritabanına kaydet"""
+    """GPT formatındaki raporu veritabanına kaydet - Şantiye bazlı"""
     try:
         # Tarih işleme
         rapor_tarihi = None
@@ -749,24 +797,32 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or datetime.now(TZ).date()
         
-        # Rapor tipini belirle
-        present_workers = gpt_rapor.get('present_workers', 0)
-        absent_workers = gpt_rapor.get('absent_workers', 0)
-        
-        if absent_workers > 0 or 'izin' in orijinal_metin.lower() or 'rapor yok' in orijinal_metin.lower():
-            rapor_tipi = 'IZIN/ISYOK'
-        else:
-            rapor_tipi = 'RAPOR'
-        
-        # Personel sayısı
-        person_count = max(present_workers, 1)
-        
-        # Proje adı
-        project_name = gpt_rapor.get('site', 'BELİRSİZ')
-        if project_name == 'BELİRSİZ':
+        # Proje adı - GPT'den geleni kullan, yoksa kullanıcının şantiyelerinden al
+        project_name = gpt_rapor.get('site')
+        if not project_name or project_name == 'BELİRSİZ':
             user_projects = id_to_projects.get(user_id, [])
             if user_projects:
                 project_name = user_projects[0]
+            else:
+                project_name = 'BELİRSİZ'
+        
+        # ŞANTİYE BAZLI KONTROL - Aynı gün aynı şantiye için rapor var mı?
+        existing_report = await async_fetchone("""
+            SELECT id FROM reports 
+            WHERE user_id = %s AND project_name = %s AND report_date = %s
+        """, (user_id, project_name, rapor_tarihi))
+        
+        if existing_report:
+            logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
+            raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
+        
+        # Rapor tipini AI'dan al, değiştirme
+        rapor_tipi = gpt_rapor.get('report_type', 'RAPOR')
+        
+        # Personel sayısı
+        present_workers = gpt_rapor.get('present_workers', 0)
+        absent_workers = gpt_rapor.get('absent_workers', 0)
+        person_count = max(present_workers, 1)
         
         # İş açıklaması
         status_summary = gpt_rapor.get('status_summary', '')
@@ -784,7 +840,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             "gpt_analysis": gpt_rapor,
             "confidence": gpt_rapor.get('confidence', 0.9),
             "extraction_method": "gpt-4-mini",
-            "original_text_snippet": orijinal_metin[:100]
+            "original_text_snippet": orijinal_metin[:100],
+            "raw_text": gpt_rapor.get('raw_text', '')[:500]
         }
         
         # Veritabanına kaydet
@@ -799,7 +856,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
-        logging.info(f"✅ GPT Rapor #{rapor_no} kaydedildi: {user_id} - {project_name}")
+        logging.info(f"✅ GPT Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
         
         # Maliyet analizine ekle
         maliyet_analiz.kayit_ekle('gpt')
@@ -2192,9 +2249,27 @@ def main():
         # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
-        # YENİ GPT-4-MINI RAPOR İŞLEME SİSTEMİ
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_gpt_rapor_isleme))
-        app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, yeni_gpt_rapor_isleme))
+        # YENİ GPT-4-MINI RAPOR İŞLEME SİSTEMİ - Grup ve DM ayrımlı
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), 
+            yeni_gpt_rapor_isleme
+        ))  # Sadece grup mesajları
+
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, 
+            yeni_gpt_rapor_isleme
+        ))  # Sadece DM mesajları
+
+        # Düzenlenmiş mesajlar için
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP) & filters.UpdateType.EDITED_MESSAGE, 
+            yeni_gpt_rapor_isleme
+        ))
+
+        app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE & filters.UpdateType.EDITED_MESSAGE, 
+            yeni_gpt_rapor_isleme
+        ))
         
         schedule_jobs(app)
         logging.info("🚀 GPT-4-MINI ENTEGRE Rapor Botu başlatılıyor...")
