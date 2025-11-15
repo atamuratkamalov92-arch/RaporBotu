@@ -28,6 +28,7 @@ from psycopg2 import pool
 import html
 from bs4 import BeautifulSoup
 import base64
+from openai import OpenAI
 
 # ----------------------------- PORT AYARI (RAILWAY İÇİN) -----------------------------
 PORT = int(os.environ.get('PORT', 8443))
@@ -500,209 +501,212 @@ def get_db_connection():
     """PostgreSQL bağlantısını döndür"""
     return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
 
-# ----------------------------- YENİ AI RAPOR ANALİZ SİSTEMİ -----------------------------
-class YeniRaporAnalizAI:
-    def __init__(self, api_key):
-        if HAS_OPENAI and api_key:
-            self.client = openai.OpenAI(api_key=api_key)
-            self.aktif = True
-            self.model = "gpt-4o-mini"
-            self.cache = {}
-            self.cache_size = 100
-            logging.info(f"🤖 YENİ AI Rapor Analiz sistemi aktif! Model: {self.model}")
-        else:
-            self.aktif = False
-            logging.warning("OpenAI devre dışı.")
-    
-    def _clean_cache(self):
-        """Cache'i temizle - performans için"""
-        if len(self.cache) > self.cache_size:
-            keys_to_remove = list(self.cache.keys())[:self.cache_size // 5]
-            for key in keys_to_remove:
-                del self.cache[key]
-    
-    def rapor_tipi_analiz_et(self, mesaj_metni):
-        """Mesajın rapor olup olmadığını analiz et"""
-        if not self.aktif:
-            return "rapor"
-            
-        try:
-            cache_key = f"tip_{hash(mesaj_metni[:100])}"
-            if cache_key in self.cache:
-                return self.cache[cache_key]
-            
-            mesaj_lower = mesaj_metni.lower()
-            rapor_indicator = any(word in mesaj_lower for word in 
-                                ['kişi', 'personel', 'mobilizasyon', 'beton', 'kalıp', 'demir', 'şantiye', 'izin'])
-            spam_indicator = any(word in mesaj_lower for word in 
-                               ['merhaba', 'selam', 'kolay gelsin', 'teşekkür', 'günaydın'])
-            
-            if spam_indicator and not rapor_indicator and len(mesaj_metni.strip()) < 50:
-                self.cache[cache_key] = "rapor değil"
-                self._clean_cache()
-                return "rapor değil"
-            
-            sistem_promtu = """
-SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE "rapor" VEYA "rapor değil" CEVABI VER.
+# ----------------------------- GPT-4-MINI SİSTEM PROMPT -----------------------------
+SYSTEM_PROMPT = """You are a deterministic structured-data extraction engine specialized in construction-site daily reports.  
+Your task: Convert any raw text message into a JSON array of report objects.
 
-**KURALLAR:**
-- Eğer mesaj bir günlük şantiye/iş raporu, çalışma durumu, personel bilgisi, mobilizasyon, ilerleme raporu içeriyorsa → "rapor"
-- Eğer mesaj selam, teşekkür, sohbet, soru, genel bilgi, yorum veya rapor dışı içerik ise → "rapor değil"
+IMPORTANT RULES:
+• Output STRICTLY and ONLY valid JSON. No comments, no explanations, no text outside JSON.
+• If the incoming message contains multiple reports, return each one as a separate JSON object in order.
+• Ignore all non-report text (greetings, emojis, PDF names, photos, tables, chat, bot replies).
+• If NO valid report exists → return [].
+• DO NOT summarize, DO NOT reformat, DO NOT modify any existing bot output.
 
-**RAPOR ÖRNEKLERİ:**
-- "Bugün 15 kişi ile temel kazısı yapıldı"
-- "Mobilizasyon devam ediyor, 8 personel"
-- "İzinliyim, rapor yok"
-- "5 kişi beton dökümü, 3 kişi kalıp"
+-----------------------------------------------
+ACCEPT ALL POSSIBLE REAL-LIFE REPORT FORMATS:
+-----------------------------------------------
+You must detect reports even if they include:
+• Mixed languages (Turkish/Uzbek/Russian/English)
+• Broken text, missing punctuation, emojis
+• Multiple dates inside the same message
+• Multiple different sites in the same message
+• Grouped lists (OTEL, VILLA, SPA, VIP LOJMAN, LOT13, LOT71, SKP, BWC, Piramit Tower, etc.)
+• Totals: "Toplam 9", "Toplam Adam Sayısı 23", "Mobilizasyon 10", "Staff 9"
+• Personnel distributions (Mühendis, Tekniker, Formen, Ambarcı, Nöbetçi, İzinli)
+• Building/job lists (6.kat reglaj, 3.kat led montajı, A blok satış ofisi…)
+• Mobilizasyon / İmalat / Staff / EX Villa / Otopark / Chalet
+• Timestamps (08:31, 10:54…)
+• Repeated date blocks in same message
+• One-line LOT reports (e.g., 06.11.2025 LOT13 …)
+• Template-based reports (PERSONEL DURUMU, GENEL ÖZET, AÇIKLAMA…)
 
-**RAPOR DEĞİL ÖRNEKLERİ:**
-- "Merhaba, kolay gelsin"
-- "Teşekkür ederim"
-- "Yarın görüşürüz"
-- "Bot nasıl çalışıyor?"
+-----------------------------------------------
+REPORT SPLITTING RULES (MULTI-REPORT EXTRACTION)
+-----------------------------------------------
+A single incoming message may contain MULTIPLE reports.
 
-SADECE "rapor" veya "rapor değil" yaz.
-"""
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": sistem_promtu},
-                    {"role": "user", "content": f"MESAJ: {mesaj_metni}"}
-                ],
-                temperature=0.1,
-                max_tokens=10
-            )
-            
-            cevap = response.choices[0].message.content.strip().lower()
-            
-            if cevap in ["rapor", "rapor değil"]:
-                self.cache[cache_key] = cevap
-                self._clean_cache()
-                logging.info(f"🤖 AI Rapor Analizi: '{cevap}'")
-                return cevap
-            else:
-                logging.warning(f"🤖 AI beklenmeyen cevap: '{cevap}', fallback: 'rapor'")
-                return "rapor"
-                
-        except Exception as e:
-            logging.error(f"🤖 Rapor tipi analiz hatası: {e}, fallback: 'rapor'")
-            return "rapor"
-    
-    def detayli_rapor_analizi(self, mesaj_metni, gonderici_adi):
-        """Detaylı rapor analizi"""
-        if not self.aktif:
-            return self._fallback_detayli_analiz()
-            
-        try:
-            cache_key = f"detay_{hash(mesaj_metni[:100])}"
-            if cache_key in self.cache:
-                return self.cache[cache_key]
-            
-            sistem_promtu = """
-SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
+START A NEW REPORT WHEN ANY OF THESE OCCUR:
 
-**GÖREV:**
-Rapordaki tüm bilgileri çıkar:
-- tarih (GG-AA-YYYY formatında)
-- şantiye adı
-- bina/blok işleri
-- personel dağılımı
-- mobilizasyon durumu
-- izinli/gececi/dış görev
-- toplam adam sayısı
-- ekip başı/ambarcı
-- diğer iş kalemleri
-- tüm sayı breakdown'ları
+1) DATE TRIGGER  
+   Any date-like expression ALWAYS opens a new report block.
+   Examples:
+   31.10.2025  
+   1.11.2025  
+   03.11.2025 Pazartesi  
+   1 November 2025  
+   If multiple dates exist → produce multiple reports.
 
-**TARİH FORMATLARI:**
-01.1.2025, 1/01/25, 2025-1-1, 05/11/2025, 2025/11/05, 1-1-2025, 3.7, 7/5, 2025/07, 07-2025
+2) SITE / PROJECT NAME TRIGGER  
+   The appearance of site/project labels ALWAYS starts a new block:
+   LOT13, LOT71, BWC, SKP, Piramit Tower, Daho, Staff, Mobilizasyon
+   "📍 ŞANTİYE:"
+   "BWC 02.11.2025"
+   "/ SKP Elektrik Grubu"
+   If multiple sites appear → multiple reports.
 
-**TARİH ANALİZ KURALLARI:**
-- Sayı >12 → gün
-- İki sayı da ≤12 → bağlama göre karar ver
-- Gelecek tarihler → geçersiz
-- İmkânsız tarihler → geçersiz
+3) HEADER / SECTION TRIGGER  
+   Start a new report when these appear:
+   • "📍 ŞANTİYE:"
+   • "📅 TARİH:"
+   • "Mühendis:", "Tekniker:", "Formen:", "Gececi:", "İşveren elk:"
+   • "PERSONEL DURUMU"
+   • "GENEL ÖZET"
+   • Large block headers (OTEL, VILLA, SPA, VIP LOJMAN)
+   • SKP building headers (A Blok, B Blok, C Blok)
+   • Mobilization/Staff headers ("Toplam Adam Sayısı", "Mobilizasyon:", "Staff:")
 
-**ÇIKTI formatı:**
+4) MULTI-REPORT WITHIN SAME SENDER  
+   If sender sends:
+      Date → job list → totals →
+      Date → job list → totals
+   Treat them as separate independent reports.
+
+5) RAW TEXT BOUNDARIES  
+   Each report object MUST contain ONLY text belonging to that block.  
+   Do NOT merge reports.
+
+-----------------------------------------------
+DATE RULES:
+-----------------------------------------------
+• Accept all formats:
+  DD.MM.YYYY  
+  D.M.YYYY  
+  DD/MM/YYYY  
+  "DD.MM.YYYY + weekday"  
+  "1 November 2025"
+• If the date is missing: set reported_at = null.
+• If date > message_receive_date → EXCLUDE report.
+• If date is older than 365 days → include but set confidence ≤ 0.40.
+
+-----------------------------------------------
+OUTPUT SCHEMA (STRICT):
+-----------------------------------------------
+Each report must contain EXACTLY:
+
 {
- "tarih": "GG-AA-YYYY",
- "santiye_adi": "ad",
- "bina_blok_isleri": ["iş1", "iş2"],
- "personel_dagilimi": {"kalip": 5, "beton": 3},
- "mobilizasyon": "devam ediyor/tamamlandı",
- "izinli_sayisi": 2,
- "gececi_sayisi": 0,
- "dis_gorev_sayisi": 0,
- "toplam_adam": 15,
- "ekip_basi": 1,
- "ambarci": 1,
- "diger_is_kalemleri": ["iş3", "iş4"],
- "aciklama": "analiz detayı",
- "tarih_bulundu": true,
- "tarih_gecerli": true
+  "report_id": string|null,
+  "site": string|null,
+  "reported_at": "YYYY-MM-DD" | null,
+  "reported_time": "HH:MM" | null,
+  "reporter": string|null,
+  "report_type": string|null,
+  "status_summary": string|null,
+  "present_workers": integer|null,
+  "absent_workers": integer|null,
+  "issues": [string],
+  "actions_requested": [string],
+  "attachments_ref": [string],
+  "raw_text": string,
+  "confidence": number
 }
+
+-----------------------------------------------
+EXTRACTION LOGIC:
+-----------------------------------------------
+• For each date block + job list → create one report.
+• "Toplam X" → present_workers = X.
+• "İzinli X" → absent_workers = X.
+• In BWC/SKP/Piramit/Villa/Otel grouped lists → present_workers = sum of sub-groups OR "Toplam".
+• issues = short extracted problem/operation phrases.
+• actions_requested = verbs: kontrol, bağlantı, test, montaj, çekimi, hazırlık…
+• raw_text = exact substring from the original message.
+
+-----------------------------------------------
+CRITICAL RULES:
+-----------------------------------------------
+• No hallucination. Unknown → null.
+• Always return VALID JSON ARRAY.
+• No explanations. No plain text.
+• No reordering of extracted reports.
+• No summarizing or rewriting.
+
+-----------------------------------------------
+FINAL INSTRUCTION:
+After receiving the raw message, extract ALL valid reports following all rules and output ONLY a JSON array."""
+
+USER_PROMPT_TEMPLATE = """
+Extract ALL construction-site reports from the following raw message.
+Return ONLY a valid JSON array.
+Raw message:
+<<<RAW_MESSAGE>>>
 """
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": sistem_promtu},
-                    {"role": "user", "content": f"GÖNDEREN: {gonderici_adi}\nMESAJ: {mesaj_metni}"}
-                ],
-                temperature=0.1,
-                max_tokens=800,
-                response_format={ "type": "json_object" }
-            )
-            
-            cevap = response.choices[0].message.content.strip()
-            sonuc = json.loads(cevap)
-            sonuc["kaynak"] = "gpt"
-            
-            self.cache[cache_key] = sonuc
-            self._clean_cache()
-            logging.info(f"🤖 Detaylı analiz: {sonuc.get('santiye_adi', 'BELİRSİZ')} - {sonuc.get('tarih', 'Tarihsiz')}")
-            
-            return sonuc
-            
-        except Exception as e:
-            logging.error(f"🤖 Detaylı analiz hatası: {e}")
-            sonuc = self._fallback_detayli_analiz()
-            return sonuc
-    
-    def _fallback_detayli_analiz(self):
-        """Fallback detaylı analiz"""
-        return {
-            "tarih": datetime.now(TZ).strftime('%d-%m-%Y'),
-            "santiye_adi": "BELİRSİZ",
-            "bina_blok_isleri": [],
-            "personel_dagilimi": {},
-            "mobilizasyon": "",
-            "izinli_sayisi": 0,
-            "gececi_sayisi": 0,
-            "dis_gorev_sayisi": 0,
-            "toplam_adam": 1,
-            "ekip_basi": 0,
-            "ambarci": 0,
-            "diger_is_kalemleri": [],
-            "aciklama": "Fallback analiz",
-            "tarih_bulundu": True,
-            "tarih_gecerli": True,
-            "kaynak": "fallback"
-        }
 
-# Global AI analiz sistemi
-yeni_ai_analiz = YeniRaporAnalizAI(OPENAI_API_KEY)
+# OpenAI istemcisini başlat
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# ----------------------------- YENİ RAPOR İŞLEME SİSTEMİ -----------------------------
-async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni kurallara göre rapor işleme"""
+def parse_reports_with_gpt(raw_message: str, receive_date: datetime.date):
+    """GPT-4-mini ile çoklu rapor çıkarımı"""
+    try:
+        user_prompt = USER_PROMPT_TEMPLATE.replace("<<<RAW_MESSAGE>>>", raw_message)
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0,
+            max_tokens=2000
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                # Tarih filtresi uygula
+                filtered_reports = []
+                for report in data:
+                    reported_at = report.get('reported_at')
+                    if reported_at:
+                        try:
+                            report_date = datetime.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                            if report_date > receive_date:
+                                continue  # Gelecek tarihli raporları atla
+                        except ValueError:
+                            pass
+                    
+                    # Confidence değeri ekle
+                    if 'confidence' not in report:
+                        report['confidence'] = 0.9
+                    
+                    filtered_reports.append(report)
+                
+                return filtered_reports
+            return []
+        except json.JSONDecodeError:
+            logging.error(f"GPT JSON parse hatası: {content}")
+            return []
+            
+    except Exception as e:
+        logging.error(f"GPT analiz hatası: {e}")
+        return []
+
+def process_incoming_message(raw_text: str):
+    """Gelen mesajı işle"""
+    today = datetime.date.today()
+    return parse_reports_with_gpt(raw_text, today)
+
+# ----------------------------- YENİ GPT-4-MINI RAPOR İŞLEME -----------------------------
+async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Yeni GPT-4-mini ile çoklu rapor işleme"""
     msg = update.message or update.edited_message
     if not msg:
         return
 
     user_id = msg.from_user.id
     
+    # Doküman ve fotoğrafları atla
     if msg.document or msg.photo:
         return
 
@@ -710,109 +714,93 @@ async def yeni_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not metin:
         return
 
+    # Komutları atla
     if metin.startswith(('/', '.', '!', '\\')):
         return
 
     try:
-        rapor_tipi = yeni_ai_analiz.rapor_tipi_analiz_et(metin)
+        # GPT-4-mini ile rapor çıkarımı
+        raporlar = process_incoming_message(metin)
         
-        if rapor_tipi == "rapor değil":
-            logging.info(f"🤖 Rapor değil - Sessiz: {user_id}")
+        if not raporlar:
+            logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id}")
             return
+        
+        logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id}")
         
         kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-        detayli_analiz = yeni_ai_analiz.detayli_rapor_analizi(metin, kullanici_adi)
         
-        tarih_gecerli = detayli_analiz.get("tarih_gecerli", False)
-        tarih_bulundu = detayli_analiz.get("tarih_bulundu", False)
+        # Her raporu ayrı ayrı işle
+        for i, rapor in enumerate(raporlar):
+            await raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, metin, rapor, msg, i+1)
         
-        if not tarih_bulundu or not tarih_gecerli:
-            try:
-                await msg.reply_text(
-                    "🟡 **Gönderdiğiniz rapordaki tarihi net olarak algılayamadım.**\n\n"
-                    "Lütfen tarihi gün-ay-yıl şeklinde yazıp tekrar gönderin.\n"
-                    "Örn: 05-11-2025"
-                )
-                logging.info(f"🟡 Tarih anlaşılamadı - Kullanıcı {user_id} uyarıldı")
-            except Exception as e:
-                logging.error(f"🟡 Tarih uyarısı gönderilemedi: {e}")
-            return
-        
-        if await rapor_format_kontrolu(detayli_analiz, metin):
-            try:
-                await msg.reply_text(
-                    "🟡 **Gönderdiğiniz rapor format olarak çok dağınık/eksik olduğu için işlenemedi.**\n\n"
-                    "Lütfen raporu standart, anlaşılır şekilde tekrar gönderin."
-                )
-                logging.info(f"🟡 Format bozuk - Kullanıcı {user_id} uyarıldı")
-            except Exception as e:
-                logging.error(f"🟡 Format uyarısı gönderilemedi: {e}")
-            return
-        
-        await raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg)
-        logging.info(f"✅ Rapor sessiz işlendi - Kullanıcı: {user_id}")
-        
-    except Exception as e:
-        logging.error(f"❌ Rapor işleme hatası: {e}")
-
-async def rapor_format_kontrolu(detayli_analiz, metin):
-    """Rapor formatının yeterli olup olmadığını kontrol et"""
-    try:
-        santiye_adi = detayli_analiz.get("santiye_adi", "")
-        toplam_adam = detayli_analiz.get("toplam_adam", 0)
-        personel_dagilimi = detayli_analiz.get("personel_dagilimi", {})
-        bina_blok_isleri = detayli_analiz.get("bina_blok_isleri", [])
-        
-        if len(metin.strip()) < 10:
-            return True
-        
-        if len(metin.strip()) < 25 and re.search(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin):
-            return True
-        
-        if santiye_adi == "BELİRSİZ" and toplam_adam <= 1 and not personel_dagilimi and not bina_blok_isleri:
-            return True
-        
-        selam_kelimeler = ["merhaba", "selam", "kolay gelsin", "teşekkür", "iyi akşamlar", "iyi günler", "hayırlı işler"]
-        if any(kelime in metin.lower() for kelime in selam_kelimeler) and len(metin.strip()) < 30:
-            return True
+        # Kullanıcıya geri bildirim
+        if len(raporlar) == 1:
+            await msg.reply_text("✅ Raporunuz başarıyla işlendi!")
+        else:
+            await msg.reply_text(f"✅ {len(raporlar)} rapor başarıyla işlendi!")
             
-        return False
-        
     except Exception as e:
-        logging.error(f"Format kontrol hatası: {e}")
-        return False
+        logging.error(f"❌ GPT rapor işleme hatası: {e}")
+        try:
+            await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen formatını kontrol edin.")
+        except:
+            pass
 
-async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
-    """Raporu sessizce kaydet"""
+async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
+    """GPT formatındaki raporu veritabanına kaydet"""
     try:
-        tarih_str = detayli_analiz.get("tarih", "")
+        # Tarih işleme
         rapor_tarihi = None
-        
-        for fmt in ['%d-%m-%Y', '%d.%m.%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y.%m.%d', '%Y/%m/%d']:
+        reported_at = gpt_rapor.get('reported_at')
+        if reported_at:
             try:
-                rapor_tarihi = datetime.strptime(tarih_str, fmt).date()
-                break
+                rapor_tarihi = datetime.datetime.strptime(reported_at, '%Y-%m-%d').date()
             except ValueError:
-                continue
+                pass
         
         if not rapor_tarihi:
-            rapor_tarihi = parse_rapor_tarihi(metin)
-            if not rapor_tarihi:
-                rapor_tarihi = datetime.now(TZ).date()
+            rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or datetime.now(TZ).date()
         
-        izinli_sayisi = detayli_analiz.get("izinli_sayisi", 0)
-        rapor_tipi = 'IZIN/ISYOK' if izinli_sayisi > 0 or 'izin' in metin.lower() or 'rapor yok' in metin.lower() else 'RAPOR'
+        # Rapor tipini belirle
+        present_workers = gpt_rapor.get('present_workers', 0)
+        absent_workers = gpt_rapor.get('absent_workers', 0)
         
-        person_count = max(detayli_analiz.get("toplam_adam", 1), 1)
+        if absent_workers > 0 or 'izin' in orijinal_metin.lower() or 'rapor yok' in orijinal_metin.lower():
+            rapor_tipi = 'IZIN/ISYOK'
+        else:
+            rapor_tipi = 'RAPOR'
         
-        project_name = detayli_analiz.get("santiye_adi", "BELİRSİZ")
-        if project_name == "BELİRSİZ":
+        # Personel sayısı
+        person_count = max(present_workers, 1)
+        
+        # Proje adı
+        project_name = gpt_rapor.get('site', 'BELİRSİZ')
+        if project_name == 'BELİRSİZ':
             user_projects = id_to_projects.get(user_id, [])
             if user_projects:
                 project_name = user_projects[0]
         
-        work_description = metin[:400]
+        # İş açıklaması
+        status_summary = gpt_rapor.get('status_summary', '')
+        issues = gpt_rapor.get('issues', [])
         
+        work_description = status_summary
+        if issues:
+            work_description += f" | İşler: {', '.join(issues[:3])}"
+        
+        if not work_description.strip():
+            work_description = orijinal_metin[:200]
+        
+        # AI analiz verisi
+        ai_analysis = {
+            "gpt_analysis": gpt_rapor,
+            "confidence": gpt_rapor.get('confidence', 0.9),
+            "extraction_method": "gpt-4-mini",
+            "original_text_snippet": orijinal_metin[:100]
+        }
+        
+        # Veritabanına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
@@ -820,16 +808,17 @@ async def raporu_sessiz_kaydet(user_id, metin, detayli_analiz, msg):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             user_id, project_name, rapor_tarihi, rapor_tipi, person_count, 
-            work_description, 'diğer', 'imalat', datetime.now(TZ).date(),
-            False,
-            json.dumps(detayli_analiz, ensure_ascii=False)
+            work_description[:400], 'diğer', 'imalat', datetime.now(TZ).date(),
+            False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
-        if detayli_analiz and 'kaynak' in detayli_analiz:
-            maliyet_analiz.kayit_ekle(detayli_analiz['kaynak'])
+        logging.info(f"✅ GPT Rapor #{rapor_no} kaydedildi: {user_id} - {project_name}")
+        
+        # Maliyet analizine ekle
+        maliyet_analiz.kayit_ekle('gpt')
             
     except Exception as e:
-        logging.error(f"Rapor kaydetme hatası: {e}")
+        logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
         raise e
 
 # ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
@@ -992,133 +981,6 @@ async def get_santiye_bazli_rapor_durumu(bugun):
     except Exception as e:
         logging.error(f"Şantiye bazlı rapor durumu hatası: {e}")
         return {'tum_santiyeler': set(), 'rapor_veren_santiyeler': set(), 'eksik_santiyeler': set(), 'santiye_rapor_verenler': {}}
-
-# ----------------------------- OPTİMİZE AI SİSTEMİ -----------------------------
-class OptimizeAkilliRaporAnalizAI:
-    def __init__(self, api_key):
-        if HAS_OPENAI and api_key:
-            self.client = openai.OpenAI(api_key=api_key)
-            self.aktif = True
-            self.model = "gpt-4o-mini"
-            self.cache = {}
-            self.cache_size = 100
-            logging.info(f"OPTİMİZE AI sistemi aktif! Model: {self.model}")
-        else:
-            self.aktif = False
-            logging.warning("OpenAI devre dışı.")
-    
-    def _clean_cache(self):
-        """Cache temizleme - performans için"""
-        if len(self.cache) > self.cache_size:
-            keys_to_remove = list(self.cache.keys())[:self.cache_size // 5]
-            for key in keys_to_remove:
-                del self.cache[key]
-    
-    def gelismis_analiz_et(self, rapor_metni, kullanici_adi, kullanici_projeleri=None):
-        """Yeni veritabanı yapısına uygun analiz"""
-        if not self.aktif:
-            sonuc = self._fallback_analiz()
-            self._log_ai_kullanimi(rapor_metni, sonuc, False, "OpenAI devre dışı")
-            return sonuc
-            
-        try:
-            cache_key = f"gpt_{hash(rapor_metni[:100])}"
-            if cache_key in self.cache:
-                return self.cache[cache_key]
-            
-            proje_bilgisi = ""
-            if kullanici_projeleri:
-                proje_bilgisi = f"Kullanıcının sorumlu olduğu projeler: {', '.join(kullanici_projeleri)}"
-            
-            sistem_promtu = f"""
-SEN BİR ŞANTİYE RAPOR ANALİZ ASİSTANISIN. SADECE JSON VER.
-Aşağıdaki kurallara %100 UY:
-
-1) Sadece geçerli bir JSON döndür.
-2) Tarihi mutlaka GG.AA.YYYY formatına çevir.
-3) Eğer raporda tarih yoksa bugünü kullanma → mantıklı tahmin yap.
-4) Rapor tipi:
-   - 'izin', 'rapor yok', 'iş yok' → IS_YOK
-   - 'izinliyim', 'hastayım' → IZIN
-   - Diğer tüm durumlar → RAPOR
-5) Kişi sayısı:
-   - Raporda sayı geçiyorsa onu kullan.
-   - Geçmiyorsa 1 kişi varsay.
-6) Yapılan iş metnini mümkün olduğunca kısa ama öz yaz.
-7) Proje adını rapordaki kelimelerden mantıklı şekilde bul.
-8) Eksik bilgileri tahmin et ama GERÇEKÇİ OL.
-
-ÇIKTI formatı:
-
-{{
- "rapor_tarihi": "GG.AA.YYYY",
- "kisi_sayisi": 1,
- "yapilan_is": "kısa açıklama",
- "proje_adi": "adı",
- "rapor_tipi": "RAPOR / IZIN / IS_YOK",
- "aciklama": "detaylı analiz"
-}}
-"""
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": sistem_promtu},
-                    {"role": "user", "content": f"KULLANICI: {kullanici_adi}\nRAPOR METNİ: {rapor_metni}"}
-                ],
-                temperature=0.1,
-                max_tokens=400,
-                response_format={ "type": "json_object" }
-            )
-            
-            cevap = response.choices[0].message.content.strip()
-            sonuc = json.loads(cevap)
-            sonuc["kaynak"] = "gpt"
-            
-            self.cache[cache_key] = sonuc
-            self._clean_cache()
-            logging.info(f"🤖 GPT ile analiz edildi: {sonuc.get('proje_adi', 'BELİRSİZ')}")
-            
-            self._log_ai_kullanimi(rapor_metni, sonuc, True)
-            
-            return sonuc
-            
-        except Exception as e:
-            logging.error(f"GPT analiz hatası: {e}")
-            sonuc = self._fallback_analiz()
-            self._log_ai_kullanimi(rapor_metni, sonuc, False, str(e))
-            return sonuc
-    
-    def _fallback_analiz(self):
-        """GPT başarısız olursa kullanılacak fallback analiz"""
-        return {
-            "rapor_tarihi": datetime.now(TZ).strftime('%d.%m.%Y'),
-            "kisi_sayisi": 1,
-            "yapilan_is": "Analiz edilemedi",
-            "proje_adi": "BELİRSİZ", 
-            "rapor_tipi": "RAPOR",
-            "aciklama": "Fallback analiz",
-            "kaynak": "fallback"
-        }
-    
-    def _log_ai_kullanimi(self, rapor_metni, ai_sonuc, basarili, hata_mesaji=None):
-        """AI kullanımını database'e logla"""
-        try:
-            _sync_execute("""
-                INSERT INTO ai_logs (timestamp, user_id, rapor_metni, ai_cevap, basarili, hata_mesaji)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                datetime.now(TZ).isoformat(),
-                0,
-                rapor_metni[:400],
-                json.dumps(ai_sonuc, ensure_ascii=False)[:500],
-                1 if basarili else 0,
-                hata_mesaji
-            ))
-        except Exception as e:
-            logging.error(f"AI log kaydetme hatası: {e}")
-
-ai_analiz = OptimizeAkilliRaporAnalizAI(OPENAI_API_KEY)
 
 # ----------------------------- MALİYET ANALİZİ -----------------------------
 class MaliyetAnaliz:
@@ -2311,7 +2173,7 @@ async def post_init(application: Application):
 
 # ----------------------------- MAIN -----------------------------
 def main():
-    """Ana fonksiyon"""
+    """Ana fonksiyon - GPT-4-mini entegrasyonlu"""
     try:
         app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
         
@@ -2343,12 +2205,12 @@ def main():
         # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
-        # YENİ RAPOR İŞLEME SİSTEMİ - Tüm mesajları dinle ama sessiz çalış
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_rapor_isleme))
-        app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, yeni_rapor_isleme))
+        # YENİ GPT-4-MINI RAPOR İŞLEME SİSTEMİ
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_gpt_rapor_isleme))
+        app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, yeni_gpt_rapor_isleme))
         
         schedule_jobs(app)
-        logging.info("🚀 OPTİMİZE EDİLMİŞ Rapor Botu başlatılıyor...")
+        logging.info("🚀 GPT-4-MINI ENTEGRE Rapor Botu başlatılıyor...")
         
         app.run_polling(drop_pending_updates=True)
         
