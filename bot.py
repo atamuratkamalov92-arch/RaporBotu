@@ -1597,11 +1597,20 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
         
-        toplam_staff = genel_toplam_result[3] or 0 if genel_toplam_result else 0
-        toplam_calisan = genel_toplam_result[0] or 0 if genel_toplam_result else 0
-        toplam_mobilizasyon = genel_toplam_result[4] or 0 if genel_toplam_result else 0
-        toplam_izinli = genel_toplam_result[2] or 0 if genel_toplam_result else 0
-        toplam_hasta = genel_toplam_result[1] or 0 if genel_toplam_result else 0
+        # HATA DÜZELTME: genel_toplam_result kontrolü eklendi
+        if genel_toplam_result and len(genel_toplam_result) >= 5:
+            toplam_staff = genel_toplam_result[3] or 0
+            toplam_calisan = genel_toplam_result[0] or 0
+            toplam_mobilizasyon = genel_toplam_result[4] or 0
+            toplam_izinli = genel_toplam_result[2] or 0
+            toplam_hasta = genel_toplam_result[1] or 0
+        else:
+            # Eğer sonuç yoksa veya beklenen formatta değilse sıfır değerler kullan
+            toplam_staff = 0
+            toplam_calisan = 0
+            toplam_mobilizasyon = 0
+            toplam_izinli = 0
+            toplam_hasta = 0
         
         genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
         
@@ -1721,11 +1730,20 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
         
-        toplam_staff = genel_toplam_result[3] or 0 if genel_toplam_result else 0
-        toplam_calisan = genel_toplam_result[0] or 0 if genel_toplam_result else 0
-        toplam_mobilizasyon = genel_toplam_result[4] or 0 if genel_toplam_result else 0
-        toplam_izinli = genel_toplam_result[2] or 0 if genel_toplam_result else 0
-        toplam_hasta = genel_toplam_result[1] or 0 if genel_toplam_result else 0
+        # HATA DÜZELTME: genel_toplam_result kontrolü eklendi
+        if genel_toplam_result and len(genel_toplam_result) >= 5:
+            toplam_staff = genel_toplam_result[3] or 0
+            toplam_calisan = genel_toplam_result[0] or 0
+            toplam_mobilizasyon = genel_toplam_result[4] or 0
+            toplam_izinli = genel_toplam_result[2] or 0
+            toplam_hasta = genel_toplam_result[1] or 0
+        else:
+            # Eğer sonuç yoksa veya beklenen formatta değilse sıfır değerler kullan
+            toplam_staff = 0
+            toplam_calisan = 0
+            toplam_mobilizasyon = 0
+            toplam_izinli = 0
+            toplam_hasta = 0
         
         genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
         
@@ -1798,7 +1816,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         return mesaj
         
     except Exception as e:
-        return f"❌ Aylık rapor oluşturulurken hata: {e}"
+        logging.error(f"❌ Aylık rapor oluşturulurken hata: {e}")
+        return f"❌ Aylık rapor oluşturulurken hata: {str(e)}"
 
 async def generate_tarih_araligi_raporu(start_date, end_date):
     try:
