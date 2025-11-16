@@ -1082,7 +1082,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         ai_analysis = {
             "gpt_analysis": gpt_rapor,
             "confidence": confidence,
-            "extraction_method": "gpt-4-mini",
+            "extraction_method": "gpt-4o-mini",
             "original_text_snippet": orijinal_metin[:100] if orijinal_metin else "",
             "raw_text": raw_text[:500] if raw_text else ""
         }
