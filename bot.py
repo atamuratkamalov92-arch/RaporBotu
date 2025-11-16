@@ -13,6 +13,8 @@ import html
 import base64
 import time as time_module
 import hashlib
+import subprocess
+import shlex
 from unicodedata import normalize
 from dotenv import load_dotenv
 from telegram import Update, BotCommand
@@ -279,25 +281,55 @@ async def yedekleme_gorevi(context: ContextTypes.DEFAULT_TYPE):
 def yedekle_postgres():
     try:
         timestamp = dt.datetime.now(TZ).strftime("%Y-%m-%d_%H-%M")
-        dump_file = f"postgres_backup_{timestamp}.sql"
+        dump_file = f"postgres_backup_{timestamp}.dump"
         dump_path = f"/tmp/{dump_file}"
 
         db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            logging.error("❌ DATABASE_URL bulunamadı")
+            return False
 
-        exit_code = os.system(f"pg_dump {db_url} > {dump_path}")
-
-        if exit_code != 0:
-            logging.error("❌ pg_dump çalıştırılırken hata oluştu")
+        # Use subprocess.run with safe argument handling
+        try:
+            with open(dump_path, 'wb') as f:
+                result = subprocess.run(
+                    ['pg_dump', '-Fc', db_url],
+                    stdout=f,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+            
+            if result.returncode != 0:
+                logging.error(f"❌ pg_dump başarısız (code {result.returncode}): {result.stderr.decode()}")
+                if os.path.exists(dump_path):
+                    os.unlink(dump_path)
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ pg_dump çalıştırma hatası: {e}")
+            if os.path.exists(dump_path):
+                os.unlink(dump_path)
             return False
 
         gcs_path = f"backups/sql/{dump_file}"
-        upload_backup_to_google(dump_path, gcs_path)
+        success = upload_backup_to_google(dump_path, gcs_path)
+        
+        # Clean up temp file
+        if os.path.exists(dump_path):
+            os.unlink(dump_path)
 
-        logging.info(f"💾 PostgreSQL yedeği alındı ve GCS'ye yüklendi: {dump_file}")
-        return True
+        if success:
+            logging.info(f"💾 PostgreSQL yedeği alındı ve GCS'ye yüklendi: {dump_file}")
+            return True
+        else:
+            logging.error("❌ PostgreSQL yedeği GCS'ye yüklenemedi")
+            return False
 
     except Exception as e:
         logging.error(f"❌ PostgreSQL yedeği sırasında hata: {e}")
+        # Clean up on any exception
+        if 'dump_path' in locals() and os.path.exists(dump_path):
+            os.unlink(dump_path)
         return False
 
 async def yedekle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -965,7 +997,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             WHERE user_id = %s AND project_name = %s AND report_date = %s
         """, (user_id, project_name, rapor_tarihi))
         
-        if existing_report and existing_report[0]:
+        # Safe check for existing report
+        if existing_report is not None and len(existing_report) > 0 and existing_report[0] is not None:
             logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
@@ -1197,7 +1230,7 @@ async def get_santiye_rapor_durumu(bugun):
             WHERE report_date = %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
         """, (bugun,))
         
-        return set(row[0] for row in rows if row[0])
+        return set(row[0] for row in rows if row and len(row) > 0 and row[0])
     except Exception as e:
         logging.error(f"Şantiye rapor durumu hatası: {e}")
         return set()
@@ -1224,10 +1257,12 @@ async def get_santiye_bazli_rapor_durumu(bugun):
         """, (bugun,))
         
         santiye_rapor_verenler = {}
-        for project_name, user_id in rows:
-            if project_name not in santiye_rapor_verenler:
-                santiye_rapor_verenler[project_name] = []
-            santiye_rapor_verenler[project_name].append(user_id)
+        for row in rows:
+            if row and len(row) >= 2:
+                project_name, user_id = row[0], row[1]
+                if project_name not in santiye_rapor_verenler:
+                    santiye_rapor_verenler[project_name] = []
+                santiye_rapor_verenler[project_name].append(user_id)
     
         return {
             'tum_santiyeler': tum_santiyeler,
@@ -1278,7 +1313,7 @@ class MaliyetAnaliz:
                 FROM ai_logs
             """)
             
-            if not result or result[0] == 0:
+            if not result or len(result) < 5 or result[0] is None or result[0] == 0:
                 return "🤖 AI Raporu: Henüz AI kullanımı yok"
             
             toplam, basarili, basarisiz, ilk_tarih, son_tarih = result
@@ -1302,9 +1337,11 @@ class MaliyetAnaliz:
             rapor += f"• Son Kullanım: {son_tarih[:10] if son_tarih else 'Yok'}\n\n"
             
             rapor += f"📅 Son 7 Gün:\n"
-            for gun, toplam_gun, basarili_gun in rows:
-                oran = (basarili_gun/toplam_gun*100) if toplam_gun > 0 else 0
-                rapor += f"• {gun}: {basarili_gun}/{toplam_gun} (%{oran:.1f})\n"
+            for row in rows:
+                if row and len(row) >= 3:
+                    gun, toplam_gun, basarili_gun = row
+                    oran = (basarili_gun/toplam_gun*100) if toplam_gun > 0 else 0
+                    rapor += f"• {gun}: {basarili_gun}/{toplam_gun} (%{oran:.1f})\n"
             
             return rapor
             
@@ -1376,7 +1413,7 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     result = await async_fetchone("SELECT EXISTS(SELECT 1 FROM reports WHERE user_id = %s AND report_date = %s)", 
                   (user_id, rapor_tarihi))
     
-    if result and result[0]:
+    if result and len(result) > 0 and result[0]:
         return False, "❌ Bu tarih için zaten rapor gönderdiniz."
     
     return True, ""
@@ -1446,7 +1483,11 @@ async def generate_gelismis_personel_ozeti(target_date):
         proje_analizleri = {}
         tum_projeler = set()
         
-        for user_id, rapor_tipi, proje_adi, kisi_sayisi, yapilan_is, ai_analysis in rows:
+        for row in rows:
+            if len(row) < 6:
+                continue
+            user_id, rapor_tipi, proje_adi, kisi_sayisi, yapilan_is, ai_analysis = row
+            
             if not proje_adi:
                 proje_adi = 'BELİRSİZ'
                 
@@ -1564,14 +1605,14 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        toplam_rapor = sum([x[1] for x in rows])
+        toplam_rapor = sum([x[1] for x in rows if len(x) >= 2])
         gun_sayisi = (end_date - start_date).days + 1
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
         en_aktif = rows[:3]
         
-        en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
+        en_pasif = [x for x in rows if len(x) >= 2 and x[1] < gun_sayisi * 0.5]
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
@@ -1597,25 +1638,17 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
         
-        # HATA DÜZELTME: genel_toplam_result kontrolü eklendi
-        if genel_toplam_result and len(genel_toplam_result) >= 5:
-            toplam_staff = genel_toplam_result[3] or 0
-            toplam_calisan = genel_toplam_result[0] or 0
-            toplam_mobilizasyon = genel_toplam_result[4] or 0
-            toplam_izinli = genel_toplam_result[2] or 0
-            toplam_hasta = genel_toplam_result[1] or 0
-        else:
-            # Eğer sonuç yoksa veya beklenen formatta değilse sıfır değerler kullan
-            toplam_staff = 0
-            toplam_calisan = 0
-            toplam_mobilizasyon = 0
-            toplam_izinli = 0
-            toplam_hasta = 0
+        # Safe extraction with defaults
+        toplam_staff = genel_toplam_result[3] if genel_toplam_result and len(genel_toplam_result) > 3 else 0
+        toplam_calisan = genel_toplam_result[0] if genel_toplam_result and len(genel_toplam_result) > 0 else 0
+        toplam_mobilizasyon = genel_toplam_result[4] if genel_toplam_result and len(genel_toplam_result) > 4 else 0
+        toplam_izinli = genel_toplam_result[2] if genel_toplam_result and len(genel_toplam_result) > 2 else 0
+        toplam_hasta = genel_toplam_result[1] if genel_toplam_result and len(genel_toplam_result) > 1 else 0
         
         genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
-        rapor_veren_santiyeler = set([row[0] for row in proje_detay_rows])
+        rapor_veren_santiyeler = set([row[0] for row in proje_detay_rows if row and len(row) > 0 and row[0]])
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
         mesaj = f"📈 HAFTALIK ÖZET RAPOR\n"
@@ -1628,36 +1661,44 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Verimlilik: %{verimlilik:.1f}\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
-            kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-            emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-            gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+        for i, row in enumerate(en_aktif, 1):
+            if len(row) >= 2:
+                user_id, rapor_sayisi = row[0], row[1]
+                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                gunluk_ortalama = rapor_sayisi / gun_sayisi
+                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         if en_pasif:
             mesaj += f"\n🔴 DÜŞÜK PERFORMANS (< %50 Katılım):\n"
-            for i, (user_id, rapor_sayisi) in enumerate(en_pasif[:3], 1):
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                katilim_orani = (rapor_sayisi / gun_sayisi) * 100
-                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
+            for i, row in enumerate(en_pasif[:3], 1):
+                if len(row) >= 2:
+                    user_id, rapor_sayisi = row[0], row[1]
+                    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                    katilim_orani = (rapor_sayisi / gun_sayisi) * 100
+                    emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                    mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71"]
-        for proje_adi, calisan, hasta, izinli, staff, mobilizasyon in proje_detay_rows:
-            if proje_adi in onemli_projeler:
-                toplam_proje = staff + calisan + mobilizasyon
-                if toplam_proje > 0:
-                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+        for row in proje_detay_rows:
+            if len(row) >= 6:
+                proje_adi, calisan, hasta, izinli, staff, mobilizasyon = row
+                if proje_adi in onemli_projeler:
+                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
+                    if toplam_proje > 0:
+                        mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
+                        mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
         
-        for proje_adi, calisan, hasta, izinli, staff, mobilizasyon in proje_detay_rows:
-            if proje_adi not in onemli_projeler:
-                toplam_proje = staff + calisan + mobilizasyon
-                if toplam_proje > 0:
-                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+        for row in proje_detay_rows:
+            if len(row) >= 6:
+                proje_adi, calisan, hasta, izinli, staff, mobilizasyon = row
+                if proje_adi not in onemli_projeler:
+                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
+                    if toplam_proje > 0:
+                        emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                        mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
@@ -1696,7 +1737,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        toplam_rapor = sum([x[1] for x in rows])
+        toplam_rapor = sum([x[1] for x in rows if len(x) >= 2])
         gun_sayisi = (end_date - start_date).days + 1
         
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
@@ -1704,7 +1745,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         en_aktif = rows[:3]
         
-        en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
+        en_pasif = [x for x in rows if len(x) >= 2 and x[1] < gun_sayisi * 0.5]
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
@@ -1730,25 +1771,17 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
         
-        # HATA DÜZELTME: genel_toplam_result kontrolü eklendi
-        if genel_toplam_result and len(genel_toplam_result) >= 5:
-            toplam_staff = genel_toplam_result[3] or 0
-            toplam_calisan = genel_toplam_result[0] or 0
-            toplam_mobilizasyon = genel_toplam_result[4] or 0
-            toplam_izinli = genel_toplam_result[2] or 0
-            toplam_hasta = genel_toplam_result[1] or 0
-        else:
-            # Eğer sonuç yoksa veya beklenen formatta değilse sıfır değerler kullan
-            toplam_staff = 0
-            toplam_calisan = 0
-            toplam_mobilizasyon = 0
-            toplam_izinli = 0
-            toplam_hasta = 0
+        # Safe extraction with defaults
+        toplam_staff = genel_toplam_result[3] if genel_toplam_result and len(genel_toplam_result) > 3 else 0
+        toplam_calisan = genel_toplam_result[0] if genel_toplam_result and len(genel_toplam_result) > 0 else 0
+        toplam_mobilizasyon = genel_toplam_result[4] if genel_toplam_result and len(genel_toplam_result) > 4 else 0
+        toplam_izinli = genel_toplam_result[2] if genel_toplam_result and len(genel_toplam_result) > 2 else 0
+        toplam_hasta = genel_toplam_result[1] if genel_toplam_result and len(genel_toplam_result) > 1 else 0
         
         genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
-        rapor_veren_santiyeler = set([row[0] for row in proje_detay_rows])
+        rapor_veren_santiyeler = set([row[0] for row in proje_detay_rows if row and len(row) > 0 and row[0]])
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
         mesaj = f"🗓️ AYLIK ÖZET RAPOR\n"
@@ -1762,36 +1795,44 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
-            kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-            emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-            gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+        for i, row in enumerate(en_aktif, 1):
+            if len(row) >= 2:
+                user_id, rapor_sayisi = row[0], row[1]
+                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                gunluk_ortalama = rapor_sayisi / gun_sayisi
+                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         if en_pasif:
             mesaj += f"\n🔴 DÜŞÜK PERFORMANS (< %50 Katılım):\n"
-            for i, (user_id, rapor_sayisi) in enumerate(en_pasif[:3], 1):
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                katilim_orani = (rapor_sayisi / gun_sayisi) * 100
-                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
+            for i, row in enumerate(en_pasif[:3], 1):
+                if len(row) >= 2:
+                    user_id, rapor_sayisi = row[0], row[1]
+                    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                    katilim_orani = (rapor_sayisi / gun_sayisi) * 100
+                    emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                    mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71"]
-        for proje_adi, calisan, hasta, izinli, staff, mobilizasyon in proje_detay_rows:
-            if proje_adi in onemli_projeler:
-                toplam_proje = staff + calisan + mobilizasyon
-                if toplam_proje > 0:
-                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+        for row in proje_detay_rows:
+            if len(row) >= 6:
+                proje_adi, calisan, hasta, izinli, staff, mobilizasyon = row
+                if proje_adi in onemli_projeler:
+                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
+                    if toplam_proje > 0:
+                        mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
+                        mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
         
-        for proje_adi, calisan, hasta, izinli, staff, mobilizasyon in proje_detay_rows:
-            if proje_adi not in onemli_projeler:
-                toplam_proje = staff + calisan + mobilizasyon
-                if toplam_proje > 0:
-                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+        for row in proje_detay_rows:
+            if len(row) >= 6:
+                proje_adi, calisan, hasta, izinli, staff, mobilizasyon = row
+                if proje_adi not in onemli_projeler:
+                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
+                    if toplam_proje > 0:
+                        emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                        mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
@@ -1816,8 +1857,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         return mesaj
         
     except Exception as e:
-        logging.error(f"❌ Aylık rapor oluşturulurken hata: {e}")
-        return f"❌ Aylık rapor oluşturulurken hata: {str(e)}"
+        return f"❌ Aylık rapor oluşturulurken hata: {e}"
 
 async def generate_tarih_araligi_raporu(start_date, end_date):
     try:
@@ -1832,7 +1872,7 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        toplam_rapor = sum([x[1] for x in rows])
+        toplam_rapor = sum([x[1] for x in rows if len(x) >= 2])
         gun_sayisi = (end_date - start_date).days + 1
         
         en_aktif = rows[:3]
@@ -1843,7 +1883,7 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s AND report_type = 'RAPOR'
         """, (start_date, end_date))
         
-        toplam_personel = personel_result[0] or 0 if personel_result else 0
+        toplam_personel = personel_result[0] if personel_result and len(personel_result) > 0 else 0
         
         mesaj = f"📅 TARİH ARALIĞI RAPORU\n"
         mesaj += f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n\n"
@@ -1856,11 +1896,13 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
-            kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-            emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-            gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+        for i, row in enumerate(en_aktif, 1):
+            if len(row) >= 2:
+                user_id, rapor_sayisi = row[0], row[1]
+                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                gunluk_ortalama = rapor_sayisi / gun_sayisi
+                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         return mesaj
     except Exception as e:
@@ -1917,23 +1959,23 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bu_ay_baslangic = bugun.replace(day=1)
         
         bugun_rapor = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
-        bugun_rapor_sayisi = bugun_rapor[0] if bugun_rapor else 0
+        bugun_rapor_sayisi = bugun_rapor[0] if bugun_rapor and len(bugun_rapor) > 0 else 0
         
         hafta_rapor = await async_fetchone("""
             SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
         """, (bu_hafta_baslangic, bugun))
-        hafta_rapor_sayisi = hafta_rapor[0] if hafta_rapor else 0
+        hafta_rapor_sayisi = hafta_rapor[0] if hafta_rapor and len(hafta_rapor) > 0 else 0
         
         ay_rapor = await async_fetchone("""
             SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
         """, (bu_ay_baslangic, bugun))
-        ay_rapor_sayisi = ay_rapor[0] if ay_rapor else 0
+        ay_rapor_sayisi = ay_rapor[0] if ay_rapor and len(ay_rapor) > 0 else 0
         
         toplam_kullanici = await async_fetchone("SELECT COUNT(DISTINCT user_id) FROM reports")
-        toplam_kullanici_sayisi = toplam_kullanici[0] if toplam_kullanici else 0
+        toplam_kullanici_sayisi = toplam_kullanici[0] if toplam_kullanici and len(toplam_kullanici) > 0 else 0
         
         toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
-        toplam_rapor_sayisi = toplam_rapor[0] if toplam_rapor else 0
+        toplam_rapor_sayisi = toplam_rapor[0] if toplam_rapor and len(toplam_rapor) > 0 else 0
         
         en_aktif = await async_fetchone("""
             SELECT user_id, COUNT(*) as rapor_sayisi 
@@ -1943,7 +1985,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             LIMIT 1
         """)
         
-        if en_aktif and en_aktif[0]:
+        if en_aktif and len(en_aktif) >= 2 and en_aktif[0] is not None:
             en_aktif_kullanici = id_to_name.get(en_aktif[0], "Kullanıcı")
             en_aktif_rapor = en_aktif[1]
         else:
@@ -2340,7 +2382,10 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             raise Exception("Belirtilen tarih aralığında rapor bulunamadı")
         
         excel_data = []
-        for user_id, tarih, rapor_tipi, icerik, kisi_sayisi, proje_adi, is_kategorisi, personel_tipi, delivered_date, is_edited in rows:
+        for row in rows:
+            if len(row) < 10:
+                continue
+            user_id, tarih, rapor_tipi, icerik, kisi_sayisi, proje_adi, is_kategorisi, personel_tipi, delivered_date, is_edited = row
             kullanici_adi = id_to_name.get(user_id, f"Kullanıcı")
             
             try:
@@ -2558,7 +2603,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         result = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
-        toplam_rapor = result[0] if result else 0
+        toplam_rapor = result[0] if result and len(result) > 0 else 0
         
         mesaj = "🕠 Gün Sonu Şantiye Rapor Analizi\n\n"
         
