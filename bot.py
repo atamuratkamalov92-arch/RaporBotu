@@ -296,6 +296,30 @@ async def yedekleme_gorevi(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"💾 Yedekleme hatası: {e}")
 
+def yedekle_postgres():
+    try:
+        timestamp = dt.datetime.now(TZ).strftime("%Y-%m-%d_%H-%M")
+        dump_file = f"postgres_backup_{timestamp}.sql"
+        dump_path = f"/tmp/{dump_file}"
+
+        db_url = os.getenv("DATABASE_URL")
+
+        exit_code = os.system(f"pg_dump {db_url} > {dump_path}")
+
+        if exit_code != 0:
+            logging.error("❌ pg_dump çalıştırılırken hata oluştu")
+            return False
+
+        gcs_path = f"backups/sql/{dump_file}"
+        upload_backup_to_google(dump_path, gcs_path)
+
+        logging.info(f"💾 PostgreSQL yedeği alındı ve GCS'ye yüklendi: {dump_file}")
+        return True
+
+    except Exception as e:
+        logging.error(f"❌ PostgreSQL yedeği sırasında hata: {e}")
+        return False
+
 # ----------------------------- MANUEL YEDEKLEME KOMUTU -----------------------------
 async def yedekle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manuel yedekleme komutu - Sadece Super Admin"""
@@ -822,7 +846,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     time_module.sleep(retry_delay)
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
-
+            
             try:
                 data = json.loads(content)
                 
@@ -843,7 +867,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         # DM'de dm_info dışında boş array gelirse de dm_info'ya çevir
                         if len(data) == 0:
                             return {"dm_info": "no_report_detected"}
-
+                
                 # ---- Rapor filtreleme - TÜM KARARLAR UYGULANDI ----
                 filtered_reports = []
                 for report in data:
@@ -1522,9 +1546,10 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
-# ----------------------------- EKSİK FONKSİYONLARI EKLE -----------------------------
+# ----------------------------- GÜNCELLENMİŞ RAPOR FONKSİYONLARI - İSTENEN FORMAT -----------------------------
+
 async def generate_gelismis_personel_ozeti(target_date):
-    """📊 Günlük personel özeti oluştur"""
+    """📊 Günlük personel özeti - İSTENEN FORMAT"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description
@@ -1543,44 +1568,59 @@ async def generate_gelismis_personel_ozeti(target_date):
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
-                    'toplam_kisi': 0, 'calisan': 0, 'izinli': 0, 'hastalik': 0
+                    'staff': 0, 'calisan': 0, 'izinli': 0, 'hastalik': 0, 'mobilizasyon': 0
                 }
             
-            if rapor_tipi == "RAPOR":
-                proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+            # GPT analizinden gelen verilere göre sınıflandırma
+            yapilan_is_lower = (yapilan_is or '').lower()
+            
+            if 'staff' in yapilan_is_lower:
+                proje_analizleri[proje_adi]['staff'] += kisi_sayisi
+            elif 'mobilizasyon' in yapilan_is_lower:
+                proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
             elif rapor_tipi == "IZIN/ISYOK":
-                if 'hasta' in (yapilan_is or '').lower():
+                if 'hasta' in yapilan_is_lower:
                     proje_analizleri[proje_adi]['hastalik'] += kisi_sayisi
                 else:
                     proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
+            else:
+                proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
             
-            proje_analizleri[proje_adi]['toplam_kisi'] += kisi_sayisi
             tum_projeler.add(proje_adi)
         
         mesaj = f"📊 {target_date.strftime('%d.%m.%Y')} GÜNLÜK PERSONEL ÖZETİ\n\n"
         
         genel_toplam = 0
+        genel_staff = 0
         genel_calisan = 0
         genel_izinli = 0
         genel_hastalik = 0
+        genel_mobilizasyon = 0
         
-        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam_kisi'], reverse=True):
-            if analiz['toplam_kisi'] > 0:
-                genel_toplam += analiz['toplam_kisi']
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: sum(x[1].values()), reverse=True):
+            proje_toplam = sum(analiz.values())
+            if proje_toplam > 0:
+                genel_toplam += proje_toplam
+                genel_staff += analiz['staff']
                 genel_calisan += analiz['calisan']
                 genel_izinli += analiz['izinli']
                 genel_hastalik += analiz['hastalik']
+                genel_mobilizasyon += analiz['mobilizasyon']
                 
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['toplam_kisi']} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {proje_toplam} kişi\n"
                 
                 durum_detay = []
+                if analiz['staff'] > 0: 
+                    durum_detay.append(f"Staff:{analiz['staff']}")
                 if analiz['calisan'] > 0: 
                     durum_detay.append(f"Çalışan:{analiz['calisan']}")
                 if analiz['izinli'] > 0: 
                     durum_detay.append(f"İzinli:{analiz['izinli']}")
                 if analiz['hastalik'] > 0: 
                     durum_detay.append(f"Hastalık:{analiz['hastalik']}")
+                if analiz['mobilizasyon'] > 0: 
+                    durum_detay.append(f"Mobilizasyon:{analiz['mobilizasyon']}")
                 
                 if durum_detay:
                     mesaj += f"   └─ {', '.join(durum_detay)}\n\n"
@@ -1588,14 +1628,23 @@ async def generate_gelismis_personel_ozeti(target_date):
         mesaj += f"📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
-            mesaj += f"🎯 DAĞILIM: \n"
-            mesaj += f"   • Çalışan: {genel_calisan} kişi (%{genel_calisan/genel_toplam*100:.0f})\n"
+            mesaj += f"🎯 DAĞILIM:\n"
+            if genel_staff > 0:
+                mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
+            if genel_calisan > 0:
+                mesaj += f"• Çalışan: {genel_calisan} (%{genel_calisan/genel_toplam*100:.1f})\n"
             if genel_izinli > 0:
-                mesaj += f"   • İzinli: {genel_izinli} kişi (%{genel_izinli/genel_toplam*100:.0f})\n"
+                mesaj += f"• İzinli: {genel_izinli} (%{genel_izinli/genel_toplam*100:.1f})\n"
             if genel_hastalik > 0:
-                mesaj += f"   • Hastalık: {genel_hastalik} kişi (%{genel_hastalik/genel_toplam*100:.0f})\n"
+                mesaj += f"• Hastalık: {genel_hastalik} (%{genel_hastalik/genel_toplam*100:.1f})\n"
+            if genel_mobilizasyon > 0:
+                mesaj += f"• Mobilizasyon: {genel_mobilizasyon} (%{genel_mobilizasyon/genel_toplam*100:.1f})\n"
         
-        eksik_projeler = tum_projeler - set(proje_analizleri.keys())
+        # Eksik projeleri kontrol et
+        aktif_projeler = set(proje_analizleri.keys())
+        tum_santiyeler = set(santiye_sorumlulari.keys())
+        eksik_projeler = tum_santiyeler - aktif_projeler
+        
         if eksik_projeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(eksik_projeler))}"
         
@@ -1604,11 +1653,11 @@ async def generate_gelismis_personel_ozeti(target_date):
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
-    """Haftalık rapor mesajı oluştur"""
+    """Haftalık rapor mesajı - İSTENEN FORMAT"""
     try:
+        # Temel istatistikler
         rows = await async_fetchall("""
-            SELECT user_id, COUNT(*) as rapor_sayisi,
-                   SUM(CASE WHEN report_type = 'RAPOR' THEN 1 ELSE 0 END) as calisma_raporu
+            SELECT user_id, COUNT(*) as rapor_sayisi
             FROM reports 
             WHERE report_date BETWEEN %s AND %s
             GROUP BY user_id
@@ -1619,13 +1668,17 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
         toplam_rapor = sum([x[1] for x in rows])
-        toplam_calisma_raporu = sum([x[2] for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
+        # En aktif 3 kullanıcı
         en_aktif = rows[:3]
         
+        # Düşük performanslı kullanıcılar (<%50)
+        en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
+        
+        # Proje bazlı personel
         proje_rows = await async_fetchall("""
             SELECT project_name, SUM(person_count) as toplam_kisi
             FROM reports 
@@ -1638,35 +1691,44 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"*{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}*\n\n"
         
         mesaj += f"📊 GENEL İSTATİSTİKLER:\n"
-        mesaj += f"   • 📨 Toplam Rapor: {toplam_rapor}\n"
-        mesaj += f"   • ✅ Çalışma Raporu: {toplam_calisma_raporu}\n"
-        mesaj += f"   • 👥 Rapor Gönderen: {len(rows)} kişi\n"
-        mesaj += f"   • 📅 İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"   • 🎯 Verimlilik: %{verimlilik:.1f}\n\n"
+        mesaj += f"• 📨 Toplam Rapor: {toplam_rapor}\n"
+        mesaj += f"• 👥 Rapor Gönderen: {len(rows)} kişi\n"
+        mesaj += f"• 📅 İş Günü: {gun_sayisi} gün\n"
+        mesaj += f"• 🎯 Verimlilik: %{verimlilik:.1f}\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi, calisma_raporu) in enumerate(en_aktif, 1):
+        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
             kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
             emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
             gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"   {emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+        
+        if en_pasif:
+            mesaj += f"\n🔴 DÜŞÜK PERFORMANS (<%50 Katılım):\n"
+            for i, (user_id, rapor_sayisi) in enumerate(en_pasif[:3], 1):
+                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                katilim_orani = (rapor_sayisi / gun_sayisi) * 100
+                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
+                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         for proje_adi, toplam_kisi in proje_rows:
             if toplam_kisi > 0:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"   {emoji} {proje_adi}: {toplam_kisi} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {toplam_kisi} kişi\n"
+        
+        mesaj += "\n📝 Lütfen eksiksiz rapor paylaşımına devam edelim. Teşekkürler."
         
         return mesaj
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
 async def generate_aylik_rapor_mesaji(start_date, end_date):
-    """Aylık rapor mesajı oluştur"""
+    """Aylık rapor mesajı - İSTENEN FORMAT"""
     try:
+        # Temel istatistikler
         rows = await async_fetchall("""
-            SELECT user_id, COUNT(*) as rapor_sayisi,
-                   SUM(CASE WHEN report_type = 'RAPOR' THEN 1 ELSE 0 END) as calisma_raporu
+            SELECT user_id, COUNT(*) as rapor_sayisi
             FROM reports 
             WHERE report_date BETWEEN %s AND %s
             GROUP BY user_id
@@ -1677,36 +1739,54 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
         toplam_rapor = sum([x[1] for x in rows])
-        toplam_calisma_raporu = sum([x[2] for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
+        # En aktif 3 kullanıcı
         en_aktif = rows[:3]
+        
+        # Düşük performanslı kullanıcılar (<%50)
         en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
+        
+        # Proje bazlı personel
+        proje_rows = await async_fetchall("""
+            SELECT project_name, SUM(person_count) as toplam_kisi
+            FROM reports 
+            WHERE report_date BETWEEN %s AND %s AND report_type = 'RAPOR'
+            GROUP BY project_name
+            ORDER BY toplam_kisi DESC
+        """, (start_date, end_date))
         
         mesaj = f"🗓️ AYLIK ÖZET RAPOR\n"
         mesaj += f"*{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}*\n\n"
         
         mesaj += f"📈 PERFORMANS ANALİZİ:\n"
-        mesaj += f"   • 📊 Toplam Rapor: {toplam_rapor}\n"
-        mesaj += f"   • ✅ Çalışma Raporu: {toplam_calisma_raporu}\n"
-        mesaj += f"   • 📉 Pasif Kullanıcı: {len(en_pasif)}\n"
-        mesaj += f"   • 📅 İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"   • 📨 Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n\n"
+        mesaj += f"• 📊 Toplam Rapor: {toplam_rapor}\n"
+        mesaj += f"• 📉 Pasif Kullanıcı: {len(en_pasif)}\n"
+        mesaj += f"• 📅 İş Günü: {gun_sayisi} gün\n"
+        mesaj += f"• 📨 Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi, calisma_raporu) in enumerate(en_aktif, 1):
+        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
             kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
             emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
             gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"   {emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         if en_pasif:
-            mesaj += f"\n🔴 DÜŞÜK PERFORMANS (<%50 katılım):\n"
-            for i, (user_id, rapor_sayisi, calisma_raporu) in enumerate(en_pasif[:3], 1):
+            mesaj += f"\n🔴 DÜŞÜK PERFORMANS (<%50 Katılım):\n"
+            for i, (user_id, rapor_sayisi) in enumerate(en_pasif[:3], 1):
                 kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
                 katilim_orani = (rapor_sayisi / gun_sayisi) * 100
                 emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                mesaj += f"   {emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
+                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
+        
+        mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
+        for proje_adi, toplam_kisi in proje_rows:
+            if toplam_kisi > 0:
+                emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                mesaj += f"{emoji} {proje_adi}: {toplam_kisi} kişi\n"
+        
+        mesaj += "\n📝 Lütfen eksiksiz rapor paylaşımına devam edelim. Teşekkürler."
         
         return mesaj
     except Exception as e:
@@ -1716,8 +1796,7 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
     """Tarih aralığı raporu oluştur"""
     try:
         rows = await async_fetchall("""
-            SELECT user_id, COUNT(*) as rapor_sayisi,
-                   SUM(CASE WHEN report_type = 'RAPOR' THEN 1 ELSE 0 END) as calisma_raporu
+            SELECT user_id, COUNT(*) as rapor_sayisi
             FROM reports 
             WHERE report_date BETWEEN %s AND %s
             GROUP BY user_id
@@ -1728,7 +1807,6 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
         toplam_rapor = sum([x[1] for x in rows])
-        toplam_calisma_raporu = sum([x[2] for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
         en_aktif = rows[:3]
@@ -1745,23 +1823,147 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         mesaj += f"*{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}*\n\n"
         
         mesaj += f"📊 GENEL İSTATİSTİKLER:\n"
-        mesaj += f"   • 📨 Toplam Rapor: {toplam_rapor}\n"
-        mesaj += f"   • ✅ Çalışma Raporu: {toplam_calisma_raporu}\n"
-        mesaj += f"   • 👥 Rapor Gönderen: {len(rows)} kişi\n"
-        mesaj += f"   • 📅 Gün Sayısı: {gun_sayisi} gün\n"
-        mesaj += f"   • 📨 Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
-        mesaj += f"   • 👷 Toplam Personel: {toplam_personel} kişi\n\n"
+        mesaj += f"• 📨 Toplam Rapor: {toplam_rapor}\n"
+        mesaj += f"• 👥 Rapor Gönderen: {len(rows)} kişi\n"
+        mesaj += f"• 📅 Gün Sayısı: {gun_sayisi} gün\n"
+        mesaj += f"• 📨 Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
+        mesaj += f"• 👷 Toplam Personel: {toplam_personel} kişi\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, (user_id, rapor_sayisi, calisma_raporu) in enumerate(en_aktif, 1):
+        for i, (user_id, rapor_sayisi) in enumerate(en_aktif, 1):
             kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
             emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
             gunluk_ortalama = rapor_sayisi / gun_sayisi
-            mesaj += f"   {emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
+            mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         return mesaj
     except Exception as e:
         return f"❌ Tarih aralığı raporu oluşturulurken hata: {e}"
+
+# ----------------------------- YENİ KOMUTLAR: EKSİK RAPORLAR ve İSTATİSTİK -----------------------------
+
+async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Eksik raporları göster - Sadece Admin"""
+    if not await admin_kontrol(update, context):
+        return
+    
+    try:
+        bugun = dt.datetime.now(TZ).date()
+        durum = await get_santiye_bazli_rapor_durumu(bugun)
+        
+        mesaj = f"📊 EKSİK RAPORLAR - {bugun.strftime('%d.%m.%Y')}\n\n"
+        
+        if not durum['eksik_santiyeler']:
+            mesaj += "🎉 Tüm şantiyeler raporlarını iletti! Harika iş!"
+        else:
+            mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n\n"
+            
+            for santiye in sorted(durum['eksik_santiyeler']):
+                sorumlular = santiye_sorumlulari.get(santiye, [])
+                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
+                
+                mesaj += f"🏗️ {santiye}\n"
+                mesaj += f"   👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
+        
+        # Rapor göndermeyen kullanıcıları da ekleyelim
+        rapor_gonderenler = set()
+        for santiye in durum['rapor_veren_santiyeler']:
+            rapor_gonderenler.update(durum['santiye_rapor_verenler'].get(santiye, []))
+        
+        rapor_gondermeyenler = set(rapor_sorumlulari) - rapor_gonderenler
+        
+        if rapor_gondermeyenler:
+            mesaj += f"👤 RAPOR GÖNDERMEYEN KULLANICILAR ({len(rapor_gondermeyenler)}):\n"
+            for user_id in sorted(rapor_gondermeyenler):
+                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
+                mesaj += f"• {kullanici_adi}\n"
+        
+        await update.message.reply_text(mesaj, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Eksik raporlar kontrol edilirken hata: {e}")
+
+async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genel istatistikleri göster - Sadece Admin"""
+    if not await admin_kontrol(update, context):
+        return
+    
+    try:
+        # Genel istatistikler
+        bugun = dt.datetime.now(TZ).date()
+        bu_hafta_baslangic = bugun - dt.timedelta(days=bugun.weekday())
+        bu_ay_baslangic = bugun.replace(day=1)
+        
+        # Bugünkü rapor sayısı
+        bugun_rapor = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
+        bugun_rapor_sayisi = bugun_rapor[0] if bugun_rapor else 0
+        
+        # Bu hafta rapor sayısı
+        hafta_rapor = await async_fetchone("""
+            SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
+        """, (bu_hafta_baslangic, bugun))
+        hafta_rapor_sayisi = hafta_rapor[0] if hafta_rapor else 0
+        
+        # Bu ay rapor sayısı
+        ay_rapor = await async_fetchone("""
+            SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
+        """, (bu_ay_baslangic, bugun))
+        ay_rapor_sayisi = ay_rapor[0] if ay_rapor else 0
+        
+        # Toplam kullanıcı ve rapor istatistikleri
+        toplam_kullanici = await async_fetchone("SELECT COUNT(DISTINCT user_id) FROM reports")
+        toplam_kullanici_sayisi = toplam_kullanici[0] if toplam_kullanici else 0
+        
+        toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
+        toplam_rapor_sayisi = toplam_rapor[0] if toplam_rapor else 0
+        
+        # En aktif kullanıcı
+        en_aktif = await async_fetchone("""
+            SELECT user_id, COUNT(*) as rapor_sayisi 
+            FROM reports 
+            GROUP BY user_id 
+            ORDER BY rapor_sayisi DESC 
+            LIMIT 1
+        """)
+        
+        if en_aktif:
+            en_aktif_kullanici = id_to_name.get(en_aktif[0], "Kullanıcı")
+            en_aktif_rapor = en_aktif[1]
+        else:
+            en_aktif_kullanici = "Yok"
+            en_aktif_rapor = 0
+        
+        mesaj = "📊 GENEL İSTATİSTİKLER\n\n"
+        
+        mesaj += "📅 GÜNLÜK İSTATİSTİKLER:\n"
+        mesaj += f"• Bugünkü Rapor: {bugun_rapor_sayisi}\n"
+        mesaj += f"• Bu Hafta: {hafta_rapor_sayisi}\n"
+        mesaj += f"• Bu Ay: {ay_rapor_sayisi}\n\n"
+        
+        mesaj += "👥 KULLANICI İSTATİSTİKLERİ:\n"
+        mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
+        mesaj += f"• Rapor Sorumlusu: {len(rapor_sorumlulari)}\n"
+        mesaj += f"• Admin: {len(ADMINS)}\n"
+        mesaj += f"• Şantiye: {len(santiye_sorumlulari)}\n\n"
+        
+        mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
+        mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
+        mesaj += f"• En Aktif Kullanıcı: {en_aktif_kullanici} ({en_aktif_rapor} rapor)\n"
+        
+        if toplam_kullanici_sayisi > 0:
+            ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
+            mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
+        
+        # Bugünkü şantiye durumu
+        durum = await get_santiye_bazli_rapor_durumu(bugun)
+        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU:\n"
+        mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
+        mesaj += f"• Başarı Oranı: %{(len(durum['rapor_veren_santiyeler'])/len(durum['tum_santiyeler'])*100:.1f}\n"
+        
+        await update.message.reply_text(mesaj, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
 # ----------------------------- KOMUTLAR -----------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1791,6 +1993,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🛡️ Admin Komutları:\n"
             f"`/bugun` - Bugünün özeti\n"
             f"`/dun` - Dünün özeti\n"
+            f"`/eksikraporlar` - Eksik raporları listele\n"
+            f"`/istatistik` - Genel istatistikler\n"
             f"`/haftalik_rapor` - Haftalık rapor\n"
             f"`/aylik_rapor` - Aylık rapor\n"
             f"`/tariharaligi [baslangic] [bitis]` - Tarih aralığı raporu\n"
@@ -2236,6 +2440,7 @@ def schedule_jobs(app):
     jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
+    jq.run_daily(lambda context: yedekle_postgres(), time=dt.time(23, 10, tzinfo=TZ))
     
     jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 40, tzinfo=TZ), days=(4,))
     
@@ -2444,7 +2649,7 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         end_date = today.replace(day=1) - dt.timedelta(days=1)
         
         mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
-        mesaj += "\n\n📝 Lütfen eksiksiz rapor paylaşımına devam edelim. Teşekkürler."
+        mesaj += "\n\n📝 Lütfen eksiksiz rapor paylaşímına devam edelim. Teşekkürler."
         
         if GROUP_ID:
             try:
@@ -2490,6 +2695,8 @@ async def post_init(application: Application):
         
         BotCommand("bugun", "Bugünün özeti (Admin)"),
         BotCommand("dun", "Dünün özeti (Admin)"),
+        BotCommand("eksikraporlar", "Eksik raporları listele (Admin)"),
+        BotCommand("istatistik", "Genel istatistikler (Admin)"),
         BotCommand("haftalik_rapor", "Haftalık rapor (Admin)"),
         BotCommand("aylik_rapor", "Aylık rapor (Admin)"),
         BotCommand("tariharaligi", "Tarih aralığı raporu (Admin)"),
@@ -2525,6 +2732,8 @@ def main():
         # Admin komutları
         app.add_handler(CommandHandler("bugun", bugun_cmd))
         app.add_handler(CommandHandler("dun", dun_cmd))
+        app.add_handler(CommandHandler("eksikraporlar", eksikraporlar_cmd))
+        app.add_handler(CommandHandler("istatistik", istatistik_cmd))
         app.add_handler(CommandHandler("haftalik_rapor", haftalik_rapor_cmd))
         app.add_handler(CommandHandler("aylik_rapor", aylik_rapor_cmd))
         app.add_handler(CommandHandler("tariharaligi", tariharaligi_cmd))
