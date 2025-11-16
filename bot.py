@@ -1,5 +1,3 @@
-[file name]: bot.py
-[file content begin]
 import os
 import re
 import psycopg2
@@ -14,6 +12,7 @@ import requests
 import html
 import base64
 import time as time_module
+import hashlib
 from unicodedata import normalize
 from dotenv import load_dotenv
 from telegram import Update, BotCommand
@@ -378,6 +377,8 @@ TUM_KULLANICILAR = []
 santiye_sorumlulari = {}
 santiye_rapor_durumu = {}
 last_excel_update = 0
+excel_file_hash = None
+excel_last_modified = 0
 
 # ----------------------------- USER ROLE CACHE -----------------------------
 user_role_cache = {}
@@ -429,17 +430,49 @@ def _to_int_or_none(x):
     except (ValueError, TypeError):
         return None
 
-# ----------------------------- ŞANTİYE BAZLI SORUMLULUK SİSTEMİ -----------------------------
-def load_excel():
-    """Excel okunamazsa fallback kullanıcı listesini kullan"""
-    global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol, ADMINS, IZLEYICILER, TUM_KULLANICILAR, last_excel_update
-    global santiye_sorumlulari, santiye_rapor_durumu
+def get_file_hash(filename):
+    """Dosya hash'ini hesapla"""
+    try:
+        if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        return None
+    except:
+        return None
+
+# ----------------------------- AKILLI EXCEL SİSTEMİ - TÜM KARARLAR DAHİL -----------------------------
+def load_excel_intelligent():
+    """AKILLI Excel yükleme - TÜM KARARLAR UYGULANDI"""
+    global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol, ADMINS, IZLEYICILER, TUM_KULLANICILAR
+    global santiye_sorumlulari, santiye_rapor_durumu, last_excel_update, excel_file_hash, excel_last_modified
     
     try:
-        df = pd.read_excel(USERS_FILE)
-        logging.info("✅ Excel dosyası başarıyla yüklendi")
+        # Dosya değişmiş mi kontrol et - ÖNBELLEK MANTIĞI
+        current_hash = get_file_hash(USERS_FILE)
+        current_mtime = os.path.getmtime(USERS_FILE) if os.path.exists(USERS_FILE) else 0
+        
+        # Dosya değişmemişse ve önbellek varsa yeniden yükleme - PERFORMANS İYİLEŞTİRMESİ
+        if (current_hash == excel_file_hash and 
+            current_mtime == excel_last_modified and 
+            df is not None):
+            logging.info("✅ Excel önbellekte - Yeniden yüklemeye gerek yok")
+            return
+        
+        # Excel okumayı dene
+        try:
+            df = pd.read_excel(USERS_FILE)
+            logging.info("✅ Excel dosyası başarıyla yüklendi")
+            
+            # Hash ve mtime'ı güncelle
+            excel_file_hash = current_hash
+            excel_last_modified = current_mtime
+            
+        except Exception as e:
+            logging.error(f"❌ Excel okuma hatası: {e}. Fallback kullanıcı listesi kullanılıyor.")
+            df = pd.DataFrame(FALLBACK_USERS)
+    
     except Exception as e:
-        logging.error(f"❌ Excel okuma hatası: {e}. Fallback kullanıcı listesi kullanılıyor.")
+        logging.error(f"❌ Excel yükleme hatası: {e}. Fallback kullanıcı listesi kullanılıyor.")
         df = pd.DataFrame(FALLBACK_USERS)
     
     temp_rapor_sorumlulari = []
@@ -464,6 +497,10 @@ def load_excel():
             continue
 
         if tid and fullname:
+            # TELEGRAM ID DÜZELTME - GÜVENLİK KARARI
+            if tid == 10001573260:  # Hatalı ID
+                tid = 1000157326   # Doğru ID
+                
             tid = int(tid)
             temp_id_to_name[tid] = fullname
             temp_id_to_status[tid] = status
@@ -503,18 +540,15 @@ def load_excel():
     
     santiye_rapor_durumu = {}
     
+    # SUPER ADMIN HER ZAMAN EKLENSİN - GÜVENLİK KARARI
     if SUPER_ADMIN_ID not in ADMINS:
         ADMINS.append(SUPER_ADMIN_ID)
     
     last_excel_update = os.path.getmtime(USERS_FILE) if os.path.exists(USERS_FILE) else 0
-    logging.info(f"Excel yüklendi: {len(rapor_sorumlulari)} takip edilen kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye")
+    logging.info(f"✅ Excel yüklendi: {len(rapor_sorumlulari)} takip edilen kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye")
 
-load_excel()
-
-# PostgreSQL bağlantısı
-def get_db_connection():
-    """PostgreSQL bağlantısını döndür"""
-    return psycopg2.connect(os.environ['DATABASE_URL'], sslmode='require')
+# İlk yükleme
+load_excel_intelligent()
 
 # ----------------------------- MEDIA FİLTRE BLOĞU -----------------------------
 def is_media_message(message) -> bool:
@@ -544,183 +578,202 @@ def is_media_message(message) -> bool:
 
     return False
 
-# ----------------------------- GÜNCELLENMİŞ OPENAI API (GERÇEK RAPORLARA GÖRE) -----------------------------
-SYSTEM_PROMPT = """SEN BİR İNŞAAT RAPORU UZMANISIN. KRİTİK KURALLAR:
+# ----------------------------- GÜNCELLENMİŞ OPENAI API (TÜM KARARLAR DAHİL) -----------------------------
+SYSTEM_PROMPT = """
+SEN BİR İNŞAAT RAPORU UZMANISIN. AŞAĞIDAKİ TÜM KURALLAR KESİNLİKLE UYGULANACAK:
 
 ==================================================
-🎯 MEVCUT SİSTEM KORUMA - DEĞİŞMEYECEK!
+🎯 SİSTEM MİMARİSİ - DEĞİŞMEYECEK!
 ==================================================
-• Tüm komutlar ve rapor formatları AYNI KALACAK
+• Tüm komutlar ve rapor, ozet, cikti formatları AYNI KALACAK
+• Grup/DM davranışları KORUNACAK
+• Zamanlanmış görevler AYNI çalışacak
 
 ==================================================
-📊 TOPLAM PERSONEL HESAPLAMA ÖNCELİĞİ (GERÇEK ÖRNEKLERE GÖRE)
+🚀 GERÇEK RAPOR ANALİZİNE DAYALI PERSONEL HESAPLAMA
 ==================================================
-1. ÖNCELİKLE "GENEL ÖZET" BÖLÜMÜNÜ ARA:
-   - "Genel toplam: X kişi" → present_workers = X
-   - "Toplam: X" → present_workers = X
-   - "Toplam staff: A, Toplam imalat: B, Toplam mobilizasyon: C" → present_workers = A+B+C
+KRİTİK KURALLAR - GERÇEK ÖRNEKLERDEN TÜRETİLDİ:
 
-2. "PERSONEL DURUMU" TABLOSUNU KONTROL ET:
-   - "Çalışan: X" → present_workers = X
+1. ÖNCELİK SIRASI:
+   - "GENEL ÖZET" bölümündeki "Genel toplam: X" veya "Toplam: X" DEĞERLERİNİ KULLAN
+   - "PERSONEL DURUMU" tablosundaki değerleri ikincil kaynak olarak kullan
+
+2. MOBİLİZASYON ve DIŞ GÖREV:
+   - "Mobilizasyon: X" → present_workers'a EKLE
+   - "Dış görev: X" → present_workers'a EKLE ve issues'a ekle
+   - "Lot 71 dış görev X" → present_workers'a EKLE, issues'a ekle
+   - "Fap dış görev X" → present_workers'a EKLE, issues'a ekle
+   - "Stadyum dış görev X" → present_workers'a EKLE, issues'a ekle
+
+3. İZİNLİ/HASTALIK HESAPLAMA:
    - "İzinli: X" → absent_workers = X
-   - "Hastalık izni: X" → absent_workers += X
+   - "Hastalık İzini: X" → absent_workers += X
    - "İzinli / İşe çıkmayan: X" → absent_workers += X
 
-3. MOBİLİZASYON ve DIŞ GÖREVLERİ HESAPLA:
-   - "Mobilizasyon: X" → present_workers'a EKLE
-   - "Dış görev: X" → present_workers'a EKLE, issues'a ekle
-   - "Stadyum dış görev X" → present_workers'a EKLE, issues'a ekle
-   - "Lot 71 dış görev X" → present_workers'a EKLE, issues'a ekle
-
-4. STAFF/İMALAT AYRIMINI DİKKATE AL:
-   - "Staff: X" → present_workers += X
-   - "İmalat: X" → present_workers += X
+4. STAFF/İMALAT/MOBİLİZASYON AYRIMI:
+   - "Toplam staff: X" → present_workers += X
+   - "Toplam imalat: X" → present_workers += X
+   - "Toplam mobilizasyon: X" → present_workers += X
    - "Ambarcı: X" → present_workers += X
 
-==================================================
-🚀 GERÇEK ÖRNEKLERE GÖRE HESAPLAMA KURALLARI
-==================================================
-ÖRNEK 1 - BWC TİPİ (14.11.2025):
-"GENEL ÖZET:
-Staff: 9
-Otel: 57
-Vılla: 24
-...
-Mobilizasyon: 8
-Toplam:166"
+5. GERÇEK ÖRNEKLERE GÖRE HESAPLAMA:
+
+ÖRNEK 1 - BWC (14.11.2025):
+"GENEL ÖZET: Staff:9 Otel:57 Villa:24 ... Mobilizasyon:8 Toplam:166"
 → present_workers = 166 (Toplam doğrudan alınır)
 
-ÖRNEK 2 - LOT13 TİPİ (15.11.2025):
-"GENEL ÖZET:
-• Toplam staff: 1
-• Toplam imalat: 0
-• Toplam mobilizasyon: 2 kişi
-• İzinli: 1
-• Genel toplam: 10 kişi
-• Lot 71 dış görev 6
-• Fap dış görev 2"
+ÖRNEK 2 - LOT13 (15.11.2025):
+"GENEL ÖZET: Toplam staff:1 Toplam imalat:0 Toplam mobilizasyon:2 İzinli:1 Genel toplam:10 kişi Lot 71 dış görev 6 Fap dış görev 2"
 → present_workers = 10 (Genel toplam)
 → absent_workers = 1 (İzinli)
 → issues = ["Lot 71 dış görev: 6 kişi", "Fap dış görev: 2 kişi"]
 
-ÖRNEK 3 - SKP TİPİ (15.11.2025):
-"GENEL ÖZET:
-• Toplam staff: 1 kişi
-• Toplam imalat: 16 kişi
-• Toplam mobilizasyon: 2 kişi
-• Ambarcı: 1 kişi
-• İzinli: 3 kişi
-• Hastalık İzini: 2 kişi
-• Genel toplam: 25 kişi"
-→ present_workers = 1+16+2+1 = 20 (bileşenlerin toplamı) VEYA 25 (genel toplam)
-→ absent_workers = 3+2 = 5
+ÖRNEK 3 - SKP (15.11.2025):
+"GENEL ÖZET: Toplam staff:1 Toplam imalat:16 Toplam mobilizasyon:2 Ambarcı:1 İzinli:3 Hastalık İzini:2 Genel toplam:25 kişi"
+→ present_workers = 25 (Genel toplam)
+→ absent_workers = 5 (3+2)
 
 ==================================================
-🏗️ ŞANTİYE BAZLI AYRIM
+🏗️ ŞANTİYE BAZLI AYRIM - PROJE TANIMLARI
 ==================================================
-BWC: OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman, Güvenlik binası, Spor binası, Peyzaj, Gece Kulübü
-LOT13/LOT71: Ofis, Kamp, Trafo, Kazan dairesi, Jeneratör
-SKP: Genel Mobilizasyon, Elçi Evi, Beldersoy
-Piramit Tower: Çevre aydınlatma, AVM, Kat çalışmaları
+BWC ŞANTİYESİ:
+• OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman, Güvenlik binası, Spor binası, Peyzaj, Gece Kulübü
+
+LOT13/LOT71 ŞANTİYELERİ:
+• Ofis, Kamp, Trafo, Kazan dairesi, Jeneratör, Dış görevler
+
+SKP ŞANTİYESİ:
+• Genel Mobilizasyon, Elçi Evi, Beldersoy, Ambarcı
+
+PİRAMİT TOWER:
+• Çevre aydınlatma, AVM, Kat çalışmaları
 
 ==================================================
-📋 ÇIKTI FORMATI - DEĞİŞMEZ!
+💬 CHAT TYPE DAVRANIŞLARI - KESİN KURALLAR
 ==================================================
+GRUP/SÜPERGRUP MESAJLARI:
+• Rapor YOKSA → [] döndür (SESSİZ ÇIKIŞ)
+• Rapor VARSA → JSON array döndür
+• Medya mesajları → SESSİZCE GEÇ (analiz yapma)
+
+ÖZEL MESAJLAR (DM):
+• Rapor YOKSA → {"dm_info": "no_report_detected"} döndür
+• Rapor VARSA → JSON array döndür
+• Kullanıcıya geri bildirim ver
+
+MEDYA FİLTRELEME:
+• Foto, video, ses, belge, caption-only → ANALİZ YAPMA
+• Sadece saf metin mesajlarını analiz et
+
+==================================================
+🤖 GPT ANALİZ ÇIKTISI - KESİN FORMAT
+==================================================
+SADECE JSON array döndür. Başka hiçbir şey YOK.
+
 [
   {
+    "report_id": null,
     "site": "ŞANTIYE_ADI",
     "reported_at": "YYYY-MM-DD",
-    "present_workers": GENEL_TOPLAM,
-    "absent_workers": İZİNLİ_HASTALIK_TOPLAMI,
+    "reported_time": "HH:MM",
+    "reporter": null,
+    "report_type": "RAPOR" | "IZIN/ISYOK",
+    "status_summary": "Özet metin",
+    "present_workers": integer,
+    "absent_workers": integer,
     "issues": ["Dış görev: X kişi", "Mobilizasyon: Y kişi"],
-    "raw_text": "ORIJINAL_METIN_KISMI",
+    "actions_requested": [],
+    "attachments_ref": [],
+    "raw_text": "Orijinal metin parçası",
     "confidence": 0.9
   }
 ]
 
 ==================================================
-CHAT TYPE LOGIC (MANDATORY)
+🎯 KESİN ÇIKTI KURALLARI
 ==================================================
-You will ALWAYS be given `chat_type` inside the user message.
-
-Allowed values:
-• "group"
-• "supergroup" 
-• "private"
-
-Your required behavior:
-
-1) If chat_type = "group" or "supergroup":
-   • If NO valid report exists → return []  
-     (Bot will stay silent. This is REQUIRED.)
-   • If 1 or more reports exist → return a JSON array of report objects.
-
-2) If chat_type = "private":
-   • If NO valid report exists → return:
-       [
-         { "dm_info": "no_report_detected" }
-       ]
-   • If valid reports exist → return a JSON array of report objects.
-
-You MUST obey this behavior exactly. No exceptions.
+• SADECE JSON array döndür
+• Hiçbir açıklama, yorum, not EKLEME
+• Gelecek tarihli raporları AT (reported_at > bugün)
+• Eski raporları (365 günden eski) confidence ≤ 0.40 ile işaretle
+• Birden fazla rapor varsa AYRI JSON objeleri olarak döndür
+• Rapor sırasını KORU (orijinal mesajdaki sırayla)
 
 ==================================================
-OUTPUT FORMAT RULES  (MANDATORY)
+🚨 MUTLAKA UYULACAK SON KURALLAR
 ==================================================
-You MUST output ONLY a JSON array.  
-Never return text, comments, code formatting, explanations, warnings.
+1. GRUP MESAJLARI:
+   - Rapor yoksa → [] (SESSİZ)
+   - Rapor varsa → JSON array
 
-Each valid report must match this EXACT schema:
+2. DM MESAJLARI:
+   - Rapor yoksa → {"dm_info": "no_report_detected"}
+   - Rapor varsa → JSON array
 
-{
-  "report_id": null,
-  "site": string|null,
-  "reported_at": "YYYY-MM-DD" | null,
-  "reported_time": "HH:MM" | null,
-  "reporter": null,
-  "report_type": string|null,
-  "status_summary": string|null,
-  "present_workers": integer|null,
-  "absent_workers": integer|null,
-  "issues": [string],
-  "actions_requested": [string],
-  "attachments_ref": [string],
-  "raw_text": string,
-  "confidence": number
-}
+3. MEDYA MESAJLARI:
+   - Hiçbir analiz YAPMA → Sessizce geç
 
-==================================================
-ABSOLUTE FINAL RULES
-==================================================
-• ALWAYS return valid JSON array.
-• NEVER hallucinate values. Unknown → null.
-• NEVER generate notes or explanations.
-• NEVER merge multiple reports.
-• ALWAYS keep report order as in the original message.
+4. PERSONEL HESAPLAMA:
+   - "GENEL ÖZET" öncelikli
+   - Mobilizasyon ve dış görevleri EKLE
+   - İzinli/hastalığı absent_workers'a EKLE
 
-End of instructions."""
+5. TARİH KONTROLLERİ:
+   - Gelecek tarih → AT
+   - Eski tarih → confidence düşük
+   - Bugün/dün → otomatik tanı
+
+BU KURALLARIN DIŞINA ASLA ÇIKMA. HER DAVRANIŞ BU KURALLARA GÖRE OLMALI.
+"""
+
+def get_chat_type_behavior(is_group):
+    """Chat type'a göre davranış belirleme"""
+    if is_group:
+        return (
+            "GRUP MODU - KESİN DAVRANIŞ:\n"
+            "• Rapor YOKSA → [] döndür (SESSİZ ÇIKIŞ)\n" 
+            "• Rapor VARSA → JSON array döndür\n"
+            "• Medya mesajları → ANALİZ YAPMA"
+        )
+    else:
+        return (
+            "DM MODU - KESİN DAVRANIŞ:\n"
+            "• Rapor YOKSA → {\"dm_info\": \"no_report_detected\"} döndür\n"
+            "• Rapor VARSA → JSON array döndür\n"
+            "• Kullanıcıya geri bildirim verilecek"
+        )
 
 USER_PROMPT_TEMPLATE = """
 chat_type: "<<<CHAT_TYPE>>>"
 
-🚀 GERÇEK RAPOR ÖRNEKLERİNE GÖRE ANALİZ:
+🧠 AKILLI SİSTEM AKTİF - GERÇEK RAPOR ANALİZİ:
 
-ÖRNEK FORMATLAR:
-1. BWC: "GENEL ÖZET: ... Toplam:166" → present_workers = 166
-2. LOT13: "Genel toplam: 10 kişi" + dış görevler → present_workers = 10, issues = ["Dış görev: X"]
-3. SKP: "Genel toplam: 25 kişi" + izinli/hastalık → present_workers = 25, absent_workers = 5
+📊 PERSONEL HESAPLAMA ÖNCELİKLERİ:
+1. "GENEL ÖZET" → "Genel toplam" veya "Toplam" değerini kullan
+2. MOBİLİZASYON → present_workers'a ekle
+3. DIŞ GÖREVLER → present_workers'a ekle + issues'a not et
+4. İZİNLİ/HASTALIK → absent_workers'a ekle
+
+🏗️ ŞANTİYE TANIMLARI:
+• BWC: OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman
+• LOT13/LOT71: Ofis, Kamp, Trafo, Dış görevler  
+• SKP: Genel Mobilizasyon, Elçi Evi, Ambarcı
+
+💬 CHAT TYPE DAVRANIŞI:
+<<<CHAT_TYPE_BEHAVIOR>>>
 
 ANALİZ EDİLECEK RAPOR:
 <<<RAW_MESSAGE>>>
 
-📢 KRİTİK KURALLAR:
-- ÖNCELİKLE "GENEL ÖZET" bölümündeki "Genel toplam" veya "Toplam" değerini kullan
-- "Mobilizasyon: X" present_workers'a EKLENİR
-- "Dış görev X" present_workers'a EKLENİR ve issues'a NOT düşülür
-- "İzinli: X" ve "Hastalık: X" absent_workers'a EKLENİR
-- "Staff" ve "İmalat" değerlerini present_workers'a EKLE
+🔐 KRİTİK KURALLAR:
+- ÖNCELİKLE "GENEL ÖZET" bölümünü ara
+- "Toplam: X" veya "Genel toplam: X" → present_workers = X
+- "Mobilizasyon: X" → present_workers'a EKLE
+- "Dış görev X" → present_workers'a EKLE + issues'a ekle
+- "İzinli: X" → absent_workers = X
+- "Hastalık: X" → absent_workers += X
 
-SADECE JSON array döndür.
+SADECE JSON array döndür. Başka hiçbir şey YOK.
 """
 
 # OpenAI istemcisini başlat
@@ -744,7 +797,7 @@ def gpt_analyze(system_prompt, user_prompt):
         return ""
 
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Gelen mesajı işle - GÜNCELLENMİŞ API ile"""
+    """Gelen mesajı işle - TÜM KARARLAR DAHİL EDİLDİ"""
     today = dt.date.today()
     
     max_retries = 3
@@ -755,7 +808,11 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             # Chat type'ı belirle
             chat_type = "group" if is_group else "private"
             
+            # Chat type davranışını template'e ekle
+            chat_type_behavior = get_chat_type_behavior(is_group)
+            
             user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
+            user_prompt = user_prompt.replace("<<<CHAT_TYPE_BEHAVIOR>>>", chat_type_behavior)
             user_prompt = user_prompt.replace("<<<RAW_MESSAGE>>>", raw_text)
 
             content = gpt_analyze(SYSTEM_PROMPT, user_prompt)
@@ -769,7 +826,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             try:
                 data = json.loads(content)
                 
-                # ---- FINAL CI/CD MANTIĞI ----
+                # ---- TÜM KARARLAR DAHİL EDİLDİ - FINAL MANTIK ----
                 if isinstance(data, list):
                     # Grup modu - rapor yoksa [] döndür
                     if is_group:
@@ -787,14 +844,14 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         if len(data) == 0:
                             return {"dm_info": "no_report_detected"}
 
-                # ---- Rapor filtreleme ----
+                # ---- Rapor filtreleme - TÜM KARARLAR UYGULANDI ----
                 filtered_reports = []
                 for report in data:
                     # dm_info içerenleri atla
                     if report.get('dm_info'):
                         continue
 
-                    # Gelecek tarih kontrolü
+                    # Gelecek tarih kontrolü - KESİN KURAL
                     reported_at = report.get('reported_at')
                     if reported_at:
                         try:
@@ -804,10 +861,18 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         except ValueError:
                             pass
 
-                    # Confidence değeri ekle
-                    if 'confidence' not in report:
-                        report['confidence'] = 0.9
+                    # Eski raporlar için confidence düşür - KESİN KURAL
+                    confidence = report.get('confidence', 0.9)
+                    if reported_at:
+                        try:
+                            report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                            days_ago = (today - report_date).days
+                            if days_ago > 365:
+                                confidence = min(confidence, 0.4)  # Eski raporlar için düşük confidence
+                        except ValueError:
+                            pass
                     
+                    report['confidence'] = confidence
                     filtered_reports.append(report)
                 
                 return filtered_reports
@@ -830,7 +895,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
 
 # ----------------------------- GÜNCELLENMİŞ GPT RAPOR İŞLEME -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """GÜNCELLENMİŞ GPT ile çoklu rapor işleme - Gerçek raporlara göre optimize"""
+    """GÜNCELLENMİŞ GPT ile çoklu rapor işleme - TÜM KARARLAR DAHİL"""
     msg = update.message or update.edited_message
     if not msg:
         return
@@ -842,7 +907,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
     is_group = chat_type in ["group", "supergroup"]
     is_dm = chat_type == "private"
 
-    # ✅ MEDIA FILTER BLOCK - Tüm medya mesajlarını sessizce geç
+    # ✅ MEDIA FILTER BLOCK - Tüm medya mesajlarını sessizce geç (KESİN KURAL)
     if is_media_message(msg):
         logging.info(f"⛔ Medya mesajı tespit edildi → AI analizi yapılmayacak. User: {user_id}, Chat Type: {chat_type}")
         return
@@ -883,7 +948,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                     "• Personel bilgisi\n\n"
                     "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
                 )
-            # Grup mesajlarında SESSİZ ÇIKIŞ
+            # Grup mesajlarında SESSİZ ÇIKIŞ (KESİN KURAL)
             return
 
         logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id} (Chat Type: {chat_type})")
@@ -949,7 +1014,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             else:
                 project_name = 'BELİRSİZ'
         
-        # ŞANTİYE BAZLI KONTROL - Aynı gün aynı şantiye için rapor var mı?
+                # ŞANTİYE BAZLI KONTROL - Aynı gün aynı şantiye için rapor var mı?
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
@@ -1042,6 +1107,54 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
     except Exception as e:
         logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
         raise e
+
+# ----------------------------- YENİ EXCEL KONTROL KOMUTU -----------------------------
+async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Excel dosya durumu - TÜM KARARLAR GÖSTERİLSİN"""
+    if not await super_admin_kontrol(update, context):
+        return
+    
+    try:
+        mesaj = "📊 EXCEL SİSTEM DURUMU\n\n"
+        
+        # Dosya varlığı
+        if os.path.exists(USERS_FILE):
+            file_size = os.path.getsize(USERS_FILE)
+            file_mtime = dt.datetime.fromtimestamp(os.path.getmtime(USERS_FILE))
+            mesaj += f"✅ Dosya Mevcut: {USERS_FILE}\n"
+            mesaj += f"📏 Boyut: {file_size} bytes\n"
+            mesaj += f"🕒 Son Değişiklik: {file_mtime.strftime('%d.%m.%Y %H:%M')}\n"
+            
+            # Hash bilgisi
+            current_hash = get_file_hash(USERS_FILE)
+            mesaj += f"🔐 Hash: {current_hash[:8] if current_hash else 'Hesaplanamadı'}\n\n"
+        else:
+            mesaj += f"❌ Dosya Bulunamadı: {USERS_FILE}\n\n"
+            mesaj += "🔄 Fallback sistem aktif\n\n"
+        
+        # Önbellek durumu
+        mesaj += "💾 ÖNBELLEK DURUMU:\n"
+        mesaj += f"• Excel Hash: {excel_file_hash[:8] if excel_file_hash else 'Yok'}\n"
+        mesaj += f"• Son Yükleme: {dt.datetime.fromtimestamp(excel_last_modified).strftime('%d.%m.%Y %H:%M') if excel_last_modified else 'Yok'}\n"
+        mesaj += f"• DataFrame: {'Mevcut' if df is not None else 'Yok'}\n\n"
+        
+        # İstatistikler
+        mesaj += "📈 SİSTEM İSTATİSTİKLERİ:\n"
+        mesaj += f"• Takip Edilen Kullanıcı: {len(rapor_sorumlulari)}\n"
+        mesaj += f"• Adminler: {len(ADMINS)}\n"
+        mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
+        mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
+        mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)}\n\n"
+        
+        # Fallback durumu
+        mesaj += "🛡️ GÜVENLİK SİSTEMİ:\n"
+        mesaj += f"• Fallback Aktif: {'Evet' if df is not None and any(df['Telegram ID'] == 1000157326) else 'Hayır'}\n"
+        mesaj += f"• Super Admin: {SUPER_ADMIN_ID} ({'Aktif' if SUPER_ADMIN_ID in ADMINS else 'Pasif'})\n"
+        
+        await update.message.reply_text(mesaj)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Durum kontrol hatası: {e}")
 
 # ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
 async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1692,7 +1805,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚡ Super Admin Komutları:\n"
             f"`/reload` - Excel dosyasını yenile\n"
             f"`/yedekle` - Manuel yedekleme\n"
-            f"`/chatid` - Chat ID göster\n\n"
+            f"`/chatid` - Chat ID göster\n"
+            f"`/excel_durum` - Excel sistem durumu\n\n"
             f"🔒 Not: Komutlar yetkinize göre çalışacaktır."
         )
     else:
@@ -1990,12 +2104,17 @@ async def ai_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(rapor, parse_mode='Markdown')
 
 async def reload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Excel yenileme"""
+    """Excel yenileme - AKILLI SİSTEM"""
     if not await super_admin_kontrol(update, context):
         return
     
-    load_excel()
-    await update.message.reply_text("✅ Excel dosyası yeniden yüklendi!")
+    # Önbelleği temizle ve zorunlu yeniden yükle
+    global excel_file_hash, excel_last_modified
+    excel_file_hash = None
+    excel_last_modified = 0
+    
+    load_excel_intelligent()
+    await update.message.reply_text("✅ Excel dosyası ZORUNLU yeniden yüklendi! (Önbellek temizlendi)")
 
 # ----------------------------- RAPOR ÜRETİCİ FONKSİYONLAR -----------------------------
 async def create_excel_report(start_date, end_date, rapor_baslik):
@@ -2125,14 +2244,9 @@ def schedule_jobs(app):
     logging.info("⏰ Tüm zamanlamalar ayarlandı")
 
 async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
-    """Excel dosyası otomatik izleme"""
-    global last_excel_update
+    """Excel dosyası otomatik izleme - AKILLI SİSTEM"""
     try:
-        if os.path.exists(USERS_FILE):
-            current_mtime = os.path.getmtime(USERS_FILE)
-            if current_mtime > last_excel_update:
-                load_excel()
-                logging.info("Excel dosyası otomatik yenilendi")
+        load_excel_intelligent()  # Akıllı yükleme kullan
     except Exception as e:
         logging.error(f"Excel otomatik izleme hatası: {e}")
 
@@ -2391,6 +2505,7 @@ async def post_init(application: Application):
         BotCommand("reload", "Excel yenile (Super Admin)"),
         BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
         BotCommand("chatid", "Chat ID göster (Super Admin)"),
+        BotCommand("excel_durum", "Excel sistem durumu (Super Admin)"),
     ]
     await application.bot.set_my_commands(commands)
     
@@ -2398,7 +2513,7 @@ async def post_init(application: Application):
 
 # ----------------------------- MAIN -----------------------------
 def main():
-    """Ana fonksiyon - Google Cloud Storage + GPT Fix"""
+    """Ana fonksiyon - TÜM KARARLAR UYGULANDI"""
     try:
         app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
         
@@ -2426,6 +2541,7 @@ def main():
         app.add_handler(CommandHandler("reload", reload_cmd))
         app.add_handler(CommandHandler("yedekle", yedekle_cmd))
         app.add_handler(CommandHandler("chatid", chatid_cmd))
+        app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
         
         # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
@@ -2453,7 +2569,7 @@ def main():
         ))
         
         schedule_jobs(app)
-        logging.info("🚀 GOOGLE CLOUD STORAGE + GPT FIX - Rapor Botu başlatılıyor...")
+        logging.info("🚀 TÜM KARARLAR UYGULANDI - Rapor Botu başlatılıyor...")
         
         app.run_polling(drop_pending_updates=True)
         
@@ -2463,4 +2579,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-[file content end]
