@@ -1954,11 +1954,18 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
             mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
         
-        # Bugünkü şantiye durumu
+        # Bugünkü şantiye durumu - HATA DÜZELTİLDİ
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU:\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
-        mesaj += f"• Başarı Oranı: %{((len(durum['rapor_veren_santiyeler'])/len(durum['tum_santiyeler']))*100:.1f}\n"
+        
+        # F-STRING HATASI DÜZELTİLDİ
+        toplam_santiye = len(durum['tum_santiyeler'])
+        if toplam_santiye > 0:
+            basari_orani = (len(durum['rapor_veren_santiyeler']) / toplam_santiye) * 100
+            mesaj += f"• Başarı Oranı: %{basari_orani:.1f}\n"
+        else:
+            mesaj += "• Başarı Oranı: %0.0\n"
         
         await update.message.reply_text(mesaj, parse_mode='Markdown')
         
