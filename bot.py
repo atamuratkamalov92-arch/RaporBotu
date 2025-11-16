@@ -32,14 +32,11 @@ from psycopg2 import pool
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
-# ----------------------------- PORT AYARI (RAILWAY İÇİN) -----------------------------
 PORT = int(os.environ.get('PORT', 8443))
 
-# ----------------------------- DATABASE POOL -----------------------------
 DB_POOL = None
 
 def init_db_pool():
-    """Database connection pool'u başlat"""
     global DB_POOL
     try:
         if DB_POOL is None:
@@ -55,19 +52,15 @@ def init_db_pool():
         raise
 
 def get_conn_from_pool():
-    """Pool'dan connection al"""
     if DB_POOL is None:
         init_db_pool()
     return DB_POOL.getconn()
 
 def put_conn_back(conn):
-    """Connection'ı pool'a geri ver"""
     if DB_POOL and conn:
         DB_POOL.putconn(conn)
 
-# ----------------------------- ASYNC DATABASE HELPERS -----------------------------
 def _sync_fetchall(query, params=()):
-    """Sync fetchall fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -84,7 +77,6 @@ def _sync_fetchall(query, params=()):
         put_conn_back(conn)
 
 def _sync_execute(query, params=()):
-    """Sync execute fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -102,7 +94,6 @@ def _sync_execute(query, params=()):
         put_conn_back(conn)
 
 def _sync_fetchone(query, params=()):
-    """Sync fetchone fonksiyonu"""
     conn = get_conn_from_pool()
     cur = None
     try:
@@ -119,7 +110,6 @@ def _sync_fetchone(query, params=()):
         put_conn_back(conn)
 
 async def async_db_query(func, *args, **kwargs):
-    """Async database sorgusu"""
     loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
@@ -128,23 +118,18 @@ async def async_db_query(func, *args, **kwargs):
         raise
 
 async def async_fetchall(query, params=()):
-    """Async fetchall"""
     return await async_db_query(_sync_fetchall, query, params)
 
 async def async_execute(query, params=()):
-    """Async execute"""
     return await async_db_query(_sync_execute, query, params)
 
 async def async_fetchone(query, params=()):
-    """Async fetchone"""
     return await async_db_query(_sync_fetchone, query, params)
 
-# ----------------------------- GOOGLE CLOUD STORAGE ENTEGRASYONU -----------------------------
 import google.cloud.storage
 from google.oauth2 import service_account
 
 def create_google_client():
-    """Google Cloud Storage client oluştur"""
     try:
         google_key_base64 = os.getenv("GOOGLE_KEY_BASE64")
         if not google_key_base64:
@@ -167,7 +152,6 @@ def create_google_client():
         return None
 
 def upload_backup_to_google(filename, remote_path=None):
-    """Dosyayı Google Cloud Storage'a yükler"""
     try:
         client = create_google_client()
         if not client:
@@ -196,7 +180,6 @@ def upload_backup_to_google(filename, remote_path=None):
         return False
 
 def download_last_backup(remote_path, local_filename):
-    """Google Cloud Storage'dan dosya indir"""
     try:
         client = create_google_client()
         if not client:
@@ -218,7 +201,6 @@ def download_last_backup(remote_path, local_filename):
         return False
 
 def list_backups(prefix="backups/"):
-    """Google Cloud Storage'daki yedekleri listele"""
     try:
         client = create_google_client()
         if not client:
@@ -246,12 +228,10 @@ def list_backups(prefix="backups/"):
         return []
 
 async def async_upload_to_google(filename, remote_path=None):
-    """Async Google Cloud Storage upload"""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, upload_backup_to_google, filename, remote_path)
 
 async def yedekleme_gorevi(context: ContextTypes.DEFAULT_TYPE):
-    """Her gün 23:00'de otomatik yedekleme - Google Cloud Storage"""
     try:
         logging.info("💾 Yedekleme işlemi başlatılıyor...")
         
@@ -320,9 +300,7 @@ def yedekle_postgres():
         logging.error(f"❌ PostgreSQL yedeği sırasında hata: {e}")
         return False
 
-# ----------------------------- MANUEL YEDEKLEME KOMUTU -----------------------------
 async def yedekle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Manuel yedekleme komutu - Sadece Super Admin"""
     if not await super_admin_kontrol(update, context):
         return
     
@@ -348,14 +326,12 @@ async def yedekle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Yedekleme hatası: {e}")
 
-# ----------------------------- LOGGING (RAILWAY İÇİN) -----------------------------
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     level=logging.INFO,
     handlers=[logging.StreamHandler()]
 )
 
-# ----------------------------- ENV -----------------------------
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -363,10 +339,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROUP_ID = int(CHAT_ID) if CHAT_ID else None
 TZ = ZoneInfo("Asia/Tashkent")
 
-# ----------------------------- SABİT SUPER ADMIN -----------------------------
 SUPER_ADMIN_ID = 1000157326
 
-# ----------------------------- FALLBACK KULLANICI LİSTESİ -----------------------------
 FALLBACK_USERS = [
     {
         "Telegram ID": 1000157326,
@@ -386,7 +360,6 @@ FALLBACK_USERS = [
     }
 ]
 
-# ----------------------------- EXCEL ve DATABASE -----------------------------
 USERS_FILE = "Kullanicilar.xlsx"
 
 df = None
@@ -404,12 +377,10 @@ last_excel_update = 0
 excel_file_hash = None
 excel_last_modified = 0
 
-# ----------------------------- USER ROLE CACHE -----------------------------
 user_role_cache = {}
 user_role_cache_time = 0
 
 async def get_user_role(user_id):
-    """Cache'li user rol kontrolü"""
     global user_role_cache, user_role_cache_time
     
     current_time = time_module.time()
@@ -430,7 +401,6 @@ async def get_user_role(user_id):
     return role
 
 def _to_int_or_none(x):
-    """Excel'den ID okumak için geliştirilmiş fonksiyon"""
     if x is None or pd.isna(x):
         return None
     
@@ -455,7 +425,6 @@ def _to_int_or_none(x):
         return None
 
 def get_file_hash(filename):
-    """Dosya hash'ini hesapla"""
     try:
         if os.path.exists(filename):
             with open(filename, 'rb') as f:
@@ -464,30 +433,24 @@ def get_file_hash(filename):
     except:
         return None
 
-# ----------------------------- AKILLI EXCEL SİSTEMİ - TÜM KARARLAR DAHİL -----------------------------
 def load_excel_intelligent():
-    """AKILLI Excel yükleme - TÜM KARARLAR UYGULANDI"""
     global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol, ADMINS, IZLEYICILER, TUM_KULLANICILAR
     global santiye_sorumlulari, santiye_rapor_durumu, last_excel_update, excel_file_hash, excel_last_modified
     
     try:
-        # Dosya değişmiş mi kontrol et - ÖNBELLEK MANTIĞI
         current_hash = get_file_hash(USERS_FILE)
         current_mtime = os.path.getmtime(USERS_FILE) if os.path.exists(USERS_FILE) else 0
         
-        # Dosya değişmemişse ve önbellek varsa yeniden yükleme - PERFORMANS İYİLEŞTİRMESİ
         if (current_hash == excel_file_hash and 
             current_mtime == excel_last_modified and 
             df is not None):
             logging.info("✅ Excel önbellekte - Yeniden yüklemeye gerek yok")
             return
         
-        # Excel okumayı dene
         try:
             df = pd.read_excel(USERS_FILE)
             logging.info("✅ Excel dosyası başarıyla yüklendi")
             
-            # Hash ve mtime'ı güncelle
             excel_file_hash = current_hash
             excel_last_modified = current_mtime
             
@@ -521,9 +484,8 @@ def load_excel_intelligent():
             continue
 
         if tid and fullname:
-            # TELEGRAM ID DÜZELTME - GÜVENLİK KARARI
-            if tid == 10001573260:  # Hatalı ID
-                tid = 1000157326   # Doğru ID
+            if tid == 10001573260:
+                tid = 1000157326
                 
             tid = int(tid)
             temp_id_to_name[tid] = fullname
@@ -564,23 +526,15 @@ def load_excel_intelligent():
     
     santiye_rapor_durumu = {}
     
-    # SUPER ADMIN HER ZAMAN EKLENSİN - GÜVENLİK KARARI
     if SUPER_ADMIN_ID not in ADMINS:
         ADMINS.append(SUPER_ADMIN_ID)
     
     last_excel_update = os.path.getmtime(USERS_FILE) if os.path.exists(USERS_FILE) else 0
     logging.info(f"✅ Excel yüklendi: {len(rapor_sorumlulari)} takip edilen kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye")
 
-# İlk yükleme
 load_excel_intelligent()
 
-# ----------------------------- MEDIA FİLTRE BLOĞU -----------------------------
 def is_media_message(message) -> bool:
-    """
-    MEDIA FILTER BLOCK
-    Foto, video, ses, belge, caption-only gibi mesajların
-    rapor analizine girmesini engeller.
-    """
     if message.photo:
         return True
     if message.video:
@@ -596,13 +550,11 @@ def is_media_message(message) -> bool:
     if message.document:
         return True
 
-    # Caption-only media (örnek: yalnızca foto + kısa açıklama)
     if (message.caption and not message.text):
         return True
 
     return False
 
-# ----------------------------- GÜNCELLENMİŞ OPENAI API (TÜM KARARLAR DAHİL) -----------------------------
 SYSTEM_PROMPT = """
 SEN BİR İNŞAAT RAPORU UZMANISIN. AŞAĞIDAKİ TÜM KURALLAR KESİNLİKLE UYGULANACAK:
 
@@ -751,7 +703,6 @@ BU KURALLARIN DIŞINA ASLA ÇIKMA. HER DAVRANIŞ BU KURALLARA GÖRE OLMALI.
 """
 
 def get_chat_type_behavior(is_group):
-    """Chat type'a göre davranış belirleme"""
     if is_group:
         return (
             "GRUP MODU - KESİN DAVRANIŞ:\n"
@@ -800,11 +751,9 @@ ANALİZ EDİLECEK RAPOR:
 SADECE JSON array döndür. Başka hiçbir şey YOK.
 """
 
-# OpenAI istemcisini başlat
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def gpt_analyze(system_prompt, user_prompt):
-    """DÜZELTİLMİŞ GPT analiz fonksiyonu - Chat Completions API"""
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -821,7 +770,6 @@ def gpt_analyze(system_prompt, user_prompt):
         return ""
 
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Gelen mesajı işle - TÜM KARARLAR DAHİL EDİLDİ"""
     today = dt.date.today()
     
     max_retries = 3
@@ -829,10 +777,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     
     for attempt in range(max_retries):
         try:
-            # Chat type'ı belirle
             chat_type = "group" if is_group else "private"
             
-            # Chat type davranışını template'e ekle
             chat_type_behavior = get_chat_type_behavior(is_group)
             
             user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
@@ -850,49 +796,40 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             try:
                 data = json.loads(content)
                 
-                # ---- TÜM KARARLAR DAHİL EDİLDİ - FINAL MANTIK ----
                 if isinstance(data, list):
-                    # Grup modu - rapor yoksa [] döndür
                     if is_group:
                         if len(data) == 0:
-                            return []  # Grup + rapor yok = sessiz çıkış
-                        # Grup + dm_info varsa bile sessiz çık
+                            return []
                         if len(data) == 1 and data[0].get("dm_info"):
                             return []
                     
-                    # DM modu - rapor yoksa dm_info döndür
                     if not is_group:
                         if len(data) == 1 and data[0].get("dm_info") == "no_report_detected":
                             return {"dm_info": "no_report_detected"}
-                        # DM'de dm_info dışında boş array gelirse de dm_info'ya çevir
                         if len(data) == 0:
                             return {"dm_info": "no_report_detected"}
                 
-                # ---- Rapor filtreleme - TÜM KARARLAR UYGULANDI ----
                 filtered_reports = []
                 for report in data:
-                    # dm_info içerenleri atla
                     if report.get('dm_info'):
                         continue
 
-                    # Gelecek tarih kontrolü - KESİN KURAL
                     reported_at = report.get('reported_at')
                     if reported_at:
                         try:
                             report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
                             if report_date > today:
-                                continue  # Gelecek tarihli raporları atla
+                                continue
                         except ValueError:
                             pass
 
-                    # Eski raporlar için confidence düşür - KESİN KURAL
                     confidence = report.get('confidence', 0.9)
                     if reported_at:
                         try:
                             report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
                             days_ago = (today - report_date).days
                             if days_ago > 365:
-                                confidence = min(confidence, 0.4)  # Eski raporlar için düşük confidence
+                                confidence = min(confidence, 0.4)
                         except ValueError:
                             pass
                     
@@ -906,7 +843,6 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 if attempt < max_retries - 1:
                     time_module.sleep(retry_delay)
                     continue
-                # JSON hatasında chat type'a göre davran
                 return [] if is_group else {"dm_info": "no_report_detected"}
                 
         except Exception as e:
@@ -914,12 +850,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             if attempt < max_retries - 1:
                 time_module.sleep(retry_delay)
                 continue
-            # Genel hatada chat type'a göre davran
             return [] if is_group else {"dm_info": "no_report_detected"}
 
-# ----------------------------- GÜNCELLENMİŞ GPT RAPOR İŞLEME -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """GÜNCELLENMİŞ GPT ile çoklu rapor işleme - TÜM KARARLAR DAHİL"""
     msg = update.message or update.edited_message
     if not msg:
         return
@@ -927,11 +860,9 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = msg.from_user.id
     chat_type = msg.chat.type
     
-    # Chat tipini belirle
     is_group = chat_type in ["group", "supergroup"]
     is_dm = chat_type == "private"
 
-    # ✅ MEDIA FILTER BLOCK - Tüm medya mesajlarını sessizce geç (KESİN KURAL)
     if is_media_message(msg):
         logging.info(f"⛔ Medya mesajı tespit edildi → AI analizi yapılmayacak. User: {user_id}, Chat Type: {chat_type}")
         return
@@ -940,15 +871,12 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
     if not metin:
         return
 
-    # Komutları atla
     if metin.startswith(('/', '.', '!', '\\')):
         return
 
     try:
-        # GPT ile rapor çıkarımı (is_group bilgisini ver)
         raporlar = process_incoming_message(metin, is_group)
         
-        # DM_INFO kontrolü - DM'de rapor yoksa kullanıcıyı bilgilendir
         if is_dm and isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
             await msg.reply_text(
                 "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
@@ -957,11 +885,9 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
         
-        # Normal rapor listesi kontrolü - Grup için sessiz, DM için bilgi
         if not raporlar or (isinstance(raporlar, list) and len(raporlar) == 0):
             logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
             
-            # Sadece DM'de bilgi ver
             if is_dm:
                 await msg.reply_text(
                     "❌ Rapor bulunamadı.\n\n"
@@ -972,14 +898,12 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                     "• Personel bilgisi\n\n"
                     "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
                 )
-            # Grup mesajlarında SESSİZ ÇIKIŞ (KESİN KURAL)
             return
 
         logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id} (Chat Type: {chat_type})")
         
         kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
         
-        # Her raporu ayrı ayrı işle
         basarili_kayitlar = 0
         for i, rapor in enumerate(raporlar):
             try:
@@ -988,7 +912,6 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 logging.error(f"❌ Rapor {i+1} kaydetme hatası: {e}")
         
-        # Kullanıcıya geri bildirim (sadece DM'de)
         if is_dm:
             if basarili_kayitlar == len(raporlar):
                 if len(raporlar) == 1:
@@ -998,26 +921,21 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 await msg.reply_text(f"⚠️ {basarili_kayitlar}/{len(raporlar)} rapor işlendi. Bazı raporlar kaydedilemedi.")
         
-        # Grup mesajlarında sessiz kal, sadece log
         logging.info(f"📊 Grup raporu işlendi: {basarili_kayitlar}/{len(raporlar)} başarılı")
             
     except Exception as e:
         logging.error(f"❌ GPT rapor işleme hatası: {e}")
-        # Hata durumunda sadece DM'de bilgi ver
         if is_dm:
             await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
 
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
-    """GPT formatındaki raporu veritabanına kaydet - Şantiye bazlı"""
     try:
-        # None değerleri kontrol et ve uygun şekilde işle
         site = gpt_rapor.get('site')
         if site is None:
             site = "Bilinmeyen"
         else:
             site = str(site).strip() if site else "Bilinmeyen"
 
-        # Tarih işleme
         rapor_tarihi = None
         reported_at = gpt_rapor.get('reported_at')
         if reported_at:
@@ -1029,7 +947,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
-        # Proje adı - GPT'den geleni kullan, yoksa kullanıcının şantiyelerinden al
         project_name = site
         if not project_name or project_name == 'BELİRSİZ' or project_name == 'Bilinmeyen':
             user_projects = id_to_projects.get(user_id, [])
@@ -1038,7 +955,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             else:
                 project_name = 'BELİRSİZ'
         
-                # ŞANTİYE BAZLI KONTROL - Aynı gün aynı şantiye için rapor var mı?
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
@@ -1048,12 +964,10 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
-        # Rapor tipini AI'dan al, değiştirme
         rapor_tipi = gpt_rapor.get('report_type') or "RAPOR"
         if rapor_tipi is None:
             rapor_tipi = "RAPOR"
 
-        # Personel sayısı - None değerleri kontrol et
         present_workers = gpt_rapor.get('present_workers')
         if present_workers is None:
             present_workers = 0
@@ -1074,7 +988,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
 
         person_count = max(present_workers, 1)
         
-        # İş açıklaması - None değerleri kontrol et
         status_summary = gpt_rapor.get('status_summary') or ""
         if status_summary is None:
             status_summary = ""
@@ -1090,7 +1003,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not work_description.strip():
             work_description = orijinal_metin[:200] if orijinal_metin else ""
         
-        # AI analiz verisi - None değerleri kontrol et
         raw_text = gpt_rapor.get('raw_text')
         if raw_text is None:
             raw_text = orijinal_metin
@@ -1111,7 +1023,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             "raw_text": raw_text[:500] if raw_text else ""
         }
         
-        # Veritabanına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
@@ -1125,23 +1036,19 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         
         logging.info(f"✅ GPT Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
         
-        # Maliyet analizine ekle
         maliyet_analiz.kayit_ekle('gpt')
             
     except Exception as e:
         logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
         raise e
 
-# ----------------------------- YENİ EXCEL KONTROL KOMUTU -----------------------------
 async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Excel dosya durumu - TÜM KARARLAR GÖSTERİLSİN"""
     if not await super_admin_kontrol(update, context):
         return
     
     try:
         mesaj = "📊 EXCEL SİSTEM DURUMU\n\n"
         
-        # Dosya varlığı
         if os.path.exists(USERS_FILE):
             file_size = os.path.getsize(USERS_FILE)
             file_mtime = dt.datetime.fromtimestamp(os.path.getmtime(USERS_FILE))
@@ -1149,20 +1056,17 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mesaj += f"📏 Boyut: {file_size} bytes\n"
             mesaj += f"🕒 Son Değişiklik: {file_mtime.strftime('%d.%m.%Y %H:%M')}\n"
             
-            # Hash bilgisi
             current_hash = get_file_hash(USERS_FILE)
             mesaj += f"🔐 Hash: {current_hash[:8] if current_hash else 'Hesaplanamadı'}\n\n"
         else:
             mesaj += f"❌ Dosya Bulunamadı: {USERS_FILE}\n\n"
             mesaj += "🔄 Fallback sistem aktif\n\n"
         
-        # Önbellek durumu
         mesaj += "💾 ÖNBELLEK DURUMU:\n"
         mesaj += f"• Excel Hash: {excel_file_hash[:8] if excel_file_hash else 'Yok'}\n"
         mesaj += f"• Son Yükleme: {dt.datetime.fromtimestamp(excel_last_modified).strftime('%d.%m.%Y %H:%M') if excel_last_modified else 'Yok'}\n"
         mesaj += f"• DataFrame: {'Mevcut' if df is not None else 'Yok'}\n\n"
         
-        # İstatistikler
         mesaj += "📈 SİSTEM İSTATİSTİKLERİ:\n"
         mesaj += f"• Takip Edilen Kullanıcı: {len(rapor_sorumlulari)}\n"
         mesaj += f"• Adminler: {len(ADMINS)}\n"
@@ -1170,7 +1074,6 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
         mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)}\n\n"
         
-        # Fallback durumu
         mesaj += "🛡️ GÜVENLİK SİSTEMİ:\n"
         mesaj += f"• Fallback Aktif: {'Evet' if df is not None and any(df['Telegram ID'] == 1000157326) else 'Hayır'}\n"
         mesaj += f"• Super Admin: {SUPER_ADMIN_ID} ({'Aktif' if SUPER_ADMIN_ID in ADMINS else 'Pasif'})\n"
@@ -1180,9 +1083,7 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Durum kontrol hatası: {e}")
 
-# ----------------------------- YENİ ÜYE KARŞILAMA -----------------------------
 async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yeni üye gruba katıldığında hoş geldin mesajı"""
     try:
         for member in update.message.new_chat_members:
             if member.id == context.bot.id:
@@ -1207,9 +1108,7 @@ async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logging.error(f"Yeni üye karşılama hatası: {e}")
 
-# ----------------------------- VERİTABANI ŞEMA GÜNCELLEMESİ -----------------------------
 def update_database_schema():
-    """Gerekli veritabanı şema güncellemelerini yap"""
     try:
         index_queries = [
             "CREATE INDEX IF NOT EXISTS idx_reports_date_user ON reports(report_date, user_id)",
@@ -1229,9 +1128,7 @@ def update_database_schema():
     except Exception as e:
         logging.error(f"❌ Şema güncelleme hatası: {e}")
 
-# ----------------------------- YENİ VERİTABANI YAPISI -----------------------------
 def init_database():
-    """Yeni normalleştirilmiş veritabanı yapısını oluştur"""
     try:
         _sync_execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -1288,9 +1185,7 @@ def init_database():
 init_database()
 init_db_pool()
 
-# ----------------------------- ŞANTİYE BAZLI RAPOR KONTROLÜ -----------------------------
 async def get_santiye_rapor_durumu(bugun):
-    """Bugünkü şantiye rapor durumu"""
     try:
         rows = await async_fetchall("""
             SELECT DISTINCT project_name FROM reports 
@@ -1303,7 +1198,6 @@ async def get_santiye_rapor_durumu(bugun):
         return set()
 
 async def get_eksik_santiyeler(bugun):
-    """Raporu eksik olan şantiyeleri ve sorumlularını getir"""
     try:
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
@@ -1315,7 +1209,6 @@ async def get_eksik_santiyeler(bugun):
         return {}
 
 async def get_santiye_bazli_rapor_durumu(bugun):
-    """Şantiye bazlı detaylı rapor durumu"""
     try:
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
@@ -1341,7 +1234,6 @@ async def get_santiye_bazli_rapor_durumu(bugun):
         logging.error(f"Şantiye bazlı rapor durumu hatası: {e}")
         return {'tum_santiyeler': set(), 'rapor_veren_santiyeler': set(), 'eksik_santiyeler': set(), 'santiye_rapor_verenler': {}}
 
-# ----------------------------- MALİYET ANALİZİ -----------------------------
 class MaliyetAnaliz:
     def __init__(self):
         self.gpt_count = 0
@@ -1370,7 +1262,6 @@ class MaliyetAnaliz:
         )
     
     def detayli_ai_raporu(self):
-        """Detaylı AI kullanım raporu"""
         try:
             result = _sync_fetchone("""
                 SELECT 
@@ -1417,9 +1308,7 @@ class MaliyetAnaliz:
 
 maliyet_analiz = MaliyetAnaliz()
 
-# ----------------------------- GELİŞTİRİLMİŞ TARİH FONKSİYONLARI -----------------------------
 def parse_rapor_tarihi(metin):
-    """Geliştirilmiş tarih parsing fonksiyonu"""
     try:
         bugun = dt.datetime.now(TZ).date()
         metin_lower = metin.lower()
@@ -1429,7 +1318,6 @@ def parse_rapor_tarihi(metin):
         if 'dün' in metin_lower or 'dun' in metin_lower:
             return bugun - dt.timedelta(days=1)
         
-        # Geliştirilmiş tarih pattern'leri
         date_patterns = [
             r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
             r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',
@@ -1463,13 +1351,11 @@ def parse_rapor_tarihi(metin):
         return None
 
 def izin_mi(metin):
-    """Basit izin kontrolü"""
     metin_lower = metin.lower()
     izin_kelimeler = ['izin', 'rapor yok', 'iş yok', 'çalışma yok', 'tatil', 'hasta', 'izindeyim']
     return any(kelime in metin_lower for kelime in izin_kelimeler)
 
 async def tarih_kontrol_et(rapor_tarihi, user_id):
-    """Tarih kontrolü"""
     bugun = dt.datetime.now(TZ).date()
     
     if not rapor_tarihi:
@@ -1491,7 +1377,6 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     return True, ""
 
 def parse_tr_date(date_str):
-    """Tüm tarih formatlarını destekle"""
     try:
         normalized_date = date_str.replace('/', '.').replace('-', '.')
         parts = normalized_date.split('.')
@@ -1505,12 +1390,10 @@ def parse_tr_date(date_str):
         raise ValueError("Geçersiz tarih formatı")
 
 def week_window_to_today():
-    """Bugünden geriye doğru 7 günlük pencere"""
     end_date = dt.datetime.now(TZ).date()
     start_date = end_date - dt.timedelta(days=6)
     return start_date, end_date
 
-# ----------------------------- YARDIMCI FONKSİYONLAR -----------------------------
 def is_admin(user_id):
     return user_id in ADMINS
 
@@ -1535,7 +1418,6 @@ async def super_admin_kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE
     return True
 
 async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
-    """Hata mesajını adminlere gönder"""
     for admin_id in ADMINS:
         try:
             await context.bot.send_message(
@@ -1546,10 +1428,7 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
-# ----------------------------- GÜNCELLENMİŞ RAPOR FONKSİYONLARI - İSTENEN FORMAT -----------------------------
-
 async def generate_gelismis_personel_ozeti(target_date):
-    """📊 Günlük personel özeti - İSTENEN FORMAT"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description
@@ -1571,7 +1450,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     'staff': 0, 'calisan': 0, 'izinli': 0, 'hasta': 0, 'mobilizasyon': 0
                 }
             
-            # GPT analizinden gelen verilere göre sınıflandırma
             yapilan_is_lower = (yapilan_is or '').lower()
             
             if 'staff' in yapilan_is_lower:
@@ -1640,7 +1518,6 @@ async def generate_gelismis_personel_ozeti(target_date):
             if genel_mobilizasyon > 0:
                 mesaj += f"• Mobilizasyon: {genel_mobilizasyon} (%{genel_mobilizasyon/genel_toplam*100:.1f})\n"
         
-        # Eksik projeleri kontrol et
         aktif_projeler = set(proje_analizleri.keys())
         tum_santiyeler = set(santiye_sorumlulari.keys())
         eksik_projeler = tum_santiyeler - aktif_projeler
@@ -1653,9 +1530,7 @@ async def generate_gelismis_personel_ozeti(target_date):
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
-    """Haftalık rapor mesajı - İSTENEN FORMAT"""
     try:
-        # Temel istatistikler
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi
             FROM reports 
@@ -1672,13 +1547,10 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
-        # En aktif 3 kullanıcı
         en_aktif = rows[:3]
         
-        # Düşük performanslı kullanıcılar (<%50)
         en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
         
-        # Proje bazlı personel
         proje_rows = await async_fetchall("""
             SELECT project_name, SUM(person_count) as toplam_kisi
             FROM reports 
@@ -1724,9 +1596,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
 async def generate_aylik_rapor_mesaji(start_date, end_date):
-    """Aylık rapor mesajı - İSTENEN FORMAT"""
     try:
-        # Temel istatistikler
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi
             FROM reports 
@@ -1741,17 +1611,13 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         toplam_rapor = sum([x[1] for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
-        # Eksik rapor sayısı
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         eksik_rapor = max(0, beklenen_rapor - toplam_rapor)
         
-        # En aktif 3 kullanıcı
         en_aktif = rows[:3]
         
-        # Düşük performanslı kullanıcılar (<%50)
         en_pasif = [x for x in rows if x[1] < gun_sayisi * 0.5]
         
-        # Proje bazlı personel dağılımı
         proje_rows = await async_fetchall("""
             SELECT project_name, 
                    COUNT(*) as rapor_sayisi,
@@ -1762,7 +1628,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             ORDER BY toplam_kisi DESC
         """, (start_date, end_date))
         
-        # Proje bazlı detaylı personel durumu
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
                    SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
@@ -1776,7 +1641,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             ORDER BY project_name
         """, (start_date, end_date))
         
-        # Genel toplamlar
         genel_toplam_result = await async_fetchone("""
             SELECT 
                 SUM(person_count) as toplam_kisi,
@@ -1796,12 +1660,10 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         toplam_izinli = genel_toplam_result[3] or 0 if genel_toplam_result else 0
         toplam_hasta = genel_toplam_result[2] or 0 if genel_toplam_result else 0
         
-        # Eksik şantiyeler
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = set([row[0] for row in proje_rows])
         eksik_santiyeler = tum_santiyeler - rapor_veren_santiyeler
         
-        # "Tümü" ve "Belli değil" hariç filtreleme
         filtreli_eksik_santiyeler = [s for s in eksik_santiyeler if s not in ["Tümü", "Belli değil"]]
         
         mesaj = f"🗓️ AYLIK ÖZET RAPOR\n"
@@ -1831,18 +1693,15 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         
-        # Önemli projeler için detaylı bilgi
         onemli_projeler = ["SKP", "LOT13", "LOT71"]
         for proje_adi, rapor_sayisi, toplam_kisi in proje_rows:
             if proje_adi in onemli_projeler:
-                # Bu proje için detaylı bilgi bul
                 proje_detay = next((row for row in proje_detay_rows if row[0] == proje_adi), None)
                 if proje_detay:
                     _, calisan, hasta, izinli, staff, mobilizasyon = proje_detay
                     mesaj += f"🏗️ {proje_adi}: {toplam_kisi} kişi\n"
                     mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
         
-        # Diğer projeler için genel bilgi
         for proje_adi, rapor_sayisi, toplam_kisi in proje_rows:
             if proje_adi not in onemli_projeler:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
@@ -1863,7 +1722,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             if toplam_hasta > 0:
                 mesaj += f"• Hasta: {toplam_hasta} (%{toplam_hasta/genel_toplam*100:.1f})\n"
         
-        # Eksik şantiyeler
         if filtreli_eksik_santiyeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(filtreli_eksik_santiyeler))}"
         
@@ -1873,7 +1731,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         return f"❌ Aylık rapor oluşturulurken hata: {e}"
 
 async def generate_tarih_araligi_raporu(start_date, end_date):
-    """Tarih aralığı raporu oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, COUNT(*) as rapor_sayisi
@@ -1920,10 +1777,7 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
     except Exception as e:
         return f"❌ Tarih aralığı raporu oluşturulurken hata: {e}"
 
-# ----------------------------- YENİ KOMUTLAR: EKSİK RAPORLAR ve İSTATİSTİK -----------------------------
-
 async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Eksik raporları göster - Sadece Admin"""
     if not await admin_kontrol(update, context):
         return
     
@@ -1945,7 +1799,6 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mesaj += f"🏗️ {santiye}\n"
                 mesaj += f"   👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
         
-        # Rapor göndermeyen kullanıcıları da ekleyelim
         rapor_gonderenler = set()
         for santiye in durum['rapor_veren_santiyeler']:
             rapor_gonderenler.update(durum['santiye_rapor_verenler'].get(santiye, []))
@@ -1964,40 +1817,33 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Eksik raporlar kontrol edilirken hata: {e}")
 
 async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Genel istatistikleri göster - Sadece Admin"""
     if not await admin_kontrol(update, context):
         return
     
     try:
-        # Genel istatistikler
         bugun = dt.datetime.now(TZ).date()
         bu_hafta_baslangic = bugun - dt.timedelta(days=bugun.weekday())
         bu_ay_baslangic = bugun.replace(day=1)
         
-        # Bugünkü rapor sayısı
         bugun_rapor = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
         bugun_rapor_sayisi = bugun_rapor[0] if bugun_rapor else 0
         
-        # Bu hafta rapor sayısı
         hafta_rapor = await async_fetchone("""
             SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
         """, (bu_hafta_baslangic, bugun))
         hafta_rapor_sayisi = hafta_rapor[0] if hafta_rapor else 0
         
-        # Bu ay rapor sayısı
         ay_rapor = await async_fetchone("""
             SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
         """, (bu_ay_baslangic, bugun))
         ay_rapor_sayisi = ay_rapor[0] if ay_rapor else 0
         
-        # Toplam kullanıcı ve rapor istatistikleri
         toplam_kullanici = await async_fetchone("SELECT COUNT(DISTINCT user_id) FROM reports")
         toplam_kullanici_sayisi = toplam_kullanici[0] if toplam_kullanici else 0
         
         toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
         toplam_rapor_sayisi = toplam_rapor[0] if toplam_rapor else 0
         
-        # En aktif kullanıcı
         en_aktif = await async_fetchone("""
             SELECT user_id, COUNT(*) as rapor_sayisi 
             FROM reports 
@@ -2034,12 +1880,10 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
             mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
         
-        # Bugünkü şantiye durumu - HATA DÜZELTİLDİ
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU:\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
         
-        # F-STRING HATASI DÜZELTİLDİ
         toplam_santiye = len(durum['tum_santiyeler'])
         if toplam_santiye > 0:
             basari_orani = (len(durum['rapor_veren_santiyeler']) / toplam_santiye) * 100
@@ -2052,7 +1896,6 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
-# ----------------------------- KOMUTLAR -----------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Rapor Botu Aktif!\n\n"
@@ -2064,7 +1907,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tüm kullanıcılar için komut listesi"""
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     
@@ -2115,7 +1957,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(info_text, parse_mode='Markdown')
 
 async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bot hakkında bilgi"""
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında\n\n"
         "Geliştirici: Atamurat Kamalov\n"
@@ -2133,7 +1974,6 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(hakkinda_text, parse_mode='Markdown')
 
 async def chatid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Chat ID göster - Sadece Super Admin"""
     if not await super_admin_kontrol(update, context):
         return
     
@@ -2148,7 +1988,6 @@ async def chatid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def bugun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bugünün rapor özeti"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2158,7 +1997,6 @@ async def bugun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(rapor_mesaji)
 
 async def dun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Dünün rapor özeti"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2168,7 +2006,6 @@ async def dun_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(rapor_mesaji)
 
 async def haftalik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Haftalık rapor komutu"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2182,7 +2019,6 @@ async def haftalik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def aylik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Aylık rapor komutu"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2196,7 +2032,6 @@ async def aylik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Haftalık istatistik komutu"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2210,7 +2045,6 @@ async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Aylık istatistik komutu"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2224,7 +2058,6 @@ async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📅 Tarih aralığı özet raporu - Sadece Admin"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2254,7 +2087,6 @@ async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Tarih formatı hatalı. GG.AA.YYYY şeklinde girin.")
 
 async def excel_tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Excel tarih aralığı raporu"""
     if not await admin_kontrol(update, context):
         return
 
@@ -2299,7 +2131,6 @@ async def excel_tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_T
         logging.error(f"Excel tarih aralığı rapor hatası: {e}")
 
 async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Kullanıcı listesi"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2331,7 +2162,6 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Şantiye listesi ve sorumlularını göster"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2347,7 +2177,6 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Günlük şantiye rapor durumu"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2377,7 +2206,6 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mesaj, parse_mode='Markdown')
 
 async def maliyet_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maliyet analizi"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2385,7 +2213,6 @@ async def maliyet_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(rapor, parse_mode='Markdown')
 
 async def ai_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🤖 Detaylı AI kullanım raporu - Sadece Admin"""
     if not await admin_kontrol(update, context):
         return
     
@@ -2395,11 +2222,9 @@ async def ai_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(rapor, parse_mode='Markdown')
 
 async def reload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Excel yenileme - AKILLI SİSTEM"""
     if not await super_admin_kontrol(update, context):
         return
     
-    # Önbelleği temizle ve zorunlu yeniden yükle
     global excel_file_hash, excel_last_modified
     excel_file_hash = None
     excel_last_modified = 0
@@ -2407,9 +2232,7 @@ async def reload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     load_excel_intelligent()
     await update.message.reply_text("✅ Excel dosyası ZORUNLU yeniden yüklendi! (Önbellek temizlendi)")
 
-# ----------------------------- RAPOR ÜRETİCİ FONKSİYONLAR -----------------------------
 async def create_excel_report(start_date, end_date, rapor_baslik):
-    """Excel rapor oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT r.user_id, r.report_date, r.report_type, r.work_description, 
@@ -2514,9 +2337,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-# ----------------------------- ZAMANLAMA -----------------------------
 def schedule_jobs(app):
-    """Zamanlanmış görevleri ayarla"""
     jq = app.job_queue
     
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
@@ -2536,14 +2357,12 @@ def schedule_jobs(app):
     logging.info("⏰ Tüm zamanlamalar ayarlandı")
 
 async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
-    """Excel dosyası otomatik izleme - AKILLI SİSTEM"""
     try:
-        load_excel_intelligent()  # Akıllı yükleme kullan
+        load_excel_intelligent()
     except Exception as e:
         logging.error(f"Excel otomatik izleme hatası: {e}")
 
 async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
-    """🕘 09:00 - Sadece Eren ve Atamurat'a DM gönder"""
     try:
         dun = (dt.datetime.now(TZ) - dt.timedelta(days=1)).date()
         rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
@@ -2563,7 +2382,6 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"09:00 rapor hatası: {e}")
 
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    """🟡 12:30 - Gün ortası şantiye bazlı hatırlatma mesajı"""
     try:
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2595,7 +2413,6 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye hatırlatma mesajı hatası: {e}")
 
 async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🟠 15:00 - İlk rapor kontrolü (şantiye bazlı)"""
     try:
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2639,7 +2456,6 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
 
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi"""
     try:
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -2699,7 +2515,6 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye son rapor kontrol hatası: {e}")
 
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Haftalık grup raporu"""
     try:
         today = dt.datetime.now(TZ).date()
         start_date = today - dt.timedelta(days=today.weekday() + 7)
@@ -2728,7 +2543,6 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
 
 async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Aylık grup raporu"""
     try:
         today = dt.datetime.now(TZ).date()
         start_date = today.replace(day=1) - dt.timedelta(days=1)
@@ -2758,7 +2572,6 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Aylık grup raporu hatası: {e}")
 
 async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    """Bot başlatıcı mesaj"""
     try:
         mesaj = "🤖 Rapor Kontrol Botu Aktif!\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
         
@@ -2774,7 +2587,6 @@ async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Bot başlatıcı mesaj hatası: {e}")
 
 async def post_init(application: Application):
-    """Bot başlangıç ayarları"""
     commands = [
         BotCommand("start", "Botu başlat"),
         BotCommand("info", "Komut bilgisi (Tüm kullanıcılar)"),
@@ -2805,18 +2617,14 @@ async def post_init(application: Application):
     
     await bot_baslatici_mesaji(application)
 
-# ----------------------------- MAIN -----------------------------
 def main():
-    """Ana fonksiyon - TÜM KARARLAR UYGULANDI"""
     try:
         app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
         
-        # Temel komutlar
         app.add_handler(CommandHandler("start", start_cmd))
         app.add_handler(CommandHandler("info", info_cmd))
         app.add_handler(CommandHandler("hakkinda", hakkinda_cmd))
         
-        # Admin komutları
         app.add_handler(CommandHandler("bugun", bugun_cmd))
         app.add_handler(CommandHandler("dun", dun_cmd))
         app.add_handler(CommandHandler("eksikraporlar", eksikraporlar_cmd))
@@ -2833,27 +2641,23 @@ def main():
         app.add_handler(CommandHandler("santiyeler", santiyeler_cmd))
         app.add_handler(CommandHandler("santiye_durum", santiye_durum_cmd))
         
-        # Super Admin komutları
         app.add_handler(CommandHandler("reload", reload_cmd))
         app.add_handler(CommandHandler("yedekle", yedekle_cmd))
         app.add_handler(CommandHandler("chatid", chatid_cmd))
         app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
         
-        # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
-        # GÜNCELLENMİŞ GPT RAPOR İŞLEME SİSTEMİ - Grup ve DM ayrımlı
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), 
             yeni_gpt_rapor_isleme
-        ))  # Sadece grup mesajları
+        ))
 
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, 
             yeni_gpt_rapor_isleme
-        ))  # Sadece DM mesajları
+        ))
 
-        # Düzenlenmiş mesajlar için
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP) & filters.UpdateType.EDITED_MESSAGE, 
             yeni_gpt_rapor_isleme
