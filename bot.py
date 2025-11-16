@@ -486,6 +486,8 @@ def load_excel_intelligent():
         if tid and fullname:
             if tid == 10001573260:
                 tid = 1000157326
+            if tid == 7097468990:
+                tid = 709746899
                 
             tid = int(tid)
             temp_id_to_name[tid] = fullname
@@ -796,6 +798,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             try:
                 data = json.loads(content)
                 
+                if isinstance(data, dict):
+                    data = [data]
+                
                 if isinstance(data, list):
                     if is_group:
                         if len(data) == 0:
@@ -960,7 +965,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             WHERE user_id = %s AND project_name = %s AND report_date = %s
         """, (user_id, project_name, rapor_tarihi))
         
-        if existing_report:
+        if existing_report and existing_report[0]:
             logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
@@ -1819,7 +1824,7 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
             WHERE report_date BETWEEN %s AND %s AND report_type = 'RAPOR'
         """, (start_date, end_date))
         
-        toplam_personel = personel_result[0] or 0
+        toplam_personel = personel_result[0] or 0 if personel_result else 0
         
         mesaj = f"📅 TARİH ARALIĞI RAPORU\n"
         mesaj += f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n\n"
@@ -1919,7 +1924,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             LIMIT 1
         """)
         
-        if en_aktif:
+        if en_aktif and en_aktif[0]:
             en_aktif_kullanici = id_to_name.get(en_aktif[0], "Kullanıcı")
             en_aktif_rapor = en_aktif[1]
         else:
