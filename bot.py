@@ -1,3 +1,5 @@
+[file name]: bot.py
+[file content begin]
 import os
 import re
 import psycopg2
@@ -542,9 +544,99 @@ def is_media_message(message) -> bool:
 
     return False
 
-# ----------------------------- DÜZELTİLMİŞ OPENAI API -----------------------------
-SYSTEM_PROMPT = """You are a deterministic construction report extraction engine.
-Your behavior strictly depends on the provided chat_type.
+# ----------------------------- GÜNCELLENMİŞ OPENAI API (GERÇEK RAPORLARA GÖRE) -----------------------------
+SYSTEM_PROMPT = """SEN BİR İNŞAAT RAPORU UZMANISIN. KRİTİK KURALLAR:
+
+==================================================
+🎯 MEVCUT SİSTEM KORUMA - DEĞİŞMEYECEK!
+==================================================
+• Tüm komutlar ve rapor formatları AYNI KALACAK
+
+==================================================
+📊 TOPLAM PERSONEL HESAPLAMA ÖNCELİĞİ (GERÇEK ÖRNEKLERE GÖRE)
+==================================================
+1. ÖNCELİKLE "GENEL ÖZET" BÖLÜMÜNÜ ARA:
+   - "Genel toplam: X kişi" → present_workers = X
+   - "Toplam: X" → present_workers = X
+   - "Toplam staff: A, Toplam imalat: B, Toplam mobilizasyon: C" → present_workers = A+B+C
+
+2. "PERSONEL DURUMU" TABLOSUNU KONTROL ET:
+   - "Çalışan: X" → present_workers = X
+   - "İzinli: X" → absent_workers = X
+   - "Hastalık izni: X" → absent_workers += X
+   - "İzinli / İşe çıkmayan: X" → absent_workers += X
+
+3. MOBİLİZASYON ve DIŞ GÖREVLERİ HESAPLA:
+   - "Mobilizasyon: X" → present_workers'a EKLE
+   - "Dış görev: X" → present_workers'a EKLE, issues'a ekle
+   - "Stadyum dış görev X" → present_workers'a EKLE, issues'a ekle
+   - "Lot 71 dış görev X" → present_workers'a EKLE, issues'a ekle
+
+4. STAFF/İMALAT AYRIMINI DİKKATE AL:
+   - "Staff: X" → present_workers += X
+   - "İmalat: X" → present_workers += X
+   - "Ambarcı: X" → present_workers += X
+
+==================================================
+🚀 GERÇEK ÖRNEKLERE GÖRE HESAPLAMA KURALLARI
+==================================================
+ÖRNEK 1 - BWC TİPİ (14.11.2025):
+"GENEL ÖZET:
+Staff: 9
+Otel: 57
+Vılla: 24
+...
+Mobilizasyon: 8
+Toplam:166"
+→ present_workers = 166 (Toplam doğrudan alınır)
+
+ÖRNEK 2 - LOT13 TİPİ (15.11.2025):
+"GENEL ÖZET:
+• Toplam staff: 1
+• Toplam imalat: 0
+• Toplam mobilizasyon: 2 kişi
+• İzinli: 1
+• Genel toplam: 10 kişi
+• Lot 71 dış görev 6
+• Fap dış görev 2"
+→ present_workers = 10 (Genel toplam)
+→ absent_workers = 1 (İzinli)
+→ issues = ["Lot 71 dış görev: 6 kişi", "Fap dış görev: 2 kişi"]
+
+ÖRNEK 3 - SKP TİPİ (15.11.2025):
+"GENEL ÖZET:
+• Toplam staff: 1 kişi
+• Toplam imalat: 16 kişi
+• Toplam mobilizasyon: 2 kişi
+• Ambarcı: 1 kişi
+• İzinli: 3 kişi
+• Hastalık İzini: 2 kişi
+• Genel toplam: 25 kişi"
+→ present_workers = 1+16+2+1 = 20 (bileşenlerin toplamı) VEYA 25 (genel toplam)
+→ absent_workers = 3+2 = 5
+
+==================================================
+🏗️ ŞANTİYE BAZLI AYRIM
+==================================================
+BWC: OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman, Güvenlik binası, Spor binası, Peyzaj, Gece Kulübü
+LOT13/LOT71: Ofis, Kamp, Trafo, Kazan dairesi, Jeneratör
+SKP: Genel Mobilizasyon, Elçi Evi, Beldersoy
+Piramit Tower: Çevre aydınlatma, AVM, Kat çalışmaları
+
+==================================================
+📋 ÇIKTI FORMATI - DEĞİŞMEZ!
+==================================================
+[
+  {
+    "site": "ŞANTIYE_ADI",
+    "reported_at": "YYYY-MM-DD",
+    "present_workers": GENEL_TOPLAM,
+    "absent_workers": İZİNLİ_HASTALIK_TOPLAMI,
+    "issues": ["Dış görev: X kişi", "Mobilizasyon: Y kişi"],
+    "raw_text": "ORIJINAL_METIN_KISMI",
+    "confidence": 0.9
+  }
+]
 
 ==================================================
 CHAT TYPE LOGIC (MANDATORY)
@@ -573,48 +665,6 @@ Your required behavior:
 You MUST obey this behavior exactly. No exceptions.
 
 ==================================================
-WHAT COUNTS AS A REPORT?
-==================================================
-A message counts as a report ONLY if it contains at least ONE of:
-
-• A detectable date  
-  (DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, 1 November 2025, "03.11.2025 Pazartesi")
-• A known construction site name  
-  (LOT13, LOT71, SKP, BWC, Piramit Tower, Staff, Chalet, Otel, Villa, SPA...)
-• Work descriptions  
-  (montaj, test, kablo çekimi, reglaj, bağlantı…)
-• Personnel distribution  
-  (Mühendis, Tekniker, Formen, Gececi, İzinli, Hasta…)
-• Section headers  
-  (ŞANTİYE:, TARİH:, PERSONEL DURUMU, GENEL ÖZET, OTEL(), VILLA(), A BLOK…)
-
-If NONE of these exist → it is NOT a report.
-
-==================================================
-MULTI-REPORT SPLITTING
-==================================================
-A single message may contain multiple reports.
-
-Start a new report whenever ANY of these appear:
-• A new date  
-• A new site name  
-• Section headers  
-• Block headers (OTEL(), VILLA(), SPA(), A/B/C Blok)
-• Repeated patterns:
-     Date → job list → totals → Date → job list → totals
-
-Each detected block MUST become a separate JSON object.
-
-==================================================
-DATE RULES
-==================================================
-• Accept ANY date format.  
-• Convert to "YYYY-MM-DD" when possible.  
-• If date cannot be determined → reported_at = null.  
-• If date > current_date → EXCLUDE THE REPORT.  
-• If date older than 365 days → include but set confidence ≤ 0.40.  
-
-==================================================
 OUTPUT FORMAT RULES  (MANDATORY)
 ==================================================
 You MUST output ONLY a JSON array.  
@@ -640,17 +690,6 @@ Each valid report must match this EXACT schema:
 }
 
 ==================================================
-FIELD EXTRACTION RULES
-==================================================
-• "Toplam X" → present_workers = X  
-• "İzinli X" / "Hasta X" → absent_workers = X  
-• For grouped sites (Otel, Villa, SPA, SKP, BWC…) you may sum sub-group values  
-• Issues = short problem-type phrases  
-• actions_requested = verbs like montaj, test, kontrol, hazırlık, bağlantı  
-• reporter = null (always)  
-• raw_text = exact text slice belonging to that report
-
-==================================================
 ABSOLUTE FINAL RULES
 ==================================================
 • ALWAYS return valid JSON array.
@@ -663,10 +702,25 @@ End of instructions."""
 
 USER_PROMPT_TEMPLATE = """
 chat_type: "<<<CHAT_TYPE>>>"
-raw_message: "<<<RAW_MESSAGE>>>"
 
-Extract all valid reports according to the system rules.
-Return ONLY a JSON array.
+🚀 GERÇEK RAPOR ÖRNEKLERİNE GÖRE ANALİZ:
+
+ÖRNEK FORMATLAR:
+1. BWC: "GENEL ÖZET: ... Toplam:166" → present_workers = 166
+2. LOT13: "Genel toplam: 10 kişi" + dış görevler → present_workers = 10, issues = ["Dış görev: X"]
+3. SKP: "Genel toplam: 25 kişi" + izinli/hastalık → present_workers = 25, absent_workers = 5
+
+ANALİZ EDİLECEK RAPOR:
+<<<RAW_MESSAGE>>>
+
+📢 KRİTİK KURALLAR:
+- ÖNCELİKLE "GENEL ÖZET" bölümündeki "Genel toplam" veya "Toplam" değerini kullan
+- "Mobilizasyon: X" present_workers'a EKLENİR
+- "Dış görev X" present_workers'a EKLENİR ve issues'a NOT düşülür
+- "İzinli: X" ve "Hastalık: X" absent_workers'a EKLENİR
+- "Staff" ve "İmalat" değerlerini present_workers'a EKLE
+
+SADECE JSON array döndür.
 """
 
 # OpenAI istemcisini başlat
@@ -690,7 +744,7 @@ def gpt_analyze(system_prompt, user_prompt):
         return ""
 
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Gelen mesajı işle - DÜZELTİLMİŞ API ile"""
+    """Gelen mesajı işle - GÜNCELLENMİŞ API ile"""
     today = dt.date.today()
     
     max_retries = 3
@@ -774,9 +828,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             # Genel hatada chat type'a göre davran
             return [] if is_group else {"dm_info": "no_report_detected"}
 
-# ----------------------------- DÜZELTİLMİŞ GPT RAPOR İŞLEME -----------------------------
+# ----------------------------- GÜNCELLENMİŞ GPT RAPOR İŞLEME -----------------------------
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """DÜZELTİLMİŞ GPT ile çoklu rapor işleme"""
+    """GÜNCELLENMİŞ GPT ile çoklu rapor işleme - Gerçek raporlara göre optimize"""
     msg = update.message or update.edited_message
     if not msg:
         return
@@ -2376,7 +2430,7 @@ def main():
         # Yeni üye karşılama
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
-        # DÜZELTİLMİŞ GPT RAPOR İŞLEME SİSTEMİ - Grup ve DM ayrımlı
+        # GÜNCELLENMİŞ GPT RAPOR İŞLEME SİSTEMİ - Grup ve DM ayrımlı
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), 
             yeni_gpt_rapor_isleme
@@ -2409,3 +2463,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+[file content end]
