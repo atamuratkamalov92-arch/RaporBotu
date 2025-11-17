@@ -2052,28 +2052,26 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"`/info` - Komut bilgisi\n"
             f"`/hakkinda` - Bot hakkında\n\n"
             f"🛡️ Admin Komutları:\n"
-            f"`/bugun` - Bugünün özeti (Admin)\n"
-            f"`/dun` - Dünün özeti (Admin)\n"
-            f"`/eksikraporlar` - Eksik raporları listele (Admin)\n"
-            f"`/istatistik` - Genel istatistikler (Admin)\n"
-            f"`/haftalik_rapor` - Haftalık rapor (Admin)\n"
-            f"`/aylik_rapor` - Aylık rapor (Admin)\n"
-            f"`/tariharaligi` - Tarih aralığı raporu (Admin)\n"
-            f"`/haftalik_istatistik` - Haftalık istatistik (Admin)\n"
-            f"`/aylik_istatistik` - Aylık istatistik (Admin)\n"
-            f"`/excel_tariharaligi` - Excel raporu (Admin)\n"
-            f"`/maliyet` - Maliyet analizi (Admin)\n"
-            f"`/ai_rapor` - Detaylı AI raporu (Admin)\n"
-            f"`/kullanicilar` - Tüm kullanıcı listesi (Admin)\n"
-            f"`/santiyeler` - Şantiye listesi (Admin)\n"
-            f"`/santiye_durum` - Şantiye rapor durumu (Admin)\n\n"
+            f"`/bugun` - Bugünün özeti\n"
+            f"`/dun` - Dünün özeti\n"
+            f"`/eksikraporlar` - Eksik raporları listele\n"
+            f"`/istatistik` - Genel istatistikler\n"
+            f"`/haftalik_rapor` - Haftalık rapor\n"
+            f"`/aylik_rapor` - Aylık rapor\n"
+            f"`/tariharaligi` - Tarih aralığı raporu\n"
+            f"`/haftalik_istatistik` - Haftalık istatistik\n"
+            f"`/aylik_istatistik` - Aylık istatistik\n"
+            f"`/excel_tariharaligi` - Excel raporu\n"
+            f"`/maliyet` - Maliyet analizi\n"
+            f"`/ai_rapor` - Detaylı AI raporu\n"
+            f"`/kullanicilar` - Tüm kullanıcı listesi\n"
+            f"`/santiyeler` - Şantiye listesi\n"
+            f"`/santiye_durum` - Şantiye rapor durumu\n\n"
             f"⚡ Super Admin Komutları:\n"
-            f"`/reload` - Excel dosyasını yenile (Super Admin)\n"
-            f"`/yedekle` - Manuel yedekleme (Super Admin)\n"
-            f"`/chatid` - Chat ID göster (Super Admin)\n"
-            f"`/excel_durum` - Excel sistem durumu (Super Admin)\n"
-            f"`/reset_database` - Veritabanını sıfırla (Super Admin)\n"
-            f"`/fix_sequences` - Sequence'leri düzelt (Super Admin)\n\n"
+            f"`/reload` - Excel dosyasını yenile\n"
+            f"`/yedekle` - Manuel yedekleme\n"
+            f"`/chatid` - Chat ID göster\n"
+            f"`/excel_durum` - Excel sistem durumu\n\n"
             f"🔒 Not: Komutlar yetkinize göre çalışacaktır."
         )
     else:
@@ -2367,58 +2365,6 @@ async def reload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     load_excel_intelligent()
     await update.message.reply_text("✅ Excel dosyası ZORUNLU yeniden yüklendi! (Önbellek temizlendi)")
-
-async def reset_database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await super_admin_kontrol(update, context):
-        return
-    
-    await update.message.reply_text("🔄 Veritabanı sıfırlanıyor... Bu işlem biraz zaman alabilir.")
-    
-    try:
-        # Drop schema and recreate
-        _sync_execute("DROP SCHEMA public CASCADE")
-        _sync_execute("CREATE SCHEMA public")
-        
-        # Reinitialize database
-        init_database()
-        init_db_pool()
-        
-        await update.message.reply_text("✅ Veritabanı başarıyla sıfırlandı! Tüm tablolar yeniden oluşturuldu.")
-        
-    except Exception as e:
-        logging.error(f"❌ Veritabanı sıfırlama hatası: {e}")
-        await update.message.reply_text(f"❌ Veritabanı sıfırlama hatası: {e}")
-
-async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await super_admin_kontrol(update, context):
-        return
-    
-    await update.message.reply_text("🔄 Sequence'ler düzeltiliyor...")
-    
-    try:
-        # Fix reports sequence
-        reports_result = await async_fetchone("SELECT COALESCE(MAX(id), 0) FROM reports")
-        reports_max_id = reports_result[0] if reports_result and len(reports_result) > 0 else 0
-        new_reports_seq = max(reports_max_id + 1, 1)
-        
-        await async_execute(f"ALTER SEQUENCE reports_id_seq RESTART WITH {new_reports_seq}")
-        
-        # Fix ai_logs sequence
-        ai_logs_result = await async_fetchone("SELECT COALESCE(MAX(id), 0) FROM ai_logs")
-        ai_logs_max_id = ai_logs_result[0] if ai_logs_result and len(ai_logs_result) > 0 else 0
-        new_ai_logs_seq = max(ai_logs_max_id + 1, 1)
-        
-        await async_execute(f"ALTER SEQUENCE ai_logs_id_seq RESTART WITH {new_ai_logs_seq}")
-        
-        await update.message.reply_text(
-            f"✅ Sequence'ler başarıyla düzeltildi!\n\n"
-            f"📊 Reports: {new_reports_seq}\n"
-            f"🤖 AI Logs: {new_ai_logs_seq}"
-        )
-        
-    except Exception as e:
-        logging.error(f"❌ Sequence düzeltme hatası: {e}")
-        await update.message.reply_text(f"❌ Sequence düzeltme hatası: {e}")
 
 async def create_excel_report(start_date, end_date, rapor_baslik):
     try:
@@ -2808,8 +2754,6 @@ async def post_init(application: Application):
         BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
         BotCommand("chatid", "Chat ID göster (Super Admin)"),
         BotCommand("excel_durum", "Excel sistem durumu (Super Admin)"),
-        BotCommand("reset_database", "Veritabanını sıfırla (Super Admin)"),
-        BotCommand("fix_sequences", "Sequence'leri düzelt (Super Admin)"),
     ]
     await application.bot.set_my_commands(commands)
     
@@ -2843,8 +2787,6 @@ def main():
         app.add_handler(CommandHandler("yedekle", yedekle_cmd))
         app.add_handler(CommandHandler("chatid", chatid_cmd))
         app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
-        app.add_handler(CommandHandler("reset_database", reset_database_cmd))
-        app.add_handler(CommandHandler("fix_sequences", fix_sequences_cmd))
         
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
