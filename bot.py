@@ -1393,7 +1393,7 @@ def parse_rapor_tarihi(metin):
 
 def izin_mi(metin):
     metin_lower = metin.lower()
-    izin_kelimeler = ['izin', 'rapor yok', 'iş yok', 'çalışma yok', 'tatil', 'hasta', 'izindeyim']
+    izin_kelimeler = ['izin', 'rapor yok', 'iş yok', 'çalışma yok', 'tatil', 'hasta', 'izindeyim', 'hastalik', 'hastalık']
     return any(kelime in metin_lower for kelime in izin_kelimeler)
 
 async def tarih_kontrol_et(rapor_tarihi, user_id):
@@ -1514,7 +1514,7 @@ async def generate_gelismis_personel_ozeti(target_date):
             elif dis_gorev_sayisi > 0:
                 proje_analizleri[proje_adi]['dis_gorev'] += dis_gorev_sayisi
             elif rapor_tipi == "IZIN/ISYOK":
-                if 'hasta' in yapilan_is_lower:
+                if ('hasta' in yapilan_is_lower or 'hastalik' in yapilan_is_lower or 'hastalık' in yapilan_is_lower):
                     proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
                 else:
                     proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
@@ -1616,8 +1616,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
                    SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
+                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND  (LOWER(work_description) LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%')  THEN person_count ELSE 0 END) as hasta,
+                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon
             FROM reports 
@@ -1629,8 +1629,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         genel_toplam_result = await async_fetchone("""
             SELECT 
                 COALESCE(SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END), 0) as toplam_calisan,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
+                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND  (LOWER(work_description) LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%')  THEN person_count ELSE 0 END), 0) as toplam_hasta,
+                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon
             FROM reports 
@@ -1749,8 +1749,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
                    SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
+                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND  (LOWER(work_description) LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%')  THEN person_count ELSE 0 END) as hasta,
+                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon
             FROM reports 
@@ -1762,8 +1762,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         genel_toplam_result = await async_fetchone("""
             SELECT 
                 COALESCE(SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END), 0) as toplam_calisan,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
+                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND  (LOWER(work_description) LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%')  THEN person_count ELSE 0 END), 0) as toplam_hasta,
+                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR LOWER(work_description) LIKE '%hastalik%' OR LOWER(work_description) LIKE '%hastalık%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon
             FROM reports 
