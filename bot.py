@@ -1,34 +1,12 @@
 """
-📋 CHANGELOG - bot.py v4.2
+📋 CHANGELOG - bot.py v4.3
 
-✅ DÜZELTMELER:
-- "tuple index out of range" hataları giderildi
-- Güvenli tuple erişimi için safe_get_tuple_value fonksiyonu eklendi
-- Çevre değişkenleri doğrulama sistemi geliştirildi
-- Veritabanı bağlantı havuzu hata yönetimi iyileştirildi
-- Tüm kullanıcı girdileri için kapsamlı doğrulama eklendi
-- JSON parsing için güvenli hata yönetimi uygulandı
-- Excel dosya doğrulama ve kolon kontrolü eklendi
-- Async/sync uyumluluğu geliştirildi
-- HTTP istekleri için timeout süreleri eklendi
-- SQL injection önleme için parametreli sorgular kullanıldı
-- Yapılandırılmış loglama ve hata raporlama eklendi
-- Güvenli veritabanı yardımcı fonksiyonları oluşturuldu
-- Raporlar için standart JSON çıktı formatı belirlendi
-- Çoklu şantiye desteği eklendi
-- Gelişmiş tarih parser eklendi
-- Şantiye normalizasyonu eklendi
-
-🛡️ GÜVENLİK:
-- Sert kodlanmış gizli anahtarlar kaldırıldı
-- Tüm kullanıcı verileri için giriş sanitizasyonu eklendi
-- SQL injection önleme uygulandı
-- Dosya yükleme/indirme için doğrulama eklendi
-
-📊 PERFORMANS:
-- Veritabanı bağlantı yönetimi optimize edildi
-- Büyük Excel operasyonlarında bellek kullanımı iyileştirildi
-- Async görev yönetimi geliştirildi
+✅ KRİTİK DÜZELTMELER:
+- Personel gruplaması tamamen düzeltildi
+- Toplam personel sayısı doğru hesaplanıyor
+- GPT yeni formatı tam olarak entegre edildi
+- Şantiye bazlı raporlama doğru çalışıyor
+- Tüm sayısal hesaplamalar standardize edildi
 """
 
 import os
@@ -771,7 +749,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# SYSTEM_PROMPT - Gelişmiş ve Çoklu Şantiye Desteği
+# YENİ SİSTEM_PROMPT - Gelişmiş ve Çoklu Şantiye Desteği
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını standart biçime dönüştürmek ve tek bir JSON formatı üretmektir.
 
@@ -1059,7 +1037,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     
     return [] if is_group else {"dm_info": "no_report_detected"}
 
-# YENİ RAPOR KAYIT FONKSİYONU
+# YENİ RAPOR KAYIT FONKSİYONU - GÜNCELLENDİ
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
     try:
         # Yeni formattan verileri al
@@ -1077,7 +1055,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
-        # Personel sayılarını al
+        # Personel sayılarını al - YENİ FORMAT
         staff = gpt_rapor.get('staff', 0)
         worker = gpt_rapor.get('worker', 0)
         izin = gpt_rapor.get('izin', 0)
@@ -1086,7 +1064,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev = gpt_rapor.get('dis_gorev', 0)
         total = gpt_rapor.get('total', 0)
         
-        # Eğer total 0 ise, diğer değerlerden hesapla
+        # Eğer total 0 ise, diğer değerlerden hesapla - YENİ HESAPLAMA
         if total == 0:
             total = staff + worker + izin + hastalik + mobilizasyon
         
@@ -1099,7 +1077,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             else:
                 project_name = 'BELİRSİZ'
         
-        # Aynı rapor kontrolü
+        # Aynı rapor kontrolü - GÜNCELLENDİ
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
@@ -1122,20 +1100,28 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         else:
             rapor_tipi = "RAPOR"
         
-        # İş açıklaması oluştur
+        # İş açıklaması oluştur - YENİ FORMAT
         work_description = f"Staff:{staff} Worker:{worker} İzin:{izin} Hastalık:{hastalik} Mobilizasyon:{mobilizasyon}"
         if dis_gorev > 0:
             work_description += f" DışGörev:{dis_gorev}"
         
-        # AI analiz verisi
+        # AI analiz verisi - GÜNCELLENDİ
         ai_analysis = {
             "yeni_format": gpt_rapor,
             "extraction_method": "yeni-gpt-format",
             "original_text": orijinal_metin[:500],
-            "calculated_total": total
+            "calculated_total": total,
+            "personel_dagilimi": {
+                "staff": staff,
+                "worker": worker, 
+                "izin": izin,
+                "hastalik": hastalik,
+                "mobilizasyon": mobilizasyon,
+                "dis_gorev": dis_gorev
+            }
         }
         
-        # Veritabanına kaydet
+        # Veritabanına kaydet - GÜNCELLENDİ
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
@@ -1148,6 +1134,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         ))
         
         logging.info(f"✅ Yeni Format Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
+        logging.info(f"📊 Personel Dağılımı: Staff:{staff}, Worker:{worker}, İzin:{izin}, Hastalık:{hastalik}, Mobilizasyon:{mobilizasyon}, DışGörev:{dis_gorev}, Toplam:{total}")
         
         maliyet_analiz.kayit_ekle('gpt')
             
@@ -1633,8 +1620,9 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
+# GÜNCELLENDİ: Personel özeti fonksiyonu - YENİ FORMAT
 async def generate_gelismis_personel_ozeti(target_date):
-    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur"""
+    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur - YENİ FORMAT"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description, ai_analysis
@@ -1664,17 +1652,14 @@ async def generate_gelismis_personel_ozeti(target_date):
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
                     'toplam': 0,
-                    'staff': 0, 'calisan': 0, 'izinli': 0, 'hasta': 0, 'mobilizasyon': 0, 'dis_gorev': 0
+                    'staff': 0, 'worker': 0, 'izin': 0, 'hastalik': 0, 'mobilizasyon': 0, 'dis_gorev': 0
                 }
             
-            # TOPLAM PERSONEL SAYISINI DOĞRU HESAPLA
-            # Tüm rapor tipleri için personel sayısını topla
-            proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
-            
-            # GPT analizinden personel dağılımını al
+            # YENİ HESAPLAMA: GPT analizinden personel dağılımını al
             try:
                 ai_data = json.loads(ai_analysis) if ai_analysis else {}
                 yeni_format = ai_data.get('yeni_format', {})
+                personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
                 # Eğer GPT analizi varsa, onu kullan
                 if yeni_format:
@@ -1686,11 +1671,29 @@ async def generate_gelismis_personel_ozeti(target_date):
                     dis_gorev_count = yeni_format.get('dis_gorev', 0)
                     
                     proje_analizleri[proje_adi]['staff'] += staff_count
-                    proje_analizleri[proje_adi]['calisan'] += worker_count
-                    proje_analizleri[proje_adi]['izinli'] += izin_count
-                    proje_analizleri[proje_adi]['hasta'] += hastalik_count
+                    proje_analizleri[proje_adi]['worker'] += worker_count
+                    proje_analizleri[proje_adi]['izin'] += izin_count
+                    proje_analizleri[proje_adi]['hastalik'] += hastalik_count
                     proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
                     proje_analizleri[proje_adi]['dis_gorev'] += dis_gorev_count
+                    proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                    
+                elif personel_dagilimi:
+                    # Personel dağılımından al
+                    staff_count = personel_dagilimi.get('staff', 0)
+                    worker_count = personel_dagilimi.get('worker', 0)
+                    izin_count = personel_dagilimi.get('izin', 0)
+                    hastalik_count = personel_dagilimi.get('hastalik', 0)
+                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
+                    dis_gorev_count = personel_dagilimi.get('dis_gorev', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['worker'] += worker_count
+                    proje_analizleri[proje_adi]['izin'] += izin_count
+                    proje_analizleri[proje_adi]['hastalik'] += hastalik_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['dis_gorev'] += dis_gorev_count
+                    proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
                 else:
                     # Eski yöntemle devam et
                     yapilan_is_lower = (yapilan_is or '').lower()
@@ -1701,11 +1704,13 @@ async def generate_gelismis_personel_ozeti(target_date):
                         proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
                     elif rapor_tipi == "IZIN/ISYOK":
                         if 'hasta' in yapilan_is_lower:
-                            proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
+                            proje_analizleri[proje_adi]['hastalik'] += kisi_sayisi
                         else:
-                            proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
+                            proje_analizleri[proje_adi]['izin'] += kisi_sayisi
                     else:
-                        proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                        proje_analizleri[proje_adi]['worker'] += kisi_sayisi
+                    
+                    proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
                         
             except Exception as e:
                 logging.error(f"Personel analiz hatası: {e}")
@@ -1718,11 +1723,13 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
                 elif rapor_tipi == "IZIN/ISYOK":
                     if 'hasta' in yapilan_is_lower:
-                        proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
+                        proje_analizleri[proje_adi]['hastalik'] += kisi_sayisi
                     else:
-                        proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
+                        proje_analizleri[proje_adi]['izin'] += kisi_sayisi
                 else:
-                    proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                    proje_analizleri[proje_adi]['worker'] += kisi_sayisi
+                
+                proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
             
             tum_projeler.add(proje_adi)
         
@@ -1730,9 +1737,9 @@ async def generate_gelismis_personel_ozeti(target_date):
         
         genel_toplam = 0
         genel_staff = 0
-        genel_calisan = 0
-        genel_izinli = 0
-        genel_hasta = 0
+        genel_worker = 0
+        genel_izin = 0
+        genel_hastalik = 0
         genel_mobilizasyon = 0
         genel_dis_gorev = 0
         
@@ -1741,9 +1748,9 @@ async def generate_gelismis_personel_ozeti(target_date):
             if proje_toplam > 0:
                 genel_toplam += proje_toplam
                 genel_staff += analiz['staff']
-                genel_calisan += analiz['calisan']
-                genel_izinli += analiz['izinli']
-                genel_hasta += analiz['hasta']
+                genel_worker += analiz['worker']
+                genel_izin += analiz['izin']
+                genel_hastalik += analiz['hastalik']
                 genel_mobilizasyon += analiz['mobilizasyon']
                 genel_dis_gorev += analiz['dis_gorev']
                 
@@ -1753,12 +1760,12 @@ async def generate_gelismis_personel_ozeti(target_date):
                 durum_detay = []
                 if analiz['staff'] > 0: 
                     durum_detay.append(f"Staff:{analiz['staff']}")
-                if analiz['calisan'] > 0: 
-                    durum_detay.append(f"Çalışan:{analiz['calisan']}")
-                if analiz['izinli'] > 0: 
-                    durum_detay.append(f"İzinli:{analiz['izinli']}")
-                if analiz['hasta'] > 0: 
-                    durum_detay.append(f"Hastalık:{analiz['hasta']}")
+                if analiz['worker'] > 0: 
+                    durum_detay.append(f"Worker:{analiz['worker']}")
+                if analiz['izin'] > 0: 
+                    durum_detay.append(f"İzin:{analiz['izin']}")
+                if analiz['hastalik'] > 0: 
+                    durum_detay.append(f"Hastalık:{analiz['hastalik']}")
                 if analiz['mobilizasyon'] > 0: 
                     durum_detay.append(f"Mobilizasyon:{analiz['mobilizasyon']}")
                 
@@ -1771,12 +1778,12 @@ async def generate_gelismis_personel_ozeti(target_date):
             mesaj += f"🎯 DAĞILIM:\n"
             if genel_staff > 0:
                 mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
-            if genel_calisan > 0:
-                mesaj += f"• Çalışan: {genel_calisan} (%{genel_calisan/genel_toplam*100:.1f})\n"
-            if genel_izinli > 0:
-                mesaj += f"• İzinli: {genel_izinli} (%{genel_izinli/genel_toplam*100:.1f})\n"
-            if genel_hasta > 0:
-                mesaj += f"• Hastalık: {genel_hasta} (%{genel_hasta/genel_toplam*100:.1f})\n"
+            if genel_worker > 0:
+                mesaj += f"• Worker: {genel_worker} (%{genel_worker/genel_toplam*100:.1f})\n"
+            if genel_izin > 0:
+                mesaj += f"• İzin: {genel_izin} (%{genel_izin/genel_toplam*100:.1f})\n"
+            if genel_hastalik > 0:
+                mesaj += f"• Hastalık: {genel_hastalik} (%{genel_hastalik/genel_toplam*100:.1f})\n"
             if genel_mobilizasyon > 0:
                 mesaj += f"• Mobilizasyon: {genel_mobilizasyon} (%{genel_mobilizasyon/genel_toplam*100:.1f})\n"
         
@@ -1794,6 +1801,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
+# GÜNCELLENDİ: Haftalık rapor fonksiyonu - YENİ FORMAT
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -1817,46 +1825,74 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
-        # DÜZELTME: Personel sayılarını doğru şekilde topla
+        # YENİ FORMAT: Personel sayılarını GPT analizinden al
         proje_detay_rows = await async_fetchall("""
-            SELECT project_name, 
-                   SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon,
-                   SUM(person_count) as toplam_personel  -- EKLENDİ: Toplam personel sayısı
+            SELECT project_name, ai_analysis
             FROM reports 
             WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
-            GROUP BY project_name
-            ORDER BY project_name
         """, (start_date, end_date))
         
-        genel_toplam_result = await async_fetchone("""
-            SELECT 
-                COALESCE(SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END), 0) as toplam_calisan,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon,
-                COALESCE(SUM(person_count), 0) as toplam_personel  -- EKLENDİ: Genel toplam personel
-            FROM reports 
-            WHERE report_date BETWEEN %s AND %s
-        """, (start_date, end_date))
+        proje_analizleri = {}
         
-        # Safe extraction with defaults
-        toplam_staff = safe_get_tuple_value(genel_toplam_result, 3, 0)
-        toplam_calisan = safe_get_tuple_value(genel_toplam_result, 0, 0)
-        toplam_mobilizasyon = safe_get_tuple_value(genel_toplam_result, 4, 0)
-        toplam_izinli = safe_get_tuple_value(genel_toplam_result, 2, 0)
-        toplam_hasta = safe_get_tuple_value(genel_toplam_result, 1, 0)
-        toplam_personel = safe_get_tuple_value(genel_toplam_result, 5, 0)  # YENİ: Toplam personel
+        for row in proje_detay_rows:
+            if len(row) < 2:
+                continue
+                
+            proje_adi = safe_get_tuple_value(row, 0, '')
+            ai_analysis = safe_get_tuple_value(row, 1, '{}')
+            
+            if proje_adi not in proje_analizleri:
+                proje_analizleri[proje_adi] = {
+                    'staff': 0, 'worker': 0, 'izin': 0, 'hastalik': 0, 'mobilizasyon': 0, 'dis_gorev': 0, 'toplam': 0
+                }
+            
+            try:
+                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                yeni_format = ai_data.get('yeni_format', {})
+                personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                
+                if yeni_format:
+                    proje_analizleri[proje_adi]['staff'] += yeni_format.get('staff', 0)
+                    proje_analizleri[proje_adi]['worker'] += yeni_format.get('worker', 0)
+                    proje_analizleri[proje_adi]['izin'] += yeni_format.get('izin', 0)
+                    proje_analizleri[proje_adi]['hastalik'] += yeni_format.get('hastalik', 0)
+                    proje_analizleri[proje_adi]['mobilizasyon'] += yeni_format.get('mobilizasyon', 0)
+                    proje_analizleri[proje_adi]['dis_gorev'] += yeni_format.get('dis_gorev', 0)
+                    proje_analizleri[proje_adi]['toplam'] += yeni_format.get('total', 0)
+                    
+                elif personel_dagilimi:
+                    proje_analizleri[proje_adi]['staff'] += personel_dagilimi.get('staff', 0)
+                    proje_analizleri[proje_adi]['worker'] += personel_dagilimi.get('worker', 0)
+                    proje_analizleri[proje_adi]['izin'] += personel_dagilimi.get('izin', 0)
+                    proje_analizleri[proje_adi]['hastalik'] += personel_dagilimi.get('hastalik', 0)
+                    proje_analizleri[proje_adi]['mobilizasyon'] += personel_dagilimi.get('mobilizasyon', 0)
+                    proje_analizleri[proje_adi]['dis_gorev'] += personel_dagilimi.get('dis_gorev', 0)
+                    proje_analizleri[proje_adi]['toplam'] += personel_dagilimi.get('staff', 0) + personel_dagilimi.get('worker', 0) + personel_dagilimi.get('izin', 0) + personel_dagilimi.get('hastalik', 0) + personel_dagilimi.get('mobilizasyon', 0)
+                    
+            except Exception as e:
+                logging.error(f"Proje analiz hatası: {e}")
+                continue
         
-        # DÜZELTME: Genel toplamı doğru hesapla
-        genel_toplam = toplam_personel  # Tüm person_count değerlerinin toplamını kullan
+        # Genel toplamları hesapla
+        genel_toplam = 0
+        genel_staff = 0
+        genel_worker = 0
+        genel_izin = 0
+        genel_hastalik = 0
+        genel_mobilizasyon = 0
+        genel_dis_gorev = 0
+        
+        for proje in proje_analizleri.values():
+            genel_toplam += proje['toplam']
+            genel_staff += proje['staff']
+            genel_worker += proje['worker']
+            genel_izin += proje['izin']
+            genel_hastalik += proje['hastalik']
+            genel_mobilizasyon += proje['mobilizasyon']
+            genel_dis_gorev += proje['dis_gorev']
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
-        rapor_veren_santiyeler = set([safe_get_tuple_value(row, 0, '') for row in proje_detay_rows if safe_get_tuple_value(row, 0, '')])
+        rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
         mesaj = f"📈 HAFTALIK ÖZET RAPOR\n"
@@ -1867,7 +1903,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Rapor Gönderen: {len(rows)} kişi\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
         mesaj += f"• Verimlilik: %{verimlilik:.1f}\n"
-        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"  # EKLENDİ
+        mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
         for i, row in enumerate(en_aktif, 1):
@@ -1892,45 +1928,35 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71"]
-        for row in proje_detay_rows:
-            if len(row) >= 7:
-                proje_adi = safe_get_tuple_value(row, 0, '')
-                calisan = safe_get_tuple_value(row, 1, 0)
-                hasta = safe_get_tuple_value(row, 2, 0)
-                izinli = safe_get_tuple_value(row, 3, 0)
-                staff = safe_get_tuple_value(row, 4, 0)
-                mobilizasyon = safe_get_tuple_value(row, 5, 0)
-                toplam_proje = safe_get_tuple_value(row, 6, 0)  # YENİ: Proje toplamı
-                
-                if proje_adi in onemli_projeler and toplam_proje > 0:
-                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
+            if proje_adi in onemli_projeler and analiz['toplam'] > 0:
+                mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
+                mesaj += f"   └─ Staff:{analiz['staff']}, Worker:{analiz['worker']}, İzin:{analiz['izin']}, Hastalık:{analiz['hastalik']}, Mobilizasyon:{analiz['mobilizasyon']}\n\n"
         
         # Diğer projeler
-        for row in proje_detay_rows:
-            if len(row) >= 7:
-                proje_adi = safe_get_tuple_value(row, 0, '')
-                toplam_proje = safe_get_tuple_value(row, 6, 0)
-                
-                if proje_adi not in onemli_projeler and toplam_proje > 0:
-                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
+            if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
+                emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
             mesaj += f"🎯 DAĞILIM:\n"
-            if toplam_staff > 0:
-                mesaj += f"• Staff: {toplam_staff} (%{toplam_staff/genel_toplam*100:.1f})\n"
-            if toplam_calisan > 0:
-                mesaj += f"• Çalışan: {toplam_calisan} (%{toplam_calisan/genel_toplam*100:.1f})\n"
-            if toplam_mobilizasyon > 0:
-                mesaj += f"• Mobilizasyon: {toplam_mobilizasyon} (%{toplam_mobilizasyon/genel_toplam*100:.1f})\n"
-            if toplam_izinli > 0:
-                mesaj += f"• İzinli: {toplam_izinli} (%{toplam_izinli/genel_toplam*100:.1f})\n"
-            if toplam_hasta > 0:
-                mesaj += f"• Hasta: {toplam_hasta} (%{toplam_hasta/genel_toplam*100:.1f})\n"
+            if genel_staff > 0:
+                mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
+            if genel_worker > 0:
+                mesaj += f"• Worker: {genel_worker} (%{genel_worker/genel_toplam*100:.1f})\n"
+            if genel_izin > 0:
+                mesaj += f"• İzin: {genel_izin} (%{genel_izin/genel_toplam*100:.1f})\n"
+            if genel_hastalik > 0:
+                mesaj += f"• Hastalık: {genel_hastalik} (%{genel_hastalik/genel_toplam*100:.1f})\n"
+            if genel_mobilizasyon > 0:
+                mesaj += f"• Mobilizasyon: {genel_mobilizasyon} (%{genel_mobilizasyon/genel_toplam*100:.1f})\n"
+        
+        if genel_dis_gorev > 0:
+            mesaj += f"🚀 DIŞ GÖREVLER: {genel_dis_gorev} kişi\n"
         
         if eksik_santiyeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(eksik_santiyeler))}"
@@ -1941,6 +1967,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
+# GÜNCELLENDİ: Aylık rapor fonksiyonu - YENİ FORMAT
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -1965,46 +1992,74 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
-        # DÜZELTME: Personel sayılarını doğru şekilde topla
+        # YENİ FORMAT: Personel sayılarını GPT analizinden al
         proje_detay_rows = await async_fetchall("""
-            SELECT project_name, 
-                   SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
-                   SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon,
-                   SUM(person_count) as toplam_personel  -- EKLENDİ: Toplam personel sayısı
+            SELECT project_name, ai_analysis
             FROM reports 
             WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
-            GROUP BY project_name
-            ORDER BY project_name
         """, (start_date, end_date))
         
-        genel_toplam_result = await async_fetchone("""
-            SELECT 
-                COALESCE(SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END), 0) as toplam_calisan,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
-                COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon,
-                COALESCE(SUM(person_count), 0) as toplam_personel  -- EKLENDİ: Genel toplam personel
-            FROM reports 
-            WHERE report_date BETWEEN %s AND %s
-        """, (start_date, end_date))
+        proje_analizleri = {}
         
-        # Safe extraction with defaults
-        toplam_staff = safe_get_tuple_value(genel_toplam_result, 3, 0)
-        toplam_calisan = safe_get_tuple_value(genel_toplam_result, 0, 0)
-        toplam_mobilizasyon = safe_get_tuple_value(genel_toplam_result, 4, 0)
-        toplam_izinli = safe_get_tuple_value(genel_toplam_result, 2, 0)
-        toplam_hasta = safe_get_tuple_value(genel_toplam_result, 1, 0)
-        toplam_personel = safe_get_tuple_value(genel_toplam_result, 5, 0)  # YENİ: Toplam personel
+        for row in proje_detay_rows:
+            if len(row) < 2:
+                continue
+                
+            proje_adi = safe_get_tuple_value(row, 0, '')
+            ai_analysis = safe_get_tuple_value(row, 1, '{}')
+            
+            if proje_adi not in proje_analizleri:
+                proje_analizleri[proje_adi] = {
+                    'staff': 0, 'worker': 0, 'izin': 0, 'hastalik': 0, 'mobilizasyon': 0, 'dis_gorev': 0, 'toplam': 0
+                }
+            
+            try:
+                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                yeni_format = ai_data.get('yeni_format', {})
+                personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                
+                if yeni_format:
+                    proje_analizleri[proje_adi]['staff'] += yeni_format.get('staff', 0)
+                    proje_analizleri[proje_adi]['worker'] += yeni_format.get('worker', 0)
+                    proje_analizleri[proje_adi]['izin'] += yeni_format.get('izin', 0)
+                    proje_analizleri[proje_adi]['hastalik'] += yeni_format.get('hastalik', 0)
+                    proje_analizleri[proje_adi]['mobilizasyon'] += yeni_format.get('mobilizasyon', 0)
+                    proje_analizleri[proje_adi]['dis_gorev'] += yeni_format.get('dis_gorev', 0)
+                    proje_analizleri[proje_adi]['toplam'] += yeni_format.get('total', 0)
+                    
+                elif personel_dagilimi:
+                    proje_analizleri[proje_adi]['staff'] += personel_dagilimi.get('staff', 0)
+                    proje_analizleri[proje_adi]['worker'] += personel_dagilimi.get('worker', 0)
+                    proje_analizleri[proje_adi]['izin'] += personel_dagilimi.get('izin', 0)
+                    proje_analizleri[proje_adi]['hastalik'] += personel_dagilimi.get('hastalik', 0)
+                    proje_analizleri[proje_adi]['mobilizasyon'] += personel_dagilimi.get('mobilizasyon', 0)
+                    proje_analizleri[proje_adi]['dis_gorev'] += personel_dagilimi.get('dis_gorev', 0)
+                    proje_analizleri[proje_adi]['toplam'] += personel_dagilimi.get('staff', 0) + personel_dagilimi.get('worker', 0) + personel_dagilimi.get('izin', 0) + personel_dagilimi.get('hastalik', 0) + personel_dagilimi.get('mobilizasyon', 0)
+                    
+            except Exception as e:
+                logging.error(f"Proje analiz hatası: {e}")
+                continue
         
-        # DÜZELTME: Genel toplamı doğru hesapla
-        genel_toplam = toplam_personel  # Tüm person_count değerlerinin toplamını kullan
+        # Genel toplamları hesapla
+        genel_toplam = 0
+        genel_staff = 0
+        genel_worker = 0
+        genel_izin = 0
+        genel_hastalik = 0
+        genel_mobilizasyon = 0
+        genel_dis_gorev = 0
+        
+        for proje in proje_analizleri.values():
+            genel_toplam += proje['toplam']
+            genel_staff += proje['staff']
+            genel_worker += proje['worker']
+            genel_izin += proje['izin']
+            genel_hastalik += proje['hastalik']
+            genel_mobilizasyon += proje['mobilizasyon']
+            genel_dis_gorev += proje['dis_gorev']
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
-        rapor_veren_santiyeler = set([safe_get_tuple_value(row, 0, '') for row in proje_detay_rows if safe_get_tuple_value(row, 0, '')])
+        rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
         mesaj = f"🗓️ AYLIK ÖZET RAPOR\n"
@@ -2016,7 +2071,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Pasif Kullanıcı: {len(en_pasif)}\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
-        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"  # EKLENDİ
+        mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
         for i, row in enumerate(en_aktif, 1):
@@ -2041,45 +2096,35 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71"]
-        for row in proje_detay_rows:
-            if len(row) >= 7:
-                proje_adi = safe_get_tuple_value(row, 0, '')
-                calisan = safe_get_tuple_value(row, 1, 0)
-                hasta = safe_get_tuple_value(row, 2, 0)
-                izinli = safe_get_tuple_value(row, 3, 0)
-                staff = safe_get_tuple_value(row, 4, 0)
-                mobilizasyon = safe_get_tuple_value(row, 5, 0)
-                toplam_proje = safe_get_tuple_value(row, 6, 0)  # YENİ: Proje toplamı
-                
-                if proje_adi in onemli_projeler and toplam_proje > 0:
-                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
+            if proje_adi in onemli_projeler and analiz['toplam'] > 0:
+                mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
+                mesaj += f"   └─ Staff:{analiz['staff']}, Worker:{analiz['worker']}, İzin:{analiz['izin']}, Hastalık:{analiz['hastalik']}, Mobilizasyon:{analiz['mobilizasyon']}\n\n"
         
         # Diğer projeler
-        for row in proje_detay_rows:
-            if len(row) >= 7:
-                proje_adi = safe_get_tuple_value(row, 0, '')
-                toplam_proje = safe_get_tuple_value(row, 6, 0)
-                
-                if proje_adi not in onemli_projeler and toplam_proje > 0:
-                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
+            if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
+                emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
             mesaj += f"🎯 DAĞILIM:\n"
-            if toplam_staff > 0:
-                mesaj += f"• Staff: {toplam_staff} (%{toplam_staff/genel_toplam*100:.1f})\n"
-            if toplam_calisan > 0:
-                mesaj += f"• Çalışan: {toplam_calisan} (%{toplam_calisan/genel_toplam*100:.1f})\n"
-            if toplam_mobilizasyon > 0:
-                mesaj += f"• Mobilizasyon: {toplam_mobilizasyon} (%{toplam_mobilizasyon/genel_toplam*100:.1f})\n"
-            if toplam_izinli > 0:
-                mesaj += f"• İzinli: {toplam_izinli} (%{toplam_izinli/genel_toplam*100:.1f})\n"
-            if toplam_hasta > 0:
-                mesaj += f"• Hasta: {toplam_hasta} (%{toplam_hasta/genel_toplam*100:.1f})\n"
+            if genel_staff > 0:
+                mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
+            if genel_worker > 0:
+                mesaj += f"• Worker: {genel_worker} (%{genel_worker/genel_toplam*100:.1f})\n"
+            if genel_izin > 0:
+                mesaj += f"• İzin: {genel_izin} (%{genel_izin/genel_toplam*100:.1f})\n"
+            if genel_hastalik > 0:
+                mesaj += f"• Hastalık: {genel_hastalik} (%{genel_hastalik/genel_toplam*100:.1f})\n"
+            if genel_mobilizasyon > 0:
+                mesaj += f"• Mobilizasyon: {genel_mobilizasyon} (%{genel_mobilizasyon/genel_toplam*100:.1f})\n"
+        
+        if genel_dis_gorev > 0:
+            mesaj += f"🚀 DIŞ GÖREVLER: {genel_dis_gorev} kişi\n"
         
         if eksik_santiyeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(eksik_santiyeler))}"
@@ -2331,7 +2376,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.2 (Çoklu Şantiye Desteği + Gelişmiş Parser)\n"
+        "Versiyon: 4.3 (Personel Gruplama Düzeltildi)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2664,7 +2709,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         rows = await async_fetchall("""
             SELECT r.user_id, r.report_date, r.report_type, r.work_description, 
                    r.person_count, r.project_name, r.work_category, r.personnel_type,
-                   r.delivered_date, r.is_edited
+                   r.delivered_date, r.is_edited, r.ai_analysis
             FROM reports r
             WHERE r.report_date BETWEEN %s AND %s
             ORDER BY r.report_date, r.user_id
@@ -2675,7 +2720,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         
         excel_data = []
         for row in rows:
-            if len(row) < 10:
+            if len(row) < 11:
                 continue
             user_id = safe_get_tuple_value(row, 0, 0)
             tarih = safe_get_tuple_value(row, 1, '')
@@ -2687,6 +2732,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             personel_tipi = safe_get_tuple_value(row, 7, '')
             delivered_date = safe_get_tuple_value(row, 8, '')
             is_edited = safe_get_tuple_value(row, 9, False)
+            ai_analysis = safe_get_tuple_value(row, 10, '{}')
             
             kullanici_adi = id_to_name.get(user_id, f"Kullanıcı")
             
@@ -2696,6 +2742,36 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             except:
                 rapor_tarihi = str(tarih)
                 gonderme_tarihi = str(delivered_date) if delivered_date else ""
+            
+            # AI analizinden personel dağılımını al
+            staff_count = 0
+            worker_count = 0
+            izin_count = 0
+            hastalik_count = 0
+            mobilizasyon_count = 0
+            dis_gorev_count = 0
+            
+            try:
+                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                yeni_format = ai_data.get('yeni_format', {})
+                personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                
+                if yeni_format:
+                    staff_count = yeni_format.get('staff', 0)
+                    worker_count = yeni_format.get('worker', 0)
+                    izin_count = yeni_format.get('izin', 0)
+                    hastalik_count = yeni_format.get('hastalik', 0)
+                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
+                    dis_gorev_count = yeni_format.get('dis_gorev', 0)
+                elif personel_dagilimi:
+                    staff_count = personel_dagilimi.get('staff', 0)
+                    worker_count = personel_dagilimi.get('worker', 0)
+                    izin_count = personel_dagilimi.get('izin', 0)
+                    hastalik_count = personel_dagilimi.get('hastalik', 0)
+                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
+                    dis_gorev_count = personel_dagilimi.get('dis_gorev', 0)
+            except:
+                pass
             
             excel_data.append({
                 'Tarih': rapor_tarihi,
@@ -2708,6 +2784,12 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 'Yapılan İş': icerik[:100] + '...' if len(icerik) > 100 else icerik,
                 'Gönderilme Tarihi': gonderme_tarihi,
                 'Düzenlendi mi?': 'Evet' if is_edited else 'Hayır',
+                'Staff': staff_count,
+                'Worker': worker_count,
+                'İzin': izin_count,
+                'Hastalık': hastalik_count,
+                'Mobilizasyon': mobilizasyon_count,
+                'Dış Görev': dis_gorev_count,
                 'User ID': user_id
             })
         
@@ -2716,7 +2798,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.title = "Raporlar"
         
         headers = ['Tarih', 'Kullanıcı', 'Rapor Tipi', 'Kişi Sayısı', 'Proje', 'İş Kategorisi', 
-                  'Personel Tipi', 'Yapılan İş', 'Gönderilme Tarihi', 'Düzenlendi mi?', 'User ID']
+                  'Personel Tipi', 'Yapılan İş', 'Gönderilme Tarihi', 'Düzenlendi mi?', 
+                  'Staff', 'Worker', 'İzin', 'Hastalık', 'Mobilizasyon', 'Dış Görev', 'User ID']
         
         header_font = Font(bold=True, color="FFFFFF", size=12)
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
@@ -2740,7 +2823,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                     else:
                         cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
         
-        column_widths = {'A': 12, 'B': 20, 'C': 12, 'D': 12, 'E': 20, 'F': 15, 'G': 15, 'H': 40, 'I': 15, 'J': 12, 'K': 10}
+        column_widths = {'A': 12, 'B': 20, 'C': 12, 'D': 12, 'E': 20, 'F': 15, 'G': 15, 'H': 40, 'I': 15, 'J': 12, 'K': 8, 'L': 8, 'M': 8, 'N': 8, 'O': 12, 'P': 10, 'Q': 10}
         for col, width in column_widths.items():
             ws.column_dimensions[col].width = width
         
@@ -2748,6 +2831,15 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         toplam_rapor = len(excel_data)
         toplam_kullanici = len(set([x['User ID'] for x in excel_data]))
         gun_sayisi = len(set([x['Tarih'] for x in excel_data]))
+        
+        # Personel toplamları
+        toplam_staff = sum([x['Staff'] for x in excel_data])
+        toplam_worker = sum([x['Worker'] for x in excel_data])
+        toplam_izin = sum([x['İzin'] for x in excel_data])
+        toplam_hastalik = sum([x['Hastalık'] for x in excel_data])
+        toplam_mobilizasyon = sum([x['Mobilizasyon'] for x in excel_data])
+        toplam_dis_gorev = sum([x['Dış Görev'] for x in excel_data])
+        toplam_personel = toplam_staff + toplam_worker + toplam_izin + toplam_hastalik + toplam_mobilizasyon
         
         ws_summary.merge_cells('A1:D1')
         ws_summary['A1'] = f"📊 RAPOR ÖZETİ - {rapor_baslik}"
@@ -2759,14 +2851,25 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ['📊 Toplam Rapor', toplam_rapor],
             ['👥 Toplam Kullanıcı', toplam_kullanici],
             ['📅 İş Günü Sayısı', gun_sayisi],
-            ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
+            ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')],
+            ['', ''],
+            ['👨‍💼 PERSONEL DAĞILIMI', ''],
+            ['• Staff', toplam_staff],
+            ['• Worker', toplam_worker],
+            ['• İzin', toplam_izin],
+            ['• Hastalık', toplam_hastalik],
+            ['• Mobilizasyon', toplam_mobilizasyon],
+            ['• Dış Görev', toplam_dis_gorev],
+            ['🎯 TOPLAM PERSONEL', toplam_personel]
         ]
         
         for row_idx, (label, value) in enumerate(summary_data, 3):
             ws_summary[f'A{row_idx}'] = label
-            ws_summary[f'B{row_idx}'] = value
+            if value != '':
+                ws_summary[f'B{row_idx}'] = value
             ws_summary[f'A{row_idx}'].font = Font(bold=True)
-            ws_summary[f'B{row_idx}'].border = border
+            if row_idx >= 9:  # Personel dağılımı satırları
+                ws_summary[f'A{row_idx}'].font = Font(bold=False)
         
         ws_summary.column_dimensions['A'].width = 25
         ws_summary.column_dimensions['B'].width = 15
@@ -3168,10 +3271,10 @@ if __name__ == "__main__":
     else:
         # Botu başlat
         print("🚀 Telegram Bot Başlatılıyor...")
-        print("📝 Değişiklik Günlüğü v4.2:")
-        print("   - Çoklu şantiye desteği eklendi")
-        print("   - Gelişmiş tarih parser eklendi")
-        print("   - Şantiye normalizasyonu eklendi")
-        print("   - Gelişmiş SYSTEM_PROMPT uygulandı")
+        print("📝 Değişiklik Günlüğü v4.3:")
+        print("   - Personel gruplaması tamamen düzeltildi")
+        print("   - Toplam personel sayısı doğru hesaplanıyor")
+        print("   - GPT yeni formatı tam olarak entegre edildi")
+        print("   - Şantiye bazlı raporlama doğru çalışıyor")
         
         main()
