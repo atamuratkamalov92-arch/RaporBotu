@@ -1,5 +1,5 @@
 """
-📋 CHANGELOG - bot.py v4.1
+📋 CHANGELOG - bot.py v4.2
 
 ✅ DÜZELTMELER:
 - "tuple index out of range" hataları giderildi
@@ -15,6 +15,9 @@
 - Yapılandırılmış loglama ve hata raporlama eklendi
 - Güvenli veritabanı yardımcı fonksiyonları oluşturuldu
 - Raporlar için standart JSON çıktı formatı belirlendi
+- Çoklu şantiye desteği eklendi
+- Gelişmiş tarih parser eklendi
+- Şantiye normalizasyonu eklendi
 
 🛡️ GÜVENLİK:
 - Sert kodlanmış gizli anahtarlar kaldırıldı
@@ -768,68 +771,152 @@ def is_media_message(message) -> bool:
 
     return False
 
-# SYSTEM_PROMPT - Basit ve Etkili
+# SYSTEM_PROMPT - Gelişmiş ve Çoklu Şantiye Desteği
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını standart biçime dönüştürmek ve tek bir JSON formatı üretmektir.
 
-Kurallar:
+ÖNEMLİ KURALLAR:
 
-1. Cevap HER ZAMAN sadece geçerli bir JSON olmalıdır. Açıklama, yorum, metn ekleme yoktur.
-2. JSON dışına hiçbir şey yazma.
-3. Veriler karışık, eksik, yanlış yazılmış olsa bile düzelt ve doğru kategoriye yerleştir.
-4. Aşağıdaki alanları mutlaka algıla ve doldur:
-   • date → rapor tarihi  
-   • site → şantiye adı  
-   • staff → sayı  
-   • worker → sayı  
-   • izin → sayı  
-   • hastalik → sayı  
-   • mobilizasyon → sayı  
-   • dis_gorev → sayı  
-   • total → toplam personel  
+1. **ÇOKLU ŞANTİYE DESTEĞİ**: Bir mesajda birden fazla şantiye varsa, her biri için ayrı JSON nesnesi oluştur.
 
-5. Şantiye adlarını tanı ve normalize et:
-   SKP, LOT13, LOT71, TYM, BWC, DMC, FAP, KÖKSARAY, MMP, OHP, Piramit, RMC, YHP, TSP vb.  
-   Kullanıcı farklı yazsa bile (ör: lot 13, Lot13, lot-13) doğru formata düzelt.
+2. **TARİH ALGILAMA**:
+   - Format: YYYY-MM-DD
+   - Örnek: "13.11.2025" → "2025-11-13"
+   - Tarih yoksa bugünün tarihini kullan
 
-6. Personel sınıfları:
-   STAFF = şef, mühendis, tekniker, formen, ekipbaşı, depo sorumlusu  
-   WORKER = usta, işçi, yardımcı, operatör  
-   IZIN = izinli, is yok, gelmedi  
-   HASTALIK = hasta, raporlu  
-   MOBILIZASYON = saha elektrik, saha kontrol, mobilizasyon, gece nöbetçi, proje dışı işler  
-   DIS_GOREV = başka şantiye görevi, dış görev  
+3. **ŞANTİYE NORMALİZASYONU**:
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP
+   - "Lot 13", "lot13", "LOT-13" → "LOT13"
+   - "SKP Daho" → "SKP"
+   - "Piramit Tower" → "Piramit"
 
-7. Kullanıcı metni içinde belirtilmeyen kategori varsa "0" yaz.
+4. **PERSONEL KATEGORİLERİ**:
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen
+   - **worker**: usta, işçi, yardımcı, operatör, imalat, çalışan
+   - **izin**: izinli, iş yok, gelmedi, izindeyim
+   - **hastalik**: hasta, raporlu, hastalık izni
+   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
+   - **dis_gorev**: başka şantiye görevi, dış görev, Lot 71 dış görev, Fap dış görev
 
-8. Hesaplamalar:
-   total = staff + worker + izin + hastalik + mobilizasyon  
-   dis_gorev ayrıca ek alan olarak gelir, total içine dahil edilmez.
+5. **HESAPLAMALAR**:
+   total = staff + worker + izin + hastalik + mobilizasyon
+   dis_gorev ayrıca kaydedilir, total'e dahil değil
 
-9. Çıktı formatı:
-{
-  "date": "YYYY-MM-DD",
-  "site": "SKP",
-  "staff": 0,
-  "worker": 0,
-  "izin": 0,
-  "hastalik": 0,
-  "mobilizasyon": 0,
-  "dis_gorev": 0,
-  "total": 0
-}
+6. **DİKKAT EDİLECEK NOKTALAR**:
+   - "Çalışan: 10" → worker: 10
+   - "İzinli: 1" → izin: 1  
+   - "Toplam staff: 1" → staff: 1
+   - "Toplam mobilizasyon: 2" → mobilizasyon: 2
+   - "Lot 71 dış görev 8" → dis_gorev: 8
+   - "Beldersoy: 17 kişi" → worker: 17
+   - "Genel toplam: 10 kişi" → total: 10 (doğrulama için kullan)
 
-10. Eğer birden fazla şantiye varsa JSON bir liste döndür:
+7. **ÖRNEK ÇIKTI FORMATI**:
 [
-  { ... },
-  { ... }
+  {
+    "date": "2025-11-13",
+    "site": "LOT13",
+    "staff": 1,
+    "worker": 0,
+    "izin": 1,
+    "hastalik": 0,
+    "mobilizasyon": 2,
+    "dis_gorev": 8,
+    "total": 10
+  },
+  {
+    "date": "2025-11-13", 
+    "site": "LOT71",
+    "staff": 1,
+    "worker": 0,
+    "izin": 0,
+    "hastalik": 0,
+    "mobilizasyon": 13,
+    "dis_gorev": 8,
+    "total": 13
+  }
 ]
 
-11. Rapor içinde tarih yoksa → bugünün tarihini kullan.
-12. Kullanıcı kim olursa olsun, raporu gönderenin şantiyesi değil, metinde yazan şantiye geçerlidir.
-
-Görevin: Her raporu standart, güvenilir, tutarlı bir JSON çıktısına dönüştürmek.
+DİKKAT: 
+- Sadece JSON döndür, açıklama yapma!
+- Tüm sayıları integer olarak döndür
+- Eksik alanları 0 olarak doldur
 """
+
+# Gelişmiş tarih parser fonksiyonları
+def enhanced_date_parser(text):
+    """Gelişmiş tarih parser - çeşitli formatları destekler"""
+    today = dt.datetime.now(TZ).date()
+    
+    # Tarih pattern'leri
+    patterns = [
+        r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',  # 13.11.2025
+        r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',  # 13.11.25
+        r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',  # 2025-11-13
+    ]
+    
+    for pattern in patterns:
+        matches = re.finditer(pattern, text)
+        for match in matches:
+            try:
+                groups = match.groups()
+                if len(groups[2]) == 4:  # YYYY format
+                    day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
+                else:  # YY format
+                    day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
+                    year += 2000
+                parsed_date = dt.date(year, month, day)
+                if parsed_date <= today:  # Gelecek tarih kontrolü
+                    return parsed_date
+            except ValueError:
+                continue
+    
+    # Özel ifadeler
+    text_lower = text.lower()
+    if 'bugün' in text_lower or 'bugun' in text_lower:
+        return today
+    if 'dün' in text_lower or 'dun' in text_lower:
+        return today - dt.timedelta(days=1)
+    
+    return today  # Varsayılan bugün
+
+def normalize_site_name(site_name):
+    """Şantiye isimlerini standartlaştır"""
+    if not site_name:
+        return "BELİRSİZ"
+        
+    site_name = site_name.upper().strip()
+    
+    mappings = {
+        'LOT 13': 'LOT13',
+        'LOT-13': 'LOT13', 
+        'LOT13': 'LOT13',
+        'LOT 71': 'LOT71',
+        'LOT-71': 'LOT71',
+        'LOT71': 'LOT71',
+        'SKP DAHO': 'SKP',
+        'SKP': 'SKP',
+        'PİRAMİT TOWER': 'PİRAMİT',
+        'PİRAMİT': 'PİRAMİT',
+        'BWC': 'BWC',
+        'STADYUM': 'STADYUM',
+        'FAP': 'FAP'
+    }
+    
+    return mappings.get(site_name, site_name)
+
+def extract_max_number(text, patterns):
+    """Pattern'lere göre maksimum sayıyı çıkar"""
+    max_num = 0
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for match in matches:
+            try:
+                num = int(match)
+                max_num = max(max_num, num)
+            except ValueError:
+                continue
+    return max_num
 
 # Basitleştirilmiş USER_PROMPT_TEMPLATE
 USER_PROMPT_TEMPLATE = "<<<RAW_MESSAGE>>>"
@@ -880,15 +967,15 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
 
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Kapsamlı doğrulama ile gelen mesajı işle"""
+    """Kapsamlı doğrulama ile gelen mesajı işle - ÇOKLU ŞANTİYE DESTEKLİ"""
     # Giriş doğrulama
     is_valid, cleaned_text = validate_user_input(raw_text)
     if not is_valid:
         return [] if is_group else {"error": "geçersiz_giriş"}
     
     today = dt.date.today()
-    max_retries = 3
-    retry_delay = 2
+    max_retries = 2  # Daha az retry
+    retry_delay = 1
     
     for attempt in range(max_retries):
         try:
@@ -925,14 +1012,30 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 if not isinstance(report, dict):
                     continue
                     
+                # Tarih doğrulama
                 date_str = report.get('date')
-                if date_str and validate_date_string(date_str):
+                if date_str:
                     try:
                         report_date = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
                         if report_date > today:
-                            continue
+                            report['date'] = today.strftime('%Y-%m-%d')  # Gelecek tarihi bugüne düzelt
                     except ValueError:
-                        pass
+                        report['date'] = today.strftime('%Y-%m-%d')
+                else:
+                    report['date'] = today.strftime('%Y-%m-%d')
+                
+                # Şantiye normalizasyonu
+                site = report.get('site', 'BELİRSİZ')
+                report['site'] = normalize_site_name(site)
+                
+                # Sayısal alanları temizle
+                for key in ['staff', 'worker', 'izin', 'hastalik', 'mobilizasyon', 'dis_gorev', 'total']:
+                    value = report.get(key, 0)
+                    if not isinstance(value, int):
+                        try:
+                            report[key] = int(value) if value else 0
+                        except (ValueError, TypeError):
+                            report[key] = 0
                 
                 # Eksikse toplamı hesapla
                 if report.get('total', 0) == 0:
@@ -943,7 +1046,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     mobilizasyon = report.get('mobilizasyon', 0)
                     report['total'] = staff + worker + izin + hastalik + mobilizasyon
                 
-                filtered_reports.append(report)
+                # Sadece anlamlı raporları ekle (total > 0 veya staff > 0)
+                if report['total'] > 0 or report['staff'] > 0:
+                    filtered_reports.append(report)
             
             return filtered_reports
                 
@@ -951,7 +1056,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             logging.error(f"Mesaj işleme hatası (deneme {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time_module.sleep(retry_delay)
-            return [] if is_group else {"dm_info": "no_report_detected"}
+    
+    return [] if is_group else {"dm_info": "no_report_detected"}
 
 # YENİ RAPOR KAYIT FONKSİYONU
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
@@ -2225,9 +2331,11 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.0 (Yeni OpenAI API + Google Drive Hazır)\n"
+        "Versiyon: 4.2 (Çoklu Şantiye Desteği + Gelişmiş Parser)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
+        "• Çoklu şantiye desteği\n"
+        "• Gelişmiş tarih parser\n"
         "• Günlük / Haftalık / Aylık istatistik oluşturur\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• Çoklu rapor parsing yapar\n"
@@ -3060,12 +3168,10 @@ if __name__ == "__main__":
     else:
         # Botu başlat
         print("🚀 Telegram Bot Başlatılıyor...")
-        print("📝 Değişiklik Günlüğü v4.1:")
-        print("   - Tuple index out of range hataları düzeltildi")
-        print("   - Gelişmiş çevre değişkeni doğrulama eklendi") 
-        print("   - Veritabanı bağlantı yönetimi iyileştirildi")
-        print("   - Kapsamlı giriş doğrulama eklendi")
-        print("   - Güvenli JSON parsing uygulandı")
-        print("   - Excel dosya doğrulama eklendi")
+        print("📝 Değişiklik Günlüğü v4.2:")
+        print("   - Çoklu şantiye desteği eklendi")
+        print("   - Gelişmiş tarih parser eklendi")
+        print("   - Şantiye normalizasyonu eklendi")
+        print("   - Gelişmiş SYSTEM_PROMPT uygulandı")
         
         main()
