@@ -1557,41 +1557,66 @@ async def generate_gelismis_personel_ozeti(target_date):
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
-                    'toplam': 0,  # EKLENDİ: Toplam personel sayısı
+                    'toplam': 0,
                     'staff': 0, 'calisan': 0, 'izinli': 0, 'hasta': 0, 'mobilizasyon': 0, 'dis_gorev': 0
                 }
             
-            # Toplam personel sayısını her rapor için ekle
+            # TOPLAM PERSONEL SAYISINI DOĞRU HESAPLA
+            # Tüm rapor tipleri için personel sayısını topla
             proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
             
-            yapilan_is_lower = (yapilan_is or '').lower()
+            # GPT analizinden personel dağılımını al
             try:
                 ai_data = json.loads(ai_analysis) if ai_analysis else {}
-            except:
-                ai_data = {}
-            gpt_analysis = ai_data.get('gpt_analysis', {})
-            issues = gpt_analysis.get('issues', [])
-            
-            dis_gorev_sayisi = 0
-            for issue in issues:
-                if 'dış görev' in issue.lower() or 'dis gorev' in issue.lower():
-                    sayilar = re.findall(r'\d+', issue)
-                    if sayilar:
-                        dis_gorev_sayisi += int(sayilar[0])
-            
-            if 'staff' in yapilan_is_lower:
-                proje_analizleri[proje_adi]['staff'] += kisi_sayisi
-            elif 'mobilizasyon' in yapilan_is_lower:
-                proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
-            elif dis_gorev_sayisi > 0:
-                proje_analizleri[proje_adi]['dis_gorev'] += dis_gorev_sayisi
-            elif rapor_tipi == "IZIN/ISYOK":
-                if 'hasta' in yapilan_is_lower:
-                    proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
+                yeni_format = ai_data.get('yeni_format', {})
+                
+                # Eğer GPT analizi varsa, onu kullan
+                if yeni_format:
+                    staff_count = yeni_format.get('staff', 0)
+                    worker_count = yeni_format.get('worker', 0)
+                    izin_count = yeni_format.get('izin', 0)
+                    hastalik_count = yeni_format.get('hastalik', 0)
+                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
+                    dis_gorev_count = yeni_format.get('dis_gorev', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['calisan'] += worker_count
+                    proje_analizleri[proje_adi]['izinli'] += izin_count
+                    proje_analizleri[proje_adi]['hasta'] += hastalik_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['dis_gorev'] += dis_gorev_count
                 else:
-                    proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
-            else:
-                proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                    # Eski yöntemle devam et
+                    yapilan_is_lower = (yapilan_is or '').lower()
+                    
+                    if 'staff' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['staff'] += kisi_sayisi
+                    elif 'mobilizasyon' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                    elif rapor_tipi == "IZIN/ISYOK":
+                        if 'hasta' in yapilan_is_lower:
+                            proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
+                        else:
+                            proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
+                    else:
+                        proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                        
+            except Exception as e:
+                logging.error(f"Personel analiz hatası: {e}")
+                # Hata durumunda eski yönteme devam et
+                yapilan_is_lower = (yapilan_is or '').lower()
+                
+                if 'staff' in yapilan_is_lower:
+                    proje_analizleri[proje_adi]['staff'] += kisi_sayisi
+                elif 'mobilizasyon' in yapilan_is_lower:
+                    proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                elif rapor_tipi == "IZIN/ISYOK":
+                    if 'hasta' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['hasta'] += kisi_sayisi
+                    else:
+                        proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
+                else:
+                    proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
             
             tum_projeler.add(proje_adi)
         
@@ -1606,7 +1631,7 @@ async def generate_gelismis_personel_ozeti(target_date):
         genel_dis_gorev = 0
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            proje_toplam = analiz['toplam']  # DÜZELTME: Artık toplam alanını kullanıyoruz
+            proje_toplam = analiz['toplam']
             if proje_toplam > 0:
                 genel_toplam += proje_toplam
                 genel_staff += analiz['staff']
