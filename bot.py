@@ -289,6 +289,43 @@ def safe_http_request(url, method='GET', timeout=30, **kwargs):
         logging.error(f"HTTP istek hatası: {e}")
         return None
 
+# Helper function for integer conversion
+def _to_int_or_none(x):
+    """Güvenli şekilde integer'a çevir veya None döndür"""
+    if x is None or pd.isna(x):
+        return None
+    
+    s = str(x).strip()
+    if not s:
+        return None
+    
+    if "e+" in s.lower():
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return None
+    
+    s_clean = re.sub(r'[^\d]', '', s)
+    
+    if len(s_clean) < 8:
+        return None
+    
+    try:
+        return int(s_clean)
+    except (ValueError, TypeError):
+        return None
+
+def get_file_hash(filename):
+    """Değişiklik tespiti için dosya hash'ini al"""
+    try:
+        if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        return None
+    except Exception as e:
+        logging.error(f"Dosya hash hatası: {e}")
+        return None
+
 # Loglama başlatma
 logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s",
@@ -481,43 +518,6 @@ def load_excel_intelligent():
 
 # Excel yüklemeyi başlat
 load_excel_intelligent()
-
-# Helper function for integer conversion
-def _to_int_or_none(x):
-    """Güvenli şekilde integer'a çevir veya None döndür"""
-    if x is None or pd.isna(x):
-        return None
-    
-    s = str(x).strip()
-    if not s:
-        return None
-    
-    if "e+" in s.lower():
-        try:
-            return int(float(s))
-        except (ValueError, TypeError):
-            return None
-    
-    s_clean = re.sub(r'[^\d]', '', s)
-    
-    if len(s_clean) < 8:
-        return None
-    
-    try:
-        return int(s_clean)
-    except (ValueError, TypeError):
-        return None
-
-def get_file_hash(filename):
-    """Değişiklik tespiti için dosya hash'ini al"""
-    try:
-        if os.path.exists(filename):
-            with open(filename, 'rb') as f:
-                return hashlib.md5(f.read()).hexdigest()
-        return None
-    except Exception as e:
-        logging.error(f"Dosya hash hatası: {e}")
-        return None
 
 # Google Cloud Storage fonksiyonları
 import google.cloud.storage
