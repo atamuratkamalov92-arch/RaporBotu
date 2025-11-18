@@ -724,7 +724,7 @@ SADECE JSON array döndür. Başka hiçbir şey YOK.
 ]
 
 ==================================================
-🎯 KESİN ÇIKTI KURALLARI
+🎯 KESİN ÇIKTİ KURALLARI
 ==================================================
 • SADECE JSON array döndür
 • Hiçbir açıklama, yorum, not EKLEME
@@ -1541,8 +1541,12 @@ async def generate_gelismis_personel_ozeti(target_date):
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
+                    'toplam': 0,  # EKLENDİ: Toplam personel sayısı
                     'staff': 0, 'calisan': 0, 'izinli': 0, 'hasta': 0, 'mobilizasyon': 0, 'dis_gorev': 0
                 }
+            
+            # Toplam personel sayısını her rapor için ekle
+            proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
             
             yapilan_is_lower = (yapilan_is or '').lower()
             try:
@@ -1585,8 +1589,8 @@ async def generate_gelismis_personel_ozeti(target_date):
         genel_mobilizasyon = 0
         genel_dis_gorev = 0
         
-        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: sum(x[1].values()), reverse=True):
-            proje_toplam = analiz['staff'] + analiz['calisan'] + analiz['mobilizasyon']
+        for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
+            proje_toplam = analiz['toplam']  # DÜZELTME: Artık toplam alanını kullanıyoruz
             if proje_toplam > 0:
                 genel_toplam += proje_toplam
                 genel_staff += analiz['staff']
@@ -1666,13 +1670,15 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
+        # DÜZELTME: Personel sayılarını doğru şekilde topla
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
                    SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
                    SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
                    SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon
+                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon,
+                   SUM(person_count) as toplam_personel  -- EKLENDİ: Toplam personel sayısı
             FROM reports 
             WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
             GROUP BY project_name
@@ -1685,7 +1691,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
                 COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon
+                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon,
+                COALESCE(SUM(person_count), 0) as toplam_personel  -- EKLENDİ: Genel toplam personel
             FROM reports 
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
@@ -1696,8 +1703,10 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         toplam_mobilizasyon = safe_get_tuple_value(genel_toplam_result, 4, 0)
         toplam_izinli = safe_get_tuple_value(genel_toplam_result, 2, 0)
         toplam_hasta = safe_get_tuple_value(genel_toplam_result, 1, 0)
+        toplam_personel = safe_get_tuple_value(genel_toplam_result, 5, 0)  # YENİ: Toplam personel
         
-        genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
+        # DÜZELTME: Genel toplamı doğru hesapla
+        genel_toplam = toplam_personel  # Tüm person_count değerlerinin toplamını kullan
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = set([safe_get_tuple_value(row, 0, '') for row in proje_detay_rows if safe_get_tuple_value(row, 0, '')])
@@ -1710,7 +1719,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
         mesaj += f"• Rapor Gönderen: {len(rows)} kişi\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"• Verimlilik: %{verimlilik:.1f}\n\n"
+        mesaj += f"• Verimlilik: %{verimlilik:.1f}\n"
+        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"  # EKLENDİ
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
         for i, row in enumerate(en_aktif, 1):
@@ -1737,32 +1747,28 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71"]
         for row in proje_detay_rows:
-            if len(row) >= 6:
+            if len(row) >= 7:
                 proje_adi = safe_get_tuple_value(row, 0, '')
                 calisan = safe_get_tuple_value(row, 1, 0)
                 hasta = safe_get_tuple_value(row, 2, 0)
                 izinli = safe_get_tuple_value(row, 3, 0)
                 staff = safe_get_tuple_value(row, 4, 0)
                 mobilizasyon = safe_get_tuple_value(row, 5, 0)
+                toplam_proje = safe_get_tuple_value(row, 6, 0)  # YENİ: Proje toplamı
                 
-                if proje_adi in onemli_projeler:
-                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
-                    if toplam_proje > 0:
-                        mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                        mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+                if proje_adi in onemli_projeler and toplam_proje > 0:
+                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
+                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
         
+        # Diğer projeler
         for row in proje_detay_rows:
-            if len(row) >= 6:
+            if len(row) >= 7:
                 proje_adi = safe_get_tuple_value(row, 0, '')
-                calisan = safe_get_tuple_value(row, 1, 0)
-                mobilizasyon = safe_get_tuple_value(row, 5, 0)
-                staff = safe_get_tuple_value(row, 4, 0)
+                toplam_proje = safe_get_tuple_value(row, 6, 0)
                 
-                if proje_adi not in onemli_projeler:
-                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
-                    if toplam_proje > 0:
-                        emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                        mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+                if proje_adi not in onemli_projeler and toplam_proje > 0:
+                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
@@ -1775,9 +1781,9 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             if toplam_mobilizasyon > 0:
                 mesaj += f"• Mobilizasyon: {toplam_mobilizasyon} (%{toplam_mobilizasyon/genel_toplam*100:.1f})\n"
             if toplam_izinli > 0:
-                mesaj += f"• İzinli: {toplam_izinli}\n"
+                mesaj += f"• İzinli: {toplam_izinli} (%{toplam_izinli/genel_toplam*100:.1f})\n"
             if toplam_hasta > 0:
-                mesaj += f"• Hasta: {toplam_hasta}\n"
+                mesaj += f"• Hasta: {toplam_hasta} (%{toplam_hasta/genel_toplam*100:.1f})\n"
         
         if eksik_santiyeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(eksik_santiyeler))}"
@@ -1812,13 +1818,15 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
+        # DÜZELTME: Personel sayılarını doğru şekilde topla
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, 
                    SUM(CASE WHEN report_type = 'RAPOR' THEN person_count ELSE 0 END) as calisan,
                    SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END) as hasta,
                    SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END) as izinli,
                    SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END) as staff,
-                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon
+                   SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END) as mobilizasyon,
+                   SUM(person_count) as toplam_personel  -- EKLENDİ: Toplam personel sayısı
             FROM reports 
             WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
             GROUP BY project_name
@@ -1831,7 +1839,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND LOWER(work_description) LIKE '%hasta%' THEN person_count ELSE 0 END), 0) as toplam_hasta,
                 COALESCE(SUM(CASE WHEN report_type = 'IZIN/ISYOK' AND (LOWER(work_description) NOT LIKE '%hasta%' OR work_description IS NULL) THEN person_count ELSE 0 END), 0) as toplam_izinli,
                 COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%staff%' OR LOWER(work_description) LIKE '%staf%' THEN person_count ELSE 0 END), 0) as toplam_staff,
-                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon
+                COALESCE(SUM(CASE WHEN LOWER(work_description) LIKE '%mobilizasyon%' THEN person_count ELSE 0 END), 0) as toplam_mobilizasyon,
+                COALESCE(SUM(person_count), 0) as toplam_personel  -- EKLENDİ: Genel toplam personel
             FROM reports 
             WHERE report_date BETWEEN %s AND %s
         """, (start_date, end_date))
@@ -1842,8 +1851,10 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         toplam_mobilizasyon = safe_get_tuple_value(genel_toplam_result, 4, 0)
         toplam_izinli = safe_get_tuple_value(genel_toplam_result, 2, 0)
         toplam_hasta = safe_get_tuple_value(genel_toplam_result, 1, 0)
+        toplam_personel = safe_get_tuple_value(genel_toplam_result, 5, 0)  # YENİ: Toplam personel
         
-        genel_toplam = toplam_staff + toplam_calisan + toplam_mobilizasyon
+        # DÜZELTME: Genel toplamı doğru hesapla
+        genel_toplam = toplam_personel  # Tüm person_count değerlerinin toplamını kullan
         
         tum_santiyeler = set(santiye_sorumlulari.keys())
         rapor_veren_santiyeler = set([safe_get_tuple_value(row, 0, '') for row in proje_detay_rows if safe_get_tuple_value(row, 0, '')])
@@ -1857,7 +1868,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Toplam EKSIK Rapor: {eksik_rapor}\n"
         mesaj += f"• Pasif Kullanıcı: {len(en_pasif)}\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n\n"
+        mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
+        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"  # EKLENDİ
         
         mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
         for i, row in enumerate(en_aktif, 1):
@@ -1884,32 +1896,28 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71"]
         for row in proje_detay_rows:
-            if len(row) >= 6:
+            if len(row) >= 7:
                 proje_adi = safe_get_tuple_value(row, 0, '')
                 calisan = safe_get_tuple_value(row, 1, 0)
                 hasta = safe_get_tuple_value(row, 2, 0)
                 izinli = safe_get_tuple_value(row, 3, 0)
                 staff = safe_get_tuple_value(row, 4, 0)
                 mobilizasyon = safe_get_tuple_value(row, 5, 0)
+                toplam_proje = safe_get_tuple_value(row, 6, 0)  # YENİ: Proje toplamı
                 
-                if proje_adi in onemli_projeler:
-                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
-                    if toplam_proje > 0:
-                        mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
-                        mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
+                if proje_adi in onemli_projeler and toplam_proje > 0:
+                    mesaj += f"🏗️ {proje_adi}: {toplam_proje} kişi\n"
+                    mesaj += f"   └─ Staff:{staff or 0}, Çalışan:{calisan or 0}, İzinli:{izinli or 0}, Hastalık:{hasta or 0}, Mobilizasyon:{mobilizasyon or 0}\n\n"
         
+        # Diğer projeler
         for row in proje_detay_rows:
-            if len(row) >= 6:
+            if len(row) >= 7:
                 proje_adi = safe_get_tuple_value(row, 0, '')
-                calisan = safe_get_tuple_value(row, 1, 0)
-                mobilizasyon = safe_get_tuple_value(row, 5, 0)
-                staff = safe_get_tuple_value(row, 4, 0)
+                toplam_proje = safe_get_tuple_value(row, 6, 0)
                 
-                if proje_adi not in onemli_projeler:
-                    toplam_proje = (staff or 0) + (calisan or 0) + (mobilizasyon or 0)
-                    if toplam_proje > 0:
-                        emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                        mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
+                if proje_adi not in onemli_projeler and toplam_proje > 0:
+                    emoji = "🏢" if proje_adi == "TYM" else "🏗️"
+                    mesaj += f"{emoji} {proje_adi}: {toplam_proje} kişi\n"
         
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
@@ -1922,9 +1930,9 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             if toplam_mobilizasyon > 0:
                 mesaj += f"• Mobilizasyon: {toplam_mobilizasyon} (%{toplam_mobilizasyon/genel_toplam*100:.1f})\n"
             if toplam_izinli > 0:
-                mesaj += f"• İzinli: {toplam_izinli}\n"
+                mesaj += f"• İzinli: {toplam_izinli} (%{toplam_izinli/genel_toplam*100:.1f})\n"
             if toplam_hasta > 0:
-                mesaj += f"• Hasta: {toplam_hasta}\n"
+                mesaj += f"• Hasta: {toplam_hasta} (%{toplam_hasta/genel_toplam*100:.1f})\n"
         
         if eksik_santiyeler:
             mesaj += f"\n❌ EKSİK: {', '.join(sorted(eksik_santiyeler))}"
