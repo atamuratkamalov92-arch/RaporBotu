@@ -613,201 +613,71 @@ def is_media_message(message) -> bool:
 
     return False
 
+# YENİ SYSTEM_PROMPT - Basit ve Etkili
 SYSTEM_PROMPT = """
-SEN BİR İNŞAAT RAPORU UZMANISIN. AŞAĞIDAKİ TÜM KURALLAR KESİNLİKLE UYGULANACAK:
+Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını standart biçime dönüştürmek ve tek bir JSON formatı üretmektir.
 
-==================================================
-🎯 SİSTEM MİMARİSİ - DEĞİŞMEYECEK!
-==================================================
-• Tüm komutlar ve rapor, ozet, cikti formatları AYNI KALACAK
-• Grup/DM davranışları KORUNACAK
-• Zamanlanmış görevler AYNI çalışacak
+Kurallar:
 
-==================================================
-🚀 GERÇEK RAPOR ANALİZİNE DAYALI PERSONEL HESAPLAMA
-==================================================
-KRİTİK KURALLAR - GERÇEK ÖRNEKLERDEN TÜRETİLDİ:
+1. Cevap HER ZAMAN sadece geçerli bir JSON olmalıdır. Açıklama, yorum, metin ekleme yoktur.
+2. JSON dışına hiçbir şey yazma.
+3. Veriler karışık, eksik, yanlış yazılmış olsa bile düzelt ve doğru kategoriye yerleştir.
+4. Aşağıdaki alanları mutlaka algıla ve doldur:
+   • date → rapor tarihi  
+   • site → şantiye adı  
+   • staff → sayı  
+   • worker → sayı  
+   • izin → sayı  
+   • hastalik → sayı  
+   • mobilizasyon → sayı  
+   • dis_gorev → sayı  
+   • total → toplam personel  
 
-1. ÖNCELİK SIRASI:
-   - "GENEL ÖZET" bölümündeki "Genel toplam: X" veya "Toplam: X" DEĞERLERİNİ KULLAN
-   - "PERSONEL DURUMU" tablosundaki değerleri ikincil kaynak olarak kullan
+5. Şantiye adlarını tanı ve normalize et:
+   SKP, LOT13, LOT71, TYM, BWC, DMC, FAP, KÖKSARAY, MMP, OHP, Piramit, RMC, YHP, TSP vb.  
+   Kullanıcı farklı yazsa bile (ör: lot 13, Lot13, lot-13) doğru formata düzelt.
 
-2. MOBİLİZASYON ve DIŞ GÖREV:
-   - "Mobilizasyon: X" → present_workers'a EKLE
-   - "Dış görev: X" → present_workers'a EKLE ve issues'a ekle
-   - "Lot 71 dış görev X" → present_workers'a EKLE, issues'a ekle
-   - "Fap dış görev X" → present_workers'a EKLE, issues'a ekle
-   - "Stadyum dış görev X" → present_workers'a EKLE, issues'a ekle
+6. Personel sınıfları:
+   STAFF = şef, mühendis, tekniker, formen, ekipbaşı, depo sorumlusu  
+   WORKER = usta, işçi, yardımcı, operatör  
+   IZIN = izinli, is yok, gelmedi  
+   HASTALIK = hasta, raporlu  
+   MOBILIZASYON = saha elektrik, saha kontrol, mobilizasyon, gece nöbetçi, proje dışı işler  
+   DIS_GOREV = başka şantiye görevi, dış görev  
 
-3. İZİNLİ/hasta HESAPLAMA:
-   - "İzinli: X" → absent_workers = X
-   - "Hastalık İzini: X" → absent_workers += X
-   - "İzinli / İşe çıkmayan: X" → absent_workers += X
+7. Kullanıcı metni içinde belirtilmeyen kategori varsa "0" yaz.
 
-4. STAFF/İMALAT/MOBİLİZASYON AYRIMI:
-   - "Toplam staff: X" → present_workers += X
-   - "Toplam imalat: X" → present_workers += X
-   - "Toplam mobilizasyon: X" → present_workers += X
-   - "Ambarcı: X" → present_workers += X
+8. Hesaplamalar:
+   total = staff + worker + izin + hastalik + mobilizasyon  
+   dis_gorev ayrıca ek alan olarak gelir, total içine dahil edilmez.
 
-5. GERÇEK ÖRNEKLERE GÖRE HESAPLAMA:
+9. Çıktı formatı:
+{
+  "date": "YYYY-MM-DD",
+  "site": "SKP",
+  "staff": 0,
+  "worker": 0,
+  "izin": 0,
+  "hastalik": 0,
+  "mobilizasyon": 0,
+  "dis_gorev": 0,
+  "total": 0
+}
 
-ÖRNEK 1 - BWC (14.11.2025):
-"GENEL ÖZET: Staff:9 Otel:57 Villa:24 ... Mobilizasyon:8 Toplam:166"
-→ present_workers = 166 (Toplam doğrudan alınır)
-
-ÖRNEK 2 - LOT13 (15.11.2025):
-"GENEL ÖZET: Toplam staff:1 Toplam imalat:0 Toplam mobilizasyon:2 İzinli:1 Genel toplam:10 kişi Lot 71 dış görev 6 Fap dış görev 2"
-→ present_workers = 10 (Genel toplam)
-→ absent_workers = 1 (İzinli)
-→ issues = ["Lot 71 dış görev: 6 kişi", "Fap dış görev: 2 kişi"]
-
-ÖRNEK 3 - SKP (15.11.2025):
-"GENEL ÖZET: Toplam staff:1 Toplam imalat:16 Toplam mobilizasyon:2 Ambarcı:1 İzinli:3 Hastalık İzini:2 Genel toplam:25 kişi"
-→ present_workers = 25 (Genel toplam)
-→ absent_workers = 5 (3+2)
-
-==================================================
-🏗️ ŞANTİYE BAZLI AYRIM - PROJE TANIMLARI
-==================================================
-BWC ŞANTİYESİ:
-• OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman, Güvenlik binası, Spor binası, Peyzaj, Gece Kulübü
-
-LOT13/LOT71 ŞANTİYELERİ:
-• Ofis, Kamp, Trafo, Kazan dairesi, Jeneratör, Dış görevler
-
-SKP ŞANTİYESİ:
-• Genel Mobilizasyon, Elçi Evi, Beldersoy, Ambarcı
-
-PİRAMİT TOWER:
-• Çevre aydınlatma, AVM, Kat çalışmaları
-
-==================================================
-💬 CHAT TYPE DAVRANIŞLARI - KESİN KURALLAR
-==================================================
-GRUP/SÜPERGRUP MESAJLARI:
-• Rapor YOKSA → [] döndür (SESSİZ ÇIKIŞ)
-• Rapor VARSA → JSON array döndür
-• Medya mesajları → SESSİZCE GEÇ (analiz yapma)
-
-ÖZEL MESAJLAR (DM):
-• Rapor YOKSA → {"dm_info": "no_report_detected"} döndür
-• Rapor VARSA → JSON array döndür
-• Kullanıcıya geri bildirim ver
-
-MEDYA FİLTRELEME:
-• Foto, video, ses, belge, caption-only → ANALİZ YAPMA
-• Sadece saf metin mesajlarını analiz et
-
-==================================================
-🤖 GPT ANALİZ ÇIKTISI - KESİN FORMAT
-==================================================
-SADECE JSON array döndür. Başka hiçbir şey YOK.
-
+10. Eğer birden fazla şantiye varsa JSON bir liste döndür:
 [
-  {
-    "report_id": null,
-    "site": "ŞANTIYE_ADI",
-    "reported_at": "YYYY-MM-DD",
-    "reported_time": "HH:MM",
-    "reporter": null,
-    "report_type": "RAPOR" | "IZIN/ISYOK",
-    "status_summary": "Özet metin",
-    "present_workers": integer,
-    "absent_workers": integer,
-    "issues": ["Dış görev: X kişi", "Mobilizasyon: Y kişi"],
-    "actions_requested": [],
-    "attachments_ref": [],
-    "raw_text": "Orijinal metin parçası",
-    "confidence": 0.9
-  }
+  { ... },
+  { ... }
 ]
 
-==================================================
-🎯 KESİN ÇIKTİ KURALLARI
-==================================================
-• SADECE JSON array döndür
-• Hiçbir açıklama, yorum, not EKLEME
-• Gelecek tarihli raporları AT (reported_at > bugün)
-• Eski raporları (365 günden eski) confidence ≤ 0.40 ile işaretle
-• Birden fazla rapor varsa AYRI JSON objeleri olarak döndür
-• Rapor sırasını KORU (orijinal mesajdaki sırayla)
+11. Rapor içinde tarih yoksa → bugünün tarihini kullan.
+12. Kullanıcı kim olursa olsun, raporu gönderenin şantiyesi değil, metinde yazan şantiye geçerlidir.
 
-==================================================
-🚨 MUTLAKA UYULACAK SON KURALLAR
-==================================================
-1. GRUP MESAJLARI:
-   - Rapor yoksa → [] (SESSİZ)
-   - Rapor varsa → JSON array
-
-2. DM MESAJLARI:
-   - Rapor yoksa → {"dm_info": "no_report_detected"}
-   - Rapor varsa → JSON array
-
-3. MEDYA MESAJLARI:
-   - Hiçbir analiz YAPMA → Sessizce geç
-
-4. PERSONEL HESAPLAMA:
-   - "GENEL ÖZET" öncelikli
-   - Mobilizasyon ve dış görevleri EKLE
-   - İzinli/hastalığı absent_workers'a EKLE
-
-5. TARİH KONTROLLERİ:
-   - Gelecek tarih → AT
-   - Eski tarih → confidence düşük
-   - Bugün/dün → otomatik tanı
-
-BU KURALLARIN DIŞINA ASLA ÇIKMA. HER DAVRANIŞ BU KURALLARA GÖRE OLMALI.
+Görevin: Her raporu standart, güvenilir, tutarlı bir JSON çıktısına dönüştürmek.
 """
 
-def get_chat_type_behavior(is_group):
-    if is_group:
-        return (
-            "GRUP MODU - KESİN DAVRANIŞ:\n"
-            "• Rapor YOKSA → [] döndür (SESSİZ ÇIKIŞ)\n" 
-            "• Rapor VARSA → JSON array döndür\n"
-            "• Medya mesajları → ANALİZ YAPMA"
-        )
-    else:
-        return (
-            "DM MODU - KESİN DAVRANIŞ:\n"
-            "• Rapor YOKSA → {\"dm_info\": \"no_report_detected\"} döndür\n"
-            "• Rapor VARSA → JSON array döndür\n"
-            "• Kullanıcıya geri bildirim verilecek"
-        )
-
-USER_PROMPT_TEMPLATE = """
-chat_type: "<<<CHAT_TYPE>>>"
-
-🧠 AKILLI SİSTEM AKTİF - GERÇEK RAPOR ANALİZİ:
-
-📊 PERSONEL HESAPLAMA ÖNCELİKLERİ:
-1. "GENEL ÖZET" → "Genel toplam" veya "Toplam" değerini kullan
-2. MOBİLİZASYON → present_workers'a ekle
-3. DIŞ GÖREVLER → present_workers'a ekle + issues'a not et
-4. İZİNLİ/hasta → absent_workers'a ekle
-
-🏗️ ŞANTİYE TANIMLARI:
-• BWC: OTEL, VILLA, SPA, Restoran, Katlı otopark, VIP Lojman
-• LOT13/LOT71: Ofis, Kamp, Trafo, Dış görevler  
-• SKP: Genel Mobilizasyon, Elçi Evi, Ambarcı
-
-💬 CHAT TYPE DAVRANIŞI:
-<<<CHAT_TYPE_BEHAVIOR>>>
-
-ANALİZ EDİLECEK RAPOR:
-<<<RAW_MESSAGE>>>
-
-🔐 KRİTİK KURALLAR:
-- ÖNCELİKLE "GENEL ÖZET" bölümünü ara
-- "Toplam: X" veya "Genel toplam: X" → present_workers = X
-- "Mobilizasyon: X" → present_workers'a EKLE
-- "Dış görev X" → present_workers'a EKLE + issues'a ekle
-- "İzinli: X" → absent_workers = X
-- "Hastalık: X" → absent_workers += X
-
-SADECE JSON array döndür. Başka hiçbir şey YOK.
-"""
+# Basitleştirilmiş USER_PROMPT_TEMPLATE
+USER_PROMPT_TEMPLATE = "<<<RAW_MESSAGE>>>"
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -827,6 +697,7 @@ def gpt_analyze(system_prompt, user_prompt):
         logging.error(f"GPT hatası: {e}")
         return ""
 
+# YENİ PROCESS_INCOMING_MESSAGE FONKSİYONU
 def process_incoming_message(raw_text: str, is_group: bool = False):
     today = dt.date.today()
     
@@ -835,13 +706,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     
     for attempt in range(max_retries):
         try:
-            chat_type = "group" if is_group else "private"
-            
-            chat_type_behavior = get_chat_type_behavior(is_group)
-            
-            user_prompt = USER_PROMPT_TEMPLATE.replace("<<<CHAT_TYPE>>>", chat_type)
-            user_prompt = user_prompt.replace("<<<CHAT_TYPE_BEHAVIOR>>>", chat_type_behavior)
-            user_prompt = user_prompt.replace("<<<RAW_MESSAGE>>>", raw_text)
+            # Basit kullanıcı prompt'u - chat type davranışı artık gerekmiyor
+            user_prompt = raw_text
 
             content = gpt_analyze(SYSTEM_PROMPT, user_prompt)
             
@@ -854,60 +720,50 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             try:
                 data = json.loads(content)
                 
+                # Tek obje ise liste yap
                 if isinstance(data, dict):
                     data = [data]
                 
-                if isinstance(data, list):
-                    if is_group:
-                        if len(data) == 0:
-                            return []
-                        if len(data) == 1 and data[0].get("dm_info"):
-                            return []
-                    
-                    if not is_group:
-                        if len(data) == 1 and data[0].get("dm_info") == "no_report_detected":
-                            return {"dm_info": "no_report_detected"}
-                        if len(data) == 0:
-                            return {"dm_info": "no_report_detected"}
+                if not isinstance(data, list):
+                    if attempt < max_retries - 1:
+                        time_module.sleep(retry_delay)
+                        continue
+                    return [] if is_group else {"dm_info": "no_report_detected"}
                 
+                # Tarih filtreleme ve total kontrolü
                 filtered_reports = []
                 for report in data:
-                    if report.get('dm_info'):
-                        continue
-
-                    reported_at = report.get('reported_at')
-                    if reported_at:
+                    date_str = report.get('date')
+                    if date_str:
                         try:
-                            report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                            report_date = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
                             if report_date > today:
                                 continue
                         except ValueError:
                             pass
-
-                    confidence = report.get('confidence', 0.9)
-                    if reported_at:
-                        try:
-                            report_date = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
-                            days_ago = (today - report_date).days
-                            if days_ago > 365:
-                                confidence = min(confidence, 0.4)
-                        except ValueError:
-                            pass
                     
-                    report['confidence'] = confidence
+                    # Total kontrolü - eğer 0 ise diğer değerlerden hesapla
+                    if report.get('total', 0) == 0:
+                        staff = report.get('staff', 0)
+                        worker = report.get('worker', 0)
+                        izin = report.get('izin', 0)
+                        hastalik = report.get('hastalik', 0)
+                        mobilizasyon = report.get('mobilizasyon', 0)
+                        report['total'] = staff + worker + izin + hastalik + mobilizasyon
+                    
                     filtered_reports.append(report)
                 
                 return filtered_reports
             
             except json.JSONDecodeError:
-                logging.error(f"GPT JSON parse hatası: {content}")
+                logging.error(f"Yeni format JSON parse hatası: {content}")
                 if attempt < max_retries - 1:
                     time_module.sleep(retry_delay)
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
                 
         except Exception as e:
-            logging.error(f"GPT analiz hatası (attempt {attempt + 1}): {e}")
+            logging.error(f"Yeni format analiz hatası (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time_module.sleep(retry_delay)
             return [] if is_group else {"dm_info": "no_report_detected"}
@@ -988,33 +844,47 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         if is_dm:
             await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
 
+# YENİ RAPOR KAYIT FONKSİYONU
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
     try:
-        site = gpt_rapor.get('site')
-        if site is None:
-            site = "Bilinmeyen"
-        else:
-            site = str(site).strip() if site else "Bilinmeyen"
-
+        # Yeni formattan verileri al
+        site = gpt_rapor.get('site', 'BELİRSİZ')
+        date_str = gpt_rapor.get('date')
+        
+        # Tarih işleme
         rapor_tarihi = None
-        reported_at = gpt_rapor.get('reported_at')
-        if reported_at:
+        if date_str:
             try:
-                rapor_tarihi = dt.datetime.strptime(reported_at, '%Y-%m-%d').date()
+                rapor_tarihi = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
             except ValueError:
                 pass
         
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
+        # Personel sayılarını al
+        staff = gpt_rapor.get('staff', 0)
+        worker = gpt_rapor.get('worker', 0)
+        izin = gpt_rapor.get('izin', 0)
+        hastalik = gpt_rapor.get('hastalik', 0)
+        mobilizasyon = gpt_rapor.get('mobilizasyon', 0)
+        dis_gorev = gpt_rapor.get('dis_gorev', 0)
+        total = gpt_rapor.get('total', 0)
+        
+        # Eğer total 0 ise, diğer değerlerden hesapla
+        if total == 0:
+            total = staff + worker + izin + hastalik + mobilizasyon
+        
+        # Proje adını belirle
         project_name = site
-        if not project_name or project_name == 'BELİRSİZ' or project_name == 'Bilinmeyen':
+        if not project_name or project_name == 'BELİRSİZ':
             user_projects = id_to_projects.get(user_id, [])
             if user_projects:
                 project_name = user_projects[0]
             else:
                 project_name = 'BELİRSİZ'
         
+        # Aynı rapor kontrolü
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
@@ -1031,82 +901,43 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
-        rapor_tipi = gpt_rapor.get('report_type') or "RAPOR"
-        if rapor_tipi is None:
+        # Rapor tipini belirle
+        if izin > 0 or hastalik > 0:
+            rapor_tipi = "IZIN/ISYOK"
+        else:
             rapor_tipi = "RAPOR"
-
-        present_workers = gpt_rapor.get('present_workers')
-        if present_workers is None:
-            present_workers = 0
-        else:
-            try:
-                present_workers = int(present_workers) if present_workers else 0
-            except (ValueError, TypeError):
-                present_workers = 0
-
-        absent_workers = gpt_rapor.get('absent_workers')
-        if absent_workers is None:
-            absent_workers = 0
-        else:
-            try:
-                absent_workers = int(absent_workers) if absent_workers else 0
-            except (ValueError, TypeError):
-                absent_workers = 0
-
-        person_count = max(present_workers, 1)
         
-        status_summary = gpt_rapor.get('status_summary') or ""
-        if status_summary is None:
-            status_summary = ""
-            
-        issues = gpt_rapor.get('issues') or []
-        if not isinstance(issues, list):
-            issues = []
+        # İş açıklaması oluştur
+        work_description = f"Staff:{staff} Worker:{worker} İzin:{izin} Hastalık:{hastalik} Mobilizasyon:{mobilizasyon}"
+        if dis_gorev > 0:
+            work_description += f" DışGörev:{dis_gorev}"
         
-        work_description = status_summary
-        if issues:
-            work_description += f" | İşler: {', '.join(issues[:3])}"
-        
-        if not work_description.strip():
-            work_description = orijinal_metin[:200] if orijinal_metin else ""
-        
-        raw_text = gpt_rapor.get('raw_text')
-        if raw_text is None:
-            raw_text = orijinal_metin
-        else:
-            raw_text = str(raw_text).strip() if raw_text else orijinal_metin
-
-        confidence = gpt_rapor.get('confidence', 0.9)
-        try:
-            confidence = float(confidence) if confidence else 0.9
-        except (ValueError, TypeError):
-            confidence = 0.9
-        
+        # AI analiz verisi
         ai_analysis = {
-            "gpt_analysis": gpt_rapor,
-            "confidence": confidence,
-            "extraction_method": "gpt-4o-mini",
-            "original_text_snippet": orijinal_metin[:100] if orijinal_metin else "",
-            "raw_text": raw_text[:500] if raw_text else ""
+            "yeni_format": gpt_rapor,
+            "extraction_method": "yeni-gpt-format",
+            "original_text": orijinal_metin[:500],
+            "calculated_total": total
         }
         
+        # Veritabanına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
              work_category, personnel_type, delivered_date, is_edited, ai_analysis)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            user_id, project_name, rapor_tarihi, rapor_tipi, person_count, 
-            work_description[:400], 'diğer', 'imalat', dt.datetime.now(TZ).date(),
+            user_id, project_name, rapor_tarihi, rapor_tipi, total, 
+            work_description[:400], 'detaylı', 'imalat', dt.datetime.now(TZ).date(),
             False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
-        logging.info(f"✅ GPT Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
+        logging.info(f"✅ Yeni Format Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
         
         maliyet_analiz.kayit_ekle('gpt')
             
     except Exception as e:
-        logging.error(f"❌ GPT rapor kaydetme hatası: {e}")
+        logging.error(f"❌ Yeni format rapor kaydetme hatası: {e}")
         raise e
 
 async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
