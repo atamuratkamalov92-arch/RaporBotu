@@ -252,16 +252,29 @@ def safe_read_excel(file_path, required_columns=None):
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 logging.warning(f"⚠️ Eksik kolonlar: {missing_columns}. Mevcut kolonlar: {list(df.columns)}")
-                # Eksik kolonları varsayılan değerlerle ekle
-                for col in missing_columns:
-                    if col == "Rol":
-                        df[col] = "KULLANICI"  # Varsayılan rol
-                    elif col == "Botdaki Statusu":
-                        df[col] = "Aktif"  # Varsayılan durum
-                    elif col == "Takip":
-                        df[col] = "E"  # Varsayılan takip durumu
+                
+                # YENİ: Mevcut kolonları kontrol et ve eşleştir
+                column_mapping = {
+                    'Rol': 'Botdaki Statusu / Rol',
+                    'Botdaki Statusu': 'Botdaki Statusu / Rol', 
+                    'Takip': 'Takip'
+                }
+                
+                for required_col in missing_columns:
+                    if required_col in column_mapping and column_mapping[required_col] in df.columns:
+                        # Mevcut kolonu kullan
+                        df[required_col] = df[column_mapping[required_col]]
+                        logging.info(f"✅ {required_col} için {column_mapping[required_col]} kolonu kullanıldı")
                     else:
-                        df[col] = ""  # Boş string
+                        # Varsayılan değerlerle ekle
+                        if required_col == "Rol":
+                            df[required_col] = "KULLANICI"  # Varsayılan rol
+                        elif required_col == "Botdaki Statusu":
+                            df[required_col] = "Aktif"  # Varsayılan durum
+                        elif required_col == "Takip":
+                            df[required_col] = "E"  # Varsayılan takip durumu
+                        else:
+                            df[required_col] = ""  # Boş string
         
         return df
     except Exception as e:
@@ -3009,7 +3022,18 @@ def schedule_jobs(app):
     
     # DEBUG: Job'ların başlatıldığını logla
     logging.info("⏰ Job'lar ayarlanıyor...")
+    logging.info(f"🔍 GROUP_ID değeri: {GROUP_ID}")
     
+    # GROUP_ID kontrolü
+    if not GROUP_ID:
+        logging.error("❌ GROUP_ID ayarlanmamış! Hatırlatma mesajları gönderilemeyecek.")
+    else:
+        logging.info(f"✅ GROUP_ID ayarlandı: {GROUP_ID}")
+    
+    # TEST: Hemen çalıştır (debug için)
+    jq.run_once(test_hatirlatma_mesaji, when=5)
+    
+    # Mevcut job'ları ayarla
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
     jq.run_daily(gunluk_rapor_ozeti, time=dt.time(9, 0, tzinfo=TZ))
     
@@ -3057,45 +3081,40 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"🕘 09:00 rapor hatası: {e}")
         await hata_bildirimi(context, f"09:00 rapor hatası: {e}")
 
+# Test_hatirlatma_mesaji fonksiyonu
+async def test_hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
+    """Test için hemen hatırlatma mesajı"""
+    try:
+        logging.info("TEST: Hatırlatma mesajı tetiklendi")
+        if GROUP_ID:
+            test_msg = "TEST: Hatırlatma sistemi çalışıyor! Bot aktif."
+            await context.bot.send_message(chat_id=GROUP_ID, text=test_msg)
+            logging.info(f"TEST mesajı gönderildi: {GROUP_ID}")
+        else:
+            logging.error("TEST: GROUP_ID ayarlanmamış")
+    except Exception as e:
+        logging.error(f"TEST hatası: {e}")
+
+# HATIRLATMA MESAJI - SADECE GRUBA GÖNDER
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
     try:
-        logging.info("🟡 12:30 hatırlatma mesajı tetiklendi")
-        
+        logging.info("12:30 hatırlatma mesajı tetiklendi")
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         if not durum['eksik_santiyeler']:
-            logging.info("🟡 12:30 - Tüm şantiyeler raporunu göndermiş, mesaj gönderilmedi")
-            return
-        
-        mesaj = "🔔 Günlük Hatırlatma (Şantiye Bazlı)\n\n"
-        mesaj += "Raporu henüz iletilmeyen şantiyeler:\n"
-        
-        for santiye in sorted(durum['eksik_santiyeler']):
-            if santiye in ["Belli değil", "Tümü"]:
-                continue
-            sorumlular = santiye_sorumlulari.get(santiye, [])
-            sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-            mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
-        
-        mesaj += "\n⏰ Lütfen şantiye raporunuzu en geç 15:00'e kadar iletilmiş olun!"
-        
-        gonderilen_sayisi = 0
-        for user_id in rapor_sorumlulari:
-            try:
-                await context.bot.send_message(chat_id=user_id, text=mesaj)
-                gonderilen_sayisi += 1
-                logging.info(f"🟡 Şantiye hatırlatma mesajı {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)
-            except Exception as e:
-                logging.error(f"🟡 {user_id} kullanıcısına şantiye hatırlatma gönderilemedi: {e}")
-        
-        logging.info(f"🟡 12:30 hatırlatma mesajı {gonderilen_sayisi} kullanıcıya gönderildi")
-        
+            # Eksik şantiye yoksa mesaj gönder
+            mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış."
+            await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+        else:
+            # Eksik şantiyeler varsa liste gönder
+            mesaj = "❌ Eksik raporlar var:\n" + "\n".join(durum['eksik_santiyeler'])
+            await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+            
     except Exception as e:
-        logging.error(f"🟡 Şantiye hatırlatma mesajı hatası: {e}")
-        await hata_bildirimi(context, f"Şantiye hatırlatma mesajı hatası: {e}")
+        logging.error(f"Hatırlatma mesajı hatası: {e}")
 
+# İLK RAPOR KONTROL - SADECE GRUBA GÖNDER (DÜZELTİLDİ - GİRİNTİ)
 async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     try:
         bugun = dt.datetime.now(TZ).date()
@@ -3129,18 +3148,20 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
-        for user_id in rapor_sorumlulari:
+        # SADECE GRUBA GÖNDER
+        if GROUP_ID:
             try:
-                await context.bot.send_message(chat_id=user_id, text=mesaj)
-                logging.info(f"🟠 Şantiye kontrol mesajı {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🟠 15:00 şantiye kontrol mesajı gruba gönderildi: {GROUP_ID}")
             except Exception as e:
-                logging.error(f"🟠 {user_id} kullanıcısına şantiye kontrol mesajı gönderilemedi: {e}")
+                logging.error(f"🟠 Gruba şantiye kontrol mesajı gönderilemedi: {e}")
+        else:
+            logging.error("🟠 GROUP_ID ayarlanmamış, şantiye kontrol mesajı gönderilemedi")
         
     except Exception as e:
         logging.error(f"🟠 Şantiye rapor kontrol hatası: {e}")
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
-
+# SON RAPOR KONTROL - SADECE GRUBA GÖNDER
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     try:
         bugun = dt.datetime.now(TZ).date()
@@ -3166,14 +3187,17 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
         mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
         
-        for user_id in rapor_sorumlulari:
+        # SADECE GRUBA GÖNDER
+        if GROUP_ID:
             try:
-                await context.bot.send_message(chat_id=user_id, text=mesaj)
-                logging.info(f"🔴 Şantiye gün sonu analizi {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🔴 17:30 gün sonu analizi gruba gönderildi: {GROUP_ID}")
             except Exception as e:
-                logging.error(f"🔴 {user_id} kullanıcısına şantiye gün sonu analizi gönderilemedi: {e}")
+                logging.error(f"🔴 Gruba gün sonu analizi gönderilemedi: {e}")
+        else:
+            logging.error("🔴 GROUP_ID ayarlanmamış, gün sonu analizi gönderilemedi")
         
+        # Adminlere de ayrıca özet gönder (isteğe bağlı)
         admin_mesaj = f"📋 Gün Sonu Şantiye Özeti - {bugun.strftime('%d.%m.%Y')}\n\n"
         
         if durum['rapor_veren_santiyeler']:
