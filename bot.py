@@ -1,13 +1,10 @@
 """
-📋 CHANGELOG - bot.py v4.4.2
+📋 CHANGELOG - bot.py v4.4.3
 
-✅ HATA DÜZELTMELERİ:
-- Excel kolon doğrulaması esnek hale getirildi
-- JSON parsing hatası düzeltildi (ai_analysis zaten dict)
-- Gerekli kolonlar yoksa fallback sistemi geliştirildi
-- Tüm toplam hesaplamaları yeni JSON formatına göre güncellendi
-- Dış görev toplamı tüm raporlara eklendi
-- Personel dağılımı tüm kategorileri içerecek şekilde güncellendi
+✅ ÇİFT SAYMA DÜZELTMESİ:
+- Öncelik kuralı eklendi: önce özet bölümü, yoksa detaylar
+- Çift sayma koruması eklendi
+- Özet varsa detaylar yok sayılır
 """
 
 import os
@@ -770,7 +767,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - Sabit JSON Formatı
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -795,18 +792,30 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
   }
 ]
 
-2. **TARİH ALGILAMA**:
+2. **ÖNCELİK KURALI - ÇOK ÖNEMLİ**:
+   - ÖNCE mesajda "Genel toplam", "Toplam", "Özet" gibi bölüm ara
+   - Eğer özet bölümü varsa (ÖRNEK: "Genel toplam: 25 kişi"):
+     → SADECE özet bölümündeki sayıları kullan
+     → Detaylı maddeleri TAMAMEN YOK SAY ve parse etme!
+   - Özet yoksa veya eksikse, o zaman detaylı maddelerden say
+
+3. **ÇİFT SAYMA KORUMASI**:
+   - Asla aynı mesajdan hem özet hem detay sayma!
+   - Özet bulduğunda detayları GÖRMEZDEN GEL!
+   - ÖRNEK: Mesajda hem detaylı işler hem de "Genel toplam: 25 kişi" varsa, SADECE 25 kullan!
+
+4. **TARİH ALGILAMA**:
    - Format: YYYY-AA-GG
    - Örnek: "13.11.2025" → "2025-11-13"
    - Tarih yoksa bugünün tarihini kullan
 
-3. **ŞANTİYE NORMALİZASYONU**:
+5. **ŞANTİYE NORMALİZASYONU**:
    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
    - "Piramit Tower" → "Piramit"
 
-4. **PERSONEL KATEGORİLERİ**:
+6. **PERSONEL KATEGORİLERİ**:
    - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen
    - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
    - **ambarci**: ambarcı, depo sorumlusu, malzemeci
@@ -814,11 +823,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
    - **dis_gorev**: başka şantiye görevi, dış görev, Lot 71 dış görev, Fap dış görev
 
-5. **HESAPLAMALAR**:
+7. **HESAPLAMALAR**:
    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
    dis_gorev_toplam = tüm dış görevlerin toplamı
 
-6. **DİKKAT EDİLECEK NOKTALAR**:
+8. **DİKKAT EDİLECEK NOKTALAR**:
    - "Çalışan: 10" → calisan: 10
    - "İzinli: 1" → izinli: 1
    - "Ambarcı: 2" → ambarci: 2
@@ -828,7 +837,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Beldersoy: 17 kişi" → calisan: 17
    - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
 
-7. **ÖRNEK ÇIKTI FORMATI**:
+9. **ÖRNEK ÇIKTI FORMATI**:
 [
   {
     "date": "2025-11-13",
@@ -853,6 +862,7 @@ DİKKAT:
 - Eksik alanları 0 olarak doldur
 - dis_gorev her zaman bir liste olmalı, boşsa []
 - Her zaman bu sabit JSON formatını kullan!
+- ÖZET BÖLÜMÜ VARSA DETAYLARI YOK SAY!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -2489,7 +2499,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.4.2 (Yeni Sabit JSON Formatı)\n"
+        "Versiyon: 4.4.3 (Çift Sayma Düzeltmesi)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2499,6 +2509,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Çoklu rapor parsing yapar\n"
         "• Optimize edilmiş veritabanı kullanır\n"
         "• Gün içinde kullanıcıya otomatik hatırlatma mesajları gönderir\n"
+        "• Çift sayma koruması ile doğru toplamlar\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3384,11 +3395,9 @@ if __name__ == "__main__":
     else:
         # Botu başlat
         print("🚀 Telegram Bot Başlatılıyor...")
-        print("📝 Değişiklik Günlüğü v4.4.2:")
-        print("   - JSON parsing hataları düzeltildi (ai_analysis dict kontrolü)")
-        print("   - Tüm toplam hesaplamaları yeni formata göre güncellendi")
-        print("   - Dış görev toplamı tüm raporlara eklendi")
-        print("   - Personel dağılımı tüm kategorileri içerecek şekilde güncellendi")
-        print("   - Excel kolon doğrulaması esnek hale getirildi")
+        print("📝 Değişiklik Günlüğü v4.4.3:")
+        print("   - Çift sayma düzeltmesi eklendi")
+        print("   - Öncelik kuralı: önce özet bölümü, yoksa detaylar")
+        print("   - Çift sayma koruması ile doğru toplamlar")
         
         main()
