@@ -940,6 +940,44 @@ def normalize_site_name(site_name):
     
     return mappings.get(site_name, site_name)
 
+
+def get_santiye_sorumlusu(santiye_adi):
+    """
+    Şantiye adına göre sorumlu kişiyi bul
+    
+    Args:
+        santiye_adi: Şantiye adı
+        
+    Returns:
+        int: Sorumlu user_id veya None
+    """
+    try:
+        santiye_adi = normalize_site_name(santiye_adi)
+        
+        # Özel durumlar
+        if santiye_adi == "BELİRSİZ":
+            return None
+            
+        # Şantiye sorumluları listesinde ara
+        if santiye_adi in santiye_sorumlulari:
+            sorumlular = santiye_sorumlulari[santiye_adi]
+            if sorumlular:
+                # Aktif ve rapor takip edilen ilk sorumluyu döndür
+                for sorumlu_id in sorumlular:
+                    if sorumlu_id in rapor_sorumlulari:
+                        return sorumlu_id
+                # Eğer hiçbiri takip edilmiyorsa ilkini döndür
+                return sorumlular[0]
+        
+        # Eşleşme bulunamazsa None döndür
+        logging.warning(f"⚠️ Şantiye sorumlusu bulunamadı: {santiye_adi}")
+        return None
+        
+    except Exception as e:
+        logging.error(f"❌ Şantiye sorumlusu bulma hatası: {e}")
+        return None
+
+
 def extract_max_number(text, patterns):
     """Pattern'lere göre maksimum sayıyı çıkar"""
     max_num = 0
@@ -1113,6 +1151,13 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
+        # YENİ: Şantiye sorumlusunu bul
+        santiye_sorumlusu_id = get_santiye_sorumlusu(site)
+        
+        # Eğer şantiye sorumlusu bulunamazsa, raporu gönderen kullanıcıyı kullan
+        kaydedilecek_user_id = santiye_sorumlusu_id if santiye_sorumlusu_id else user_id
+        kaydedilecek_kullanici_adi = id_to_name.get(santiye_sorumlusu_id, kullanici_adi) if santiye_sorumlusu_id else kullanici_adi
+        
         # YENİ ANAHTARLARLA personel sayılarını al
         staff = gpt_rapor.get('staff', 0)
         calisan = gpt_rapor.get('calisan', 0)
@@ -1122,24 +1167,31 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev_toplam = gpt_rapor.get('dis_gorev_toplam', 0)
         genel_toplam = gpt_rapor.get('genel_toplam', 0)
         
-        # Eğer genel_toplam 0 ise, diğer değerlerden hesapla - YENİ HESAPLAMA (dış görev dahil)
+        # Eğer genel_toplam 0 ise, diğer değerlerden hesapla
         if genel_toplam == 0:
             genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
         
         # Proje adını belirle
         project_name = site
         if not project_name or project_name == 'BELİRSİZ':
-            user_projects = id_to_projects.get(user_id, [])
+            # YENİ: Şantiye sorumlusunun projelerini kullan
+            if santiye_sorumlusu_id:
+                user_projects = id_to_projects.get(santiye_sorumlusu_id, [])
+            else:
+                user_projects = id_to_projects.get(user_id, [])
+                
             if user_projects:
                 project_name = user_projects[0]
             else:
                 project_name = 'BELİRSİZ'
         
-        # Aynı rapor kontrolü
+        # Aynı rapor kontrolü - YENİ: Şantiye sorumlusu adına kontrol et
+        kontrol_user_id = santiye_sorumlusu_id if santiye_sorumlusu_id else user_id
+        
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
-        """, (user_id, project_name, rapor_tarihi))
+        """, (kontrol_user_id, project_name, rapor_tarihi))
         
         # GÜVENLİ KONTROL
         has_existing_report = False
@@ -1149,21 +1201,25 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
                 has_existing_report = True
         
         if has_existing_report:
-            logging.warning(f"⚠️ Zaten rapor var: {user_id} - {project_name} - {rapor_tarihi}")
+            logging.warning(f"⚠️ Zaten rapor var: {kontrol_user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
-        # Rapor tipini belirle - YENİ KONTROL
+        # Rapor tipini belirle
         if izinli > 0:
             rapor_tipi = "IZIN/ISYOK"
         else:
             rapor_tipi = "RAPOR"
         
-        # İş açıklaması oluştur - YENİ FORMAT
+        # İş açıklaması oluştur - YENİ: Gerçek gönderen bilgisini ekle
         work_description = f"Staff:{staff} Çalışan:{calisan} Mobilizasyon:{mobilizasyon} Ambarcı:{ambarci} İzinli:{izinli}"
         if dis_gorev_toplam > 0:
             work_description += f" DışGörevToplam:{dis_gorev_toplam}"
         
-        # AI analiz verisi - YENİ FORMAT
+        # Gerçek gönderen bilgisini ekle
+        if santiye_sorumlusu_id and santiye_sorumlusu_id != user_id:
+            work_description += f" [Raporu ileten: {kullanici_adi}]"
+        
+        # AI analiz verisi - YENİ: Şantiye sorumlusu bilgisini ekle
         ai_analysis = {
             "yeni_sabit_format": gpt_rapor,
             "extraction_method": "yeni-sabit-json-format",
@@ -1176,22 +1232,35 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
                 "ambarci": ambarci,
                 "izinli": izinli,
                 "dis_gorev_toplam": dis_gorev_toplam
-            }
+            },
+            "rapor_gonderen": {
+                "user_id": user_id,
+                "kullanici_adi": kullanici_adi
+            },
+            "santiye_sorumlusu": {
+                "user_id": santiye_sorumlusu_id,
+                "kullanici_adi": id_to_name.get(santiye_sorumlusu_id, "Belirsiz") if santiye_sorumlusu_id else "Belirsiz"
+            } if santiye_sorumlusu_id else None
         }
         
-        # Veritabanına kaydet
+        # Veritabanına kaydet - YENİ: Şantiye sorumlusu adına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
              work_category, personnel_type, delivered_date, is_edited, ai_analysis)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            user_id, project_name, rapor_tarihi, rapor_tipi, genel_toplam, 
+            kaydedilecek_user_id, project_name, rapor_tarihi, rapor_tipi, genel_toplam, 
             work_description[:400], 'detaylı', 'imalat', dt.datetime.now(TZ).date(),
             False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
-        logging.info(f"✅ Yeni Sabit Format Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
+        # Log mesajını güncelle
+        if santiye_sorumlusu_id and santiye_sorumlusu_id != user_id:
+            logging.info(f"✅ Yeni Sabit Format Rapor #{rapor_no} ŞANTİYE SORUMLUSU adına kaydedildi: {kaydedilecek_kullanici_adi} (Raporu ileten: {kullanici_adi}) - {project_name} - {rapor_tarihi}")
+        else:
+            logging.info(f"✅ Yeni Sabit Format Rapor #{rapor_no} kaydedildi: {user_id} - {project_name} - {rapor_tarihi}")
+            
         logging.info(f"📊 Personel Dağılımı: Staff:{staff}, Çalışan:{calisan}, Mobilizasyon:{mobilizasyon}, Ambarcı:{ambarci}, İzinli:{izinli}, DışGörevToplam:{dis_gorev_toplam}, GenelToplam:{genel_toplam}")
         
         maliyet_analiz.kayit_ekle('gpt')
@@ -2347,17 +2416,17 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mesaj += f"🏗️ {santiye}\n"
                 mesaj += f"   👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
         
-        rapor_gonderenler = set()
-        for santiye in durum['rapor_veren_santiyeler']:
-            rapor_gonderenler.update(durum['santiye_rapor_verenler'].get(santiye, []))
-        
-        rapor_gondermeyenler = set(rapor_sorumlulari) - rapor_gonderenler
-        
-        if rapor_gondermeyenler:
-            mesaj += f"👤 RAPOR GÖNDERMEYEN KULLANICILAR ({len(rapor_gondermeyenler)}):\n"
-            for user_id in sorted(rapor_gondermeyenler):
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                mesaj += f"• {kullanici_adi}\n"
+        # YENİ: Hangi şantiyelerin rapor iletildiğini göster
+        if durum['rapor_veren_santiyeler']:
+            mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
+            for santiye in sorted(durum['rapor_veren_santiyeler']):
+                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
+                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
+                
+                if rapor_verenler:
+                    mesaj += f"• {santiye} - Sorumlu: {', '.join(rapor_veren_isimler)}\n"
+                else:
+                    mesaj += f"• {santiye} - Rapor iletildi\n"
         
         await update.message.reply_text(mesaj)
         
