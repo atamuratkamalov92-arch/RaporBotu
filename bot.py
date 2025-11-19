@@ -1,12 +1,13 @@
 """
-📋 CHANGELOG - bot.py v4.4
+📋 CHANGELOG - bot.py v4.4.2
 
-✅ YENİ FORMAT DÜZENLEMELERİ:
-- GPT yeni sabit JSON formatı tam entegre edildi
-- Personel grupları yeni formata göre güncellendi: worker→calisan, izin→izinli, ambarci eklendi
-- Toplam hesaplamalar yeni formata göre düzeltildi
-- SYSTEM_PROMPT yeni sabit JSON formatı için güncellendi
-- Günlük özet raporu yeni personel kategorilerini gösteriyor
+✅ HATA DÜZELTMELERİ:
+- Excel kolon doğrulaması esnek hale getirildi
+- JSON parsing hatası düzeltildi (ai_analysis zaten dict)
+- Gerekli kolonlar yoksa fallback sistemi geliştirildi
+- Tüm toplam hesaplamaları yeni JSON formatına göre güncellendi
+- Dış görev toplamı tüm raporlara eklendi
+- Personel dağılımı tüm kategorileri içerecek şekilde güncellendi
 """
 
 import os
@@ -218,6 +219,10 @@ def safe_json_loads(json_string, default=None):
     if json_string is None:
         return default
     
+    # Eğer zaten dict ise, doğrudan döndür
+    if isinstance(json_string, dict):
+        return json_string
+    
     try:
         return json.loads(json_string)
     except json.JSONDecodeError as e:
@@ -234,7 +239,7 @@ def safe_read_excel(file_path, required_columns=None):
     
     Args:
         file_path: Excel dosya yolu
-        required_columns: Gerekli kolon isimleri listesi
+        required_columns: Gerekli kolon isimleri listesi (opsiyonel)
     
     Returns:
         DataFrame veya exception fırlatır
@@ -245,11 +250,21 @@ def safe_read_excel(file_path, required_columns=None):
     try:
         df = pd.read_excel(file_path)
         
-        # Gerekli kolonları doğrula
+        # Gerekli kolonları doğrula (eğer belirtilmişse)
         if required_columns:
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
-                raise ValueError(f"Eksik gerekli kolonlar: {missing_columns}")
+                logging.warning(f"⚠️ Eksik kolonlar: {missing_columns}. Mevcut kolonlar: {list(df.columns)}")
+                # Eksik kolonları varsayılan değerlerle ekle
+                for col in missing_columns:
+                    if col == "Rol":
+                        df[col] = "KULLANICI"  # Varsayılan rol
+                    elif col == "Botdaki Statusu":
+                        df[col] = "Aktif"  # Varsayılan durum
+                    elif col == "Takip":
+                        df[col] = "E"  # Varsayılan takip durumu
+                    else:
+                        df[col] = ""  # Boş string
         
         return df
     except Exception as e:
@@ -404,10 +419,11 @@ def load_excel_intelligent():
             logging.info("✅ Excel önbellekte - Yeniden yüklemeye gerek yok")
             return
         
-        # Doğrulama için gerekli kolonları tanımla
+        # Doğrulama için gerekli kolonları tanımla (esnek)
         required_columns = ["Telegram ID", "Kullanici Adi Soyadi", "Takip", "Rol", "Botdaki Statusu", "Proje / Şantiye"]
         
         try:
+            # Esnek Excel okuma - gerekli kolonlar yoksa uyarı ver ve devam et
             df = safe_read_excel(USERS_FILE, required_columns)
             logging.info("✅ Excel dosyası başarıyla yüklendi")
             
@@ -437,9 +453,9 @@ def load_excel_intelligent():
     for _, r in df.iterrows():
         tid = _to_int_or_none(r.get("Telegram ID"))
         fullname = str(r.get("Kullanici Adi Soyadi") or "").strip()
-        takip = str(r.get("Takip") or "").strip().upper()
-        status = str(r.get("Botdaki Statusu") or "").strip()
-        rol = str(r.get("Rol") or "").strip().upper()
+        takip = str(r.get("Takip") or "E").strip().upper()  # Varsayılan "E"
+        status = str(r.get("Botdaki Statusu") or "Aktif").strip()  # Varsayılan "Aktif"
+        rol = str(r.get("Rol") or "KULLANICI").strip().upper()  # Varsayılan "KULLANICI"
 
         if not fullname:
             continue
@@ -794,9 +810,8 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - **dis_gorev**: başka şantiye görevi, dış görev, Lot 71 dış görev, Fap dış görev
 
 5. **HESAPLAMALAR**:
-   genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
+   genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
    dis_gorev_toplam = tüm dış görevlerin toplamı
-   dis_gorev ayrıca kaydedilir, genel_toplam'a dahil değil
 
 6. **DİKKAT EDİLECEK NOKTALAR**:
    - "Çalışan: 10" → calisan: 10
@@ -823,7 +838,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
       {"gorev_yeri": "FAP", "sayi": 2}
     ],
     "dis_gorev_toplam": 5,
-    "genel_toplam": 10
+    "genel_toplam": 15
   }
 ]
 
@@ -1029,14 +1044,15 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         except (ValueError, TypeError):
                             report[key] = 0
                 
-                # Eksikse toplamı hesapla - YENİ FORMÜL
+                # Eksikse toplamı hesapla - YENİ FORMÜL (dış görev dahil)
                 if report.get('genel_toplam', 0) == 0:
                     staff = report.get('staff', 0)
                     calisan = report.get('calisan', 0)
                     mobilizasyon = report.get('mobilizasyon', 0)
                     ambarci = report.get('ambarci', 0)
                     izinli = report.get('izinli', 0)
-                    report['genel_toplam'] = staff + calisan + mobilizasyon + ambarci + izinli
+                    dis_gorev_toplam = report.get('dis_gorev_toplam', 0)
+                    report['genel_toplam'] = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
                 
                 # Sadece anlamlı raporları ekle (genel_toplam > 0 veya staff > 0)
                 if report['genel_toplam'] > 0 or report['staff'] > 0:
@@ -1078,9 +1094,9 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev_toplam = gpt_rapor.get('dis_gorev_toplam', 0)
         genel_toplam = gpt_rapor.get('genel_toplam', 0)
         
-        # Eğer genel_toplam 0 ise, diğer değerlerden hesapla - YENİ HESAPLAMA
+        # Eğer genel_toplam 0 ise, diğer değerlerden hesapla - YENİ HESAPLAMA (dış görev dahil)
         if genel_toplam == 0:
-            genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
+            genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
         
         # Proje adını belirle
         project_name = site
@@ -1680,7 +1696,7 @@ async def generate_gelismis_personel_ozeti(target_date):
             
             # YENİ HESAPLAMA: GPT sabit format analizinden personel dağılımını al
             try:
-                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                ai_data = safe_json_loads(ai_analysis)  # Düzeltildi: safe_json_loads kullan
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
@@ -1699,7 +1715,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1724,7 +1740,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1770,7 +1786,7 @@ async def generate_gelismis_personel_ozeti(target_date):
             
             tum_projeler.add(proje_adi)
         
-        # GENEL TOPLAMLARI HESAPLA - YENİ DEĞİŞKENLER
+        # GENEL TOPLAMLARI HESAPLA - YENİ DEĞİŞKENLER (dış görev dahil)
         for proje_adi, analiz in proje_analizleri.items():
             genel_staff += analiz['staff']
             genel_calisan += analiz['calisan']
@@ -1881,7 +1897,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 }
             
             try:
-                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                ai_data = safe_json_loads(ai_analysis)  # Düzeltildi: safe_json_loads kullan
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
@@ -1892,7 +1908,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1909,7 +1925,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1923,7 +1939,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # Genel toplamları hesapla - YENİ DEĞİŞKENLER
+        # Genel toplamları hesapla - YENİ DEĞİŞKENLER (dış görev dahil)
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2077,7 +2093,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 }
             
             try:
-                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                ai_data = safe_json_loads(ai_analysis)  # Düzeltildi: safe_json_loads kullan
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
@@ -2088,7 +2104,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2105,7 +2121,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et
+                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2119,7 +2135,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # Genel toplamları hesapla - YENİ DEĞİŞKENLER
+        # Genel toplamları hesapla - YENİ DEĞİŞKENLER (dış görev dahil)
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2468,7 +2484,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.4 (Yeni Sabit JSON Formatı)\n"
+        "Versiyon: 4.4.2 (Yeni Sabit JSON Formatı)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2844,7 +2860,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             dis_gorev_toplam_count = 0
             
             try:
-                ai_data = json.loads(ai_analysis) if ai_analysis else {}
+                ai_data = safe_json_loads(ai_analysis)  # Düzeltildi: safe_json_loads kullan
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
@@ -2924,7 +2940,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         toplam_kullanici = len(set([x['User ID'] for x in excel_data]))
         gun_sayisi = len(set([x['Tarih'] for x in excel_data]))
         
-        # Personel toplamları - YENİ ANAHTARLAR
+        # Personel toplamları - YENİ ANAHTARLAR (dış görev dahil)
         toplam_staff = sum([x['Staff'] for x in excel_data])
         toplam_calisan = sum([x['Çalışan'] for x in excel_data])
         toplam_mobilizasyon = sum([x['Mobilizasyon'] for x in excel_data])
@@ -3363,13 +3379,11 @@ if __name__ == "__main__":
     else:
         # Botu başlat
         print("🚀 Telegram Bot Başlatılıyor...")
-        print("📝 Değişiklik Günlüğü v4.4:")
-        print("   - Yeni sabit JSON formatı tam entegre edildi")
-        print("   - Personel grupları güncellendi: worker→calisan, izin→izinli, ambarci eklendi")
-        print("   - Toplam hesaplamalar yeni formata göre düzeltildi")
-        print("   - SYSTEM_PROMPT yeni sabit JSON formatı için güncellendi")
-        print("   - Dış Görev kategorisi tüm raporlara eklendi")
-        print("   - Dağılım bölümüne Dış Görev maddesi eklendi")
-        print("   - Tüm projeler için kategori detayları gösteriliyor")
+        print("📝 Değişiklik Günlüğü v4.4.2:")
+        print("   - JSON parsing hataları düzeltildi (ai_analysis dict kontrolü)")
+        print("   - Tüm toplam hesaplamaları yeni formata göre güncellendi")
+        print("   - Dış görev toplamı tüm raporlara eklendi")
+        print("   - Personel dağılımı tüm kategorileri içerecek şekilde güncellendi")
+        print("   - Excel kolon doğrulaması esnek hale getirildi")
         
         main()
