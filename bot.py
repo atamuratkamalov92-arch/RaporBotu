@@ -3007,12 +3007,21 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
 def schedule_jobs(app):
     jq = app.job_queue
     
+    # DEBUG: Job'ların başlatıldığını logla
+    logging.info("⏰ Job'lar ayarlanıyor...")
+    
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
     jq.run_daily(gunluk_rapor_ozeti, time=dt.time(9, 0, tzinfo=TZ))
     
-    jq.run_daily(hatirlatma_mesaji, time=dt.time(12, 30, tzinfo=TZ))
-    jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
-    jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
+    # HATIRLATMA MESAJLARI - DEBUG EKLENDİ
+    hatirlatma_job = jq.run_daily(hatirlatma_mesaji, time=dt.time(12, 30, tzinfo=TZ))
+    ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
+    son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
+    
+    # DEBUG: Job'ların ayarlandığını onayla
+    logging.info(f"✅ 12:30 hatırlatma job'ı ayarlandı")
+    logging.info(f"✅ 15:00 kontrol job'ı ayarlandı")
+    logging.info(f"✅ 17:30 kontrol job'ı ayarlandı")
     
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     jq.run_daily(lambda context: yedekle_postgres(), time=dt.time(23, 10, tzinfo=TZ))
@@ -3050,11 +3059,13 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
 
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
     try:
+        logging.info("🟡 12:30 hatırlatma mesajı tetiklendi")
+        
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         if not durum['eksik_santiyeler']:
-            logging.info("🟡 12:30 - Tüm şantiyeler raporunu göndermiş")
+            logging.info("🟡 12:30 - Tüm şantiyeler raporunu göndermiş, mesaj gönderilmedi")
             return
         
         mesaj = "🔔 Günlük Hatırlatma (Şantiye Bazlı)\n\n"
@@ -3069,13 +3080,17 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
         
         mesaj += "\n⏰ Lütfen şantiye raporunuzu en geç 15:00'e kadar iletilmiş olun!"
         
+        gonderilen_sayisi = 0
         for user_id in rapor_sorumlulari:
             try:
                 await context.bot.send_message(chat_id=user_id, text=mesaj)
+                gonderilen_sayisi += 1
                 logging.info(f"🟡 Şantiye hatırlatma mesajı {user_id} kullanıcısına gönderildi")
                 await asyncio.sleep(0.3)
             except Exception as e:
                 logging.error(f"🟡 {user_id} kullanıcısına şantiye hatırlatma gönderilemedi: {e}")
+        
+        logging.info(f"🟡 12:30 hatırlatma mesajı {gonderilen_sayisi} kullanıcıya gönderildi")
         
     except Exception as e:
         logging.error(f"🟡 Şantiye hatırlatma mesajı hatası: {e}")
