@@ -333,7 +333,12 @@ logging.basicConfig(
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GROUP_ID = int(CHAT_ID) if CHAT_ID and CHAT_ID.isdigit() else None
+try:
+    GROUP_ID = int(CHAT_ID) if CHAT_ID else None
+    logging.info(f"✅ GROUP_ID başarıyla ayarlandı: {GROUP_ID}")
+except (ValueError, TypeError) as e:
+    GROUP_ID = None
+    logging.error(f"❌ GROUP_ID ayarlanamadı: {e}")
 TZ = ZoneInfo("Asia/Tashkent")
 
 SUPER_ADMIN_ID = 1000157326
