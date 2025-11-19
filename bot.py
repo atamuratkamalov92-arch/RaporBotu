@@ -1154,7 +1154,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         # YENİ: Şantiye sorumlusunu bul
         santiye_sorumlusu_id = get_santiye_sorumlusu(site)
         
-        # Eğer şantiye sorumlusu bulunamazsa, raporu gönderen kullanıcıyı kullan
+        # ✅ DÜZELTİLDİ: Şantiye sorumlusu adına kaydet
         kaydedilecek_user_id = santiye_sorumlusu_id if santiye_sorumlusu_id else user_id
         kaydedilecek_kullanici_adi = id_to_name.get(santiye_sorumlusu_id, kullanici_adi) if santiye_sorumlusu_id else kullanici_adi
         
@@ -1185,13 +1185,11 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             else:
                 project_name = 'BELİRSİZ'
         
-        # Aynı rapor kontrolü - YENİ: Şantiye sorumlusu adına kontrol et
-        kontrol_user_id = santiye_sorumlusu_id if santiye_sorumlusu_id else user_id
-        
+        # ✅ DÜZELTİLDİ: Aynı rapor kontrolü - Şantiye sorumlusu adına kontrol et
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE user_id = %s AND project_name = %s AND report_date = %s
-        """, (kontrol_user_id, project_name, rapor_tarihi))
+        """, (kaydedilecek_user_id, project_name, rapor_tarihi))
         
         # GÜVENLİ KONTROL
         has_existing_report = False
@@ -1201,7 +1199,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
                 has_existing_report = True
         
         if has_existing_report:
-            logging.warning(f"⚠️ Zaten rapor var: {kontrol_user_id} - {project_name} - {rapor_tarihi}")
+            logging.warning(f"⚠️ Zaten rapor var: {kaydedilecek_user_id} - {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderdiniz: {project_name}")
         
         # Rapor tipini belirle
@@ -1243,7 +1241,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             } if santiye_sorumlusu_id else None
         }
         
-        # Veritabanına kaydet - YENİ: Şantiye sorumlusu adına kaydet
+        # ✅ DÜZELTİLDİ: Veritabanına kaydet - Şantiye sorumlusu adına kaydet
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
