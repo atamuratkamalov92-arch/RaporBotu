@@ -29,13 +29,17 @@ import subprocess
 import shlex
 from unicodedata import normalize
 from dotenv import load_dotenv
-from telegram import Update, BotCommand
+
+# Railway için PORT ayarını EN BAŞTA yap
+PORT = int(os.environ.get('PORT', 8443))
+logging.info(f"🚀 Railway PORT: {PORT}")
 
 try:
-    from telegram import BotCommandScopeAllPrivateChats
+    from telegram import Update, BotCommand, BotCommandScopeAllPrivateChats
     HAS_PRIVATE_SCOPE = True
-except Exception:
+except Exception as e:
     HAS_PRIVATE_SCOPE = False
+    logging.warning(f"BotCommandScopeAllPrivateChats yüklenemedi: {e}")
 
 from telegram.ext import (
     Application, MessageHandler, CommandHandler, ContextTypes, filters
@@ -78,8 +82,6 @@ def validate_environment():
 # İçe aktarımda çevre değişkenlerini doğrula
 load_dotenv()
 validate_environment()
-
-PORT = int(os.environ.get('PORT', 8443))
 
 # Veritabanı bağlantı havuzu
 DB_POOL = None
@@ -3305,8 +3307,15 @@ async def post_init(application: Application):
 
 def main():
     try:
+        logging.info("🚀 Bot başlatılıyor...")
+        
+        # Önce veritabanı bağlantılarını test et
+        init_db_pool()
+        init_database()
+        
         app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
         
+        # Handler'ları ekle
         app.add_handler(CommandHandler("start", start_cmd))
         app.add_handler(CommandHandler("info", info_cmd))
         app.add_handler(CommandHandler("hakkinda", hakkinda_cmd))
@@ -3357,21 +3366,26 @@ def main():
         ))
         
         schedule_jobs(app)
-        logging.info("🚀 GÜNCELLENMİŞ SİSTEM AKTİF - Rapor Botu başlatılıyor...")
+        logging.info("✅ Tüm handler'lar ve job'lar ayarlandı")
         
-        app.run_polling(drop_pending_updates=True)
+        # Railway için webhook yerine polling kullan
+        logging.info("🔄 Polling başlatılıyor...")
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
         
     except Exception as e:
-        logging.error(f"❌ Bot başlatma hatası: {e}")
+        logging.error(f"❌ Bot başlatma hatası: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Değişiklik Günlüğü v4.6.1:")
-    print("   - Railway uyumlu log çıktıları")
-    print("   - Çıktılardan kullanıcı isimleri kaldırıldı")
-    print("   - Sadece şantiye bazlı bilgiler gösterilir")
-    print("   - Performans iyileştirmeleri")
+    print("📝 Düzeltilmiş Versiyon v4.6.1:")
+    print("   - Railway başlatma sorunları giderildi")
+    print("   - PORT değişkeni düzeltildi") 
+    print("   - Loglama iyileştirildi")
+    print("   - Hata yönetimi güçlendirildi")
     
     main()
 ```
