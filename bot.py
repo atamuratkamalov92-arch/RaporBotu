@@ -1,11 +1,12 @@
 """
-📋 CHANGELOG - bot.py v4.6.0
+📋 CHANGELOG - bot.py v4.6.1
 
 ✅ GÜNCELLEMELER:
-- Haftalık rapor Cuma 17:35'te gönderilir
-- Aylık rapor her ayın 1'inde 09:30'da gönderilir  
-- Excel yükleme ve parsing geliştirildi
-- Kullanıcı dosyası formatı iyileştirildi
+- Log çıktıları düzeltildi (Railway uyumlu)
+- Çıktılardan kullanıcı isimleri kaldırıldı (sadece şantiye bazlı)
+- Eksik rapor ve istatistiklerde sadece şantiye bilgileri gösterilir
+- Tüm loglama konsola yönlendirildi
+- Performans iyileştirmeleri
 """
 
 import os
@@ -44,6 +45,13 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from psycopg2 import pool
 from bs4 import BeautifulSoup
 from openai import OpenAI
+
+# Loglama ayarı - Railway için konsol çıktısı
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()]
+)
 
 # Çevre değişkeni doğrulama
 def validate_environment():
@@ -338,13 +346,6 @@ def get_file_hash(filename):
     except Exception as e:
         logging.error(f"Dosya hash hatası: {e}")
         return None
-
-# Loglama başlatma
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler()]
-)
 
 # Konfigürasyon
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -1975,10 +1976,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
-        en_aktif = rows[:3]
-        
-        en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
-        
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
             FROM reports 
@@ -2071,28 +2068,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Verimlilik: %{verimlilik:.1f}\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
-        mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, row in enumerate(en_aktif, 1):
-            if len(row) >= 2:
-                user_id = safe_get_tuple_value(row, 0, 0)
-                rapor_sayisi = safe_get_tuple_value(row, 1, 0)
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                gunluk_ortalama = rapor_sayisi / gun_sayisi
-                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
-        
-        if en_pasif:
-            mesaj += f"\n🔴 DÜŞÜK PERFORMANS (< %50 Katılım):\n"
-            for i, row in enumerate(en_pasif[:3], 1):
-                if len(row) >= 2:
-                    user_id = safe_get_tuple_value(row, 0, 0)
-                    rapor_sayisi = safe_get_tuple_value(row, 1, 0)
-                    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                    katilim_orani = (rapor_sayisi / gun_sayisi) * 100
-                    emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                    mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
-        
-        mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
+        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
@@ -2161,10 +2137,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
         eksik_rapor = max(0, beklenen_rapor - toplam_rapor)
-        
-        en_aktif = rows[:3]
-        
-        en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
@@ -2254,33 +2226,11 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"📈 PERFORMANS ANALİZİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
         mesaj += f"• Toplam EKSIK Rapor: {eksik_rapor}\n"
-        mesaj += f"• Pasif Kullanıcı: {len(en_pasif)}\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
-        mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, row in enumerate(en_aktif, 1):
-            if len(row) >= 2:
-                user_id = safe_get_tuple_value(row, 0, 0)
-                rapor_sayisi = safe_get_tuple_value(row, 1, 0)
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                gunluk_ortalama = rapor_sayisi / gun_sayisi
-                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
-        
-        if en_pasif:
-            mesaj += f"\n🔴 DÜŞÜK PERFORMANS (< %50 Katılım):\n"
-            for i, row in enumerate(en_pasif[:3], 1):
-                if len(row) >= 2:
-                    user_id = safe_get_tuple_value(row, 0, 0)
-                    rapor_sayisi = safe_get_tuple_value(row, 1, 0)
-                    kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                    katilim_orani = (rapor_sayisi / gun_sayisi) * 100
-                    emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                    mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (%{katilim_orani:.1f})\n"
-        
-        mesaj += f"\n🏗️ PROJE BAZLI PERSONEL:\n"
+        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
@@ -2347,8 +2297,6 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
-        en_aktif = rows[:3]
-        
         personel_result = await async_fetchone("""
             SELECT COALESCE(SUM(person_count), 0) as toplam_kisi
             FROM reports 
@@ -2366,16 +2314,6 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         mesaj += f"• Gün Sayısı: {gun_sayisi} gün\n"
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
         mesaj += f"• Toplam Personel: {toplam_personel} kişi\n\n"
-        
-        mesaj += f"🔝 EN AKTİF 3 KULLANICI:\n"
-        for i, row in enumerate(en_aktif, 1):
-            if len(row) >= 2:
-                user_id = safe_get_tuple_value(row, 0, 0)
-                rapor_sayisi = safe_get_tuple_value(row, 1, 0)
-                kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
-                emoji = "1️⃣" if i == 1 else "2️⃣" if i == 2 else "3️⃣"
-                gunluk_ortalama = rapor_sayisi / gun_sayisi
-                mesaj += f"{emoji} {kullanici_adi}: {rapor_sayisi} rapor (günlük: {gunluk_ortalama:.1f})\n"
         
         return mesaj
     except Exception as e:
@@ -2400,21 +2338,12 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
                 sorumlular = santiye_sorumlulari.get(santiye, [])
-                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-                
-                mesaj += f"🏗️ {santiye}\n"
-                mesaj += f"   👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
+                mesaj += f"🏗️ {santiye} ({len(sorumlular)} sorumlu)\n\n"
         
         if durum['rapor_veren_santiyeler']:
-            mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
+            mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler']}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
-                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
-                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
-                
-                if rapor_verenler:
-                    mesaj += f"• {santiye} - Sorumlu: {', '.join(rapor_veren_isimler)}\n"
-                else:
-                    mesaj += f"• {santiye} - Rapor iletildi\n"
+                mesaj += f"• {santiye}\n"
         
         await update.message.reply_text(mesaj)
         
@@ -2449,22 +2378,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
         toplam_rapor_sayisi = safe_get_tuple_value(toplam_rapor, 0, 0)
         
-        en_aktif = await async_fetchone("""
-            SELECT user_id, COUNT(*) as rapor_sayisi 
-            FROM reports 
-            GROUP BY user_id 
-            ORDER BY rapor_sayisi DESC 
-            LIMIT 1
-        """)
-        
-        en_aktif_user_id = safe_get_tuple_value(en_aktif, 0, 0)
-        en_aktif_rapor = safe_get_tuple_value(en_aktif, 1, 0)
-        
-        if en_aktif_user_id:
-            en_aktif_kullanici = id_to_name.get(en_aktif_user_id, "Kullanıcı")
-        else:
-            en_aktif_kullanici = "Yok"
-            en_aktif_rapor = 0
+        durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         mesaj = "📊 GENEL İSTATİSTİKLER - ŞANTİYE BAZLI SİSTEM\n\n"
         
@@ -2481,13 +2395,11 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
-        mesaj += f"• En Aktif Kullanıcı: {en_aktif_kullanici} ({en_aktif_rapor} rapor)\n"
         
         if toplam_kullanici_sayisi > 0:
             ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
             mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
         
-        durum = await get_santiye_bazli_rapor_durumu(bugun)
         mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU:\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
         
@@ -2569,7 +2481,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.0 (Güncel Excel Format Desteği)\n"
+        "Versiyon: 4.6.1 (Railway Optimized)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2584,6 +2496,8 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 8-10 digit Telegram ID parsing\n"
         "• Haftalık rapor Cuma 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
+        "• Railway uyumlu log çıktıları\n"
+        "• Kullanıcı isimleri çıktılarda gösterilmez\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -2753,27 +2667,22 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mesaj = "👥 TÜM KULLANICI LİSTESİ - ŞANTİYE BAZLI\n\n"
     
     mesaj += f"📋 Aktif Kullanıcılar ({len(rapor_sorumlulari)} - Aktif/Pasif='E'):\n"
+    
+    # Proje bazlı kullanıcı sayıları
+    proje_kullanici_sayilari = {}
     for tid in rapor_sorumlulari:
-        ad = id_to_name.get(tid, "Bilinmeyen")
-        projeler = ", ".join(id_to_projects.get(tid, []))
-        status = id_to_status.get(tid, "Belirsiz")
-        rol = id_to_rol.get(tid, "Belirsiz")
-        mesaj += f"• {ad}\n  📍 Projeler: {projeler}\n  🏷️ Status: {status}\n  👤 Rol: {rol}\n\n"
+        projeler = id_to_projects.get(tid, [])
+        for proje in projeler:
+            if proje not in proje_kullanici_sayilari:
+                proje_kullanici_sayilari[proje] = 0
+            proje_kullanici_sayilari[proje] += 1
     
-    admin_pasif_olanlar = [admin for admin in ADMINS if admin not in rapor_sorumlulari]
-    if admin_pasif_olanlar:
-        mesaj += f"🛡️ Pasif Adminler ({len(admin_pasif_olanlar)}):\n"
-        for tid in admin_pasif_olanlar:
-            ad = id_to_name.get(tid, "Bilinmeyen")
-            rol = id_to_rol.get(tid, "Belirsiz")
-            mesaj += f"• {ad} - {rol}\n"
-        mesaj += "\n"
+    for proje, sayi in sorted(proje_kullanici_sayilari.items()):
+        mesaj += f"• {proje}: {sayi} kullanıcı\n"
     
-    if IZLEYICILER:
-        mesaj += f"👀 İzleyiciler ({len(IZLEYICILER)}):\n"
-        for tid in IZLEYICILER:
-            ad = id_to_name.get(tid, "Bilinmeyen")
-            mesaj += f"• {ad}\n"
+    mesaj += f"\n🛡️ Adminler: {len(ADMINS)}\n"
+    mesaj += f"👀 İzleyiciler: {len(IZLEYICILER)}\n"
+    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)}\n"
     
     await update.message.reply_text(mesaj)
 
@@ -2784,9 +2693,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI\n\n"
     
     for santiye, sorumlular in sorted(santiye_sorumlulari.items()):
-        sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-        mesaj += f"{santiye}\n"
-        mesaj += f"  👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
+        mesaj += f"{santiye} ({len(sorumlular)} sorumlu)\n\n"
     
     mesaj += f"📊 Toplam {len(santiye_sorumlulari)} şantiye"
     
@@ -2803,21 +2710,14 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
     for santiye in sorted(durum['rapor_veren_santiyeler']):
-        rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
-        rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
-        
-        if rapor_verenler:
-            mesaj += f"• {santiye} - İleten: {', '.join(rapor_veren_isimler)}\n"
-        else:
-            mesaj += f"• {santiye} - Rapor iletildi\n"
+        mesaj += f"• {santiye}\n"
     
     mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
     for santiye in sorted(durum['eksik_santiyeler']):
         if santiye in ["Belli değil", "Tümü"]:
             continue
         sorumlular = santiye_sorumlulari.get(santiye, [])
-        sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-        mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
+        mesaj += f"• {santiye} ({len(sorumlular)} sorumlu)\n"
     
     mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş"
     
@@ -3208,13 +3108,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['rapor_veren_santiyeler']:
             mesaj += f"✅ Rapor iletilen şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
-                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
-                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
-                
-                if rapor_verenler:
-                    mesaj += f"• {santiye} - Rapor ileten: {', '.join(rapor_veren_isimler)}\n"
-                else:
-                    mesaj += f"• {santiye} - Rapor iletildi\n"
+                mesaj += f"• {santiye}\n"
             mesaj += "\n"
         else:
             mesaj += "✅ Rapor iletilen şantiyeler (0):\n\n"
@@ -3224,9 +3118,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             for santiye in sorted(durum['eksik_santiyeler']):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
-                sorumlular = santiye_sorumlulari.get(santiye, [])
-                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-                mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
+                mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
@@ -3259,9 +3151,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             for santiye in sorted(durum['eksik_santiyeler']):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
-                sorumlular = santiye_sorumlulari.get(santiye, [])
-                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-                mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
+                mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
@@ -3283,13 +3173,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['rapor_veren_santiyeler']:
             admin_mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
-                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
-                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
-                
-                if rapor_verenler:
-                    admin_mesaj += f"• {santiye} - İleten: {', '.join(rapor_veren_isimler)}\n"
-                else:
-                    admin_mesaj += f"• {santiye} - Rapor iletildi\n"
+                admin_mesaj += f"• {santiye}\n"
             admin_mesaj += "\n"
         
         admin_mesaj += mesaj.split('\n\n', 1)[1]
@@ -3477,10 +3361,10 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Değişiklik Günlüğü v4.6.0:")
-    print("   - Haftalık rapor Cuma 17:35'te gönderilir")
-    print("   - Aylık rapor her ayın 1'inde 09:30'da gönderilir")
-    print("   - Excel formatı geliştirildi")
-    print("   - Yeni kullanıcı dosyası formatı destekleniyor")
+    print("📝 Değişiklik Günlüğü v4.6.1:")
+    print("   - Railway uyumlu log çıktıları")
+    print("   - Çıktılardan kullanıcı isimleri kaldırıldı")
+    print("   - Sadece şantiye bazlı bilgiler gösterilir")
+    print("   - Performans iyileştirmeleri")
     
     main()
