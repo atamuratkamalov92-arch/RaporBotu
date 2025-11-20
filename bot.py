@@ -1,11 +1,10 @@
 """
-📋 CHANGELOG - bot.py v4.6.2
+📋 CHANGELOG - bot.py v4.6.3
 
-✅ ACİL DÜZELTMELER:
-- SyntaxError hatası giderildi (baştaki ```python kaldırıldı)
-- Logging yapılandırması en üste taşındı
-- PORT değişkeni logging'den sonra tanımlandı
-- Railway uyumluluğu sağlandı
+✅ GÜNCELLEMELER:
+- "TÜMÜ" şantiyesi şantiye listesinden tamamen çıkarıldı
+- Tüm şantiye listeleri ve raporlardan "TÜMÜ" filtrelendi
+- Şantiye bazlı sistemde "TÜMÜ" artık görünmeyecek
 """
 
 import os
@@ -427,7 +426,7 @@ def validate_date_string(date_str):
     except ValueError:
         return False
 
-# YENİ ŞANTİYE PARSING FONKSİYONU
+# YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
 def parse_santiye_list(proje_string):
     """
     YENİ ŞANTİYE PARSING KURALLARI:
@@ -463,7 +462,7 @@ def parse_santiye_list(proje_string):
     
     return santiyeler
 
-# Doğrulama ile gelişmiş Excel yükleme
+# Doğrulama ile gelişmiş Excel yükleme - "TÜMÜ" FİLTRELENDİ
 def load_excel_intelligent():
     """Kapsamlı doğrulama ile akıllı Excel dosyası yükleme"""
     global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol
@@ -545,17 +544,21 @@ def load_excel_intelligent():
             if rol == "İZLEYİCİ":
                 temp_izleyiciler.append(tid)
             
-            # ŞANTİYE PARSING
+            # ŞANTİYE PARSING - "TÜMÜ" FİLTRELENDİ
             raw_projects = str(r.get("Proje / Şantiye") or "")
             projects = parse_santiye_list(raw_projects)
+            
+            # "TÜMÜ" şantiyesini filtrele - şantiye listesinde görünmesin
+            projects = [proje for proje in projects if proje != "TÜMÜ"]
             temp_id_to_projects[tid] = projects
             
-            # Şantiye sorumlularını güncelle
+            # Şantiye sorumlularını güncelle - "TÜMÜ" hariç
             for proje in projects:
-                if proje not in temp_santiye_sorumlulari:
-                    temp_santiye_sorumlulari[proje] = []
-                if tid not in temp_santiye_sorumlulari[proje]:
-                    temp_santiye_sorumlulari[proje].append(tid)
+                if proje and proje != "TÜMÜ":  # "TÜMÜ" şantiyesini ekleme
+                    if proje not in temp_santiye_sorumlulari:
+                        temp_santiye_sorumlulari[proje] = []
+                    if tid not in temp_santiye_sorumlulari[proje]:
+                        temp_santiye_sorumlulari[proje].append(tid)
             
             # Tüm aktif kullanıcılar rapor sorumlusu listesine eklenir
             if tid and fullname:
@@ -579,7 +582,10 @@ def load_excel_intelligent():
         ADMINS.append(SUPER_ADMIN_ID)
     
     last_excel_update = os.path.getmtime(USERS_FILE) if os.path.exists(USERS_FILE) else 0
-    logging.info(f"✅ ŞANTİYE BAZLI SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye")
+    
+    # "TÜMÜ" şantiyesi olup olmadığını kontrol et
+    tumu_sayisi = sum(1 for projects in temp_id_to_projects.values() if "TÜMÜ" in projects)
+    logging.info(f"✅ ŞANTİYE BAZLI SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye, {tumu_sayisi} kullanıcıda 'TÜMÜ' şantiyesi (filtrelendi)")
 
 # Excel yüklemeyi başlat
 load_excel_intelligent()
@@ -1395,9 +1401,9 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Adminler: {len(ADMINS)}\n"
         mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
         mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
-        mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)}\n\n"
+        mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n\n"
         
-        mesaj += "🏗️ AKTİF ŞANTİYELER:\n"
+        mesaj += "🏗️ AKTİF ŞANTİYELER (TÜMÜ hariç):\n"
         for santiye in sorted(santiye_sorumlulari.keys())[:10]:
             sorumlu_sayisi = len(santiye_sorumlulari[santiye])
             mesaj += f"• {santiye}: {sorumlu_sayisi} sorumlu\n"
@@ -1512,7 +1518,7 @@ init_database()
 init_db_pool()
 
 async def get_santiye_rapor_durumu(bugun):
-    """Güvenli tuple işleme ile şantiye rapor durumunu al"""
+    """Güvenli tuple işleme ile şantiye rapor durumunu al - TÜMÜ FİLTRELENDİ"""
     try:
         rows = await async_fetchall("""
             SELECT DISTINCT project_name FROM reports 
@@ -1522,14 +1528,16 @@ async def get_santiye_rapor_durumu(bugun):
         if not rows:
             return set()
             
-        return set(safe_get_tuple_value(row, 0, '') for row in rows if safe_get_tuple_value(row, 0, ''))
+        return set(safe_get_tuple_value(row, 0, '') for row in rows 
+                  if safe_get_tuple_value(row, 0, '') and safe_get_tuple_value(row, 0, '') != "TÜMÜ")
     except Exception as e:
         logging.error(f"Şantiye rapor durumu hatası: {e}")
         return set()
 
 async def get_eksik_santiyeler(bugun):
     try:
-        tum_santiyeler = set(santiye_sorumlulari.keys())
+        # TÜMÜ şantiyesini filtrele
+        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         eksik_santiyeler = tum_santiyeler - rapor_veren_santiyeler
         
@@ -1540,7 +1548,8 @@ async def get_eksik_santiyeler(bugun):
 
 async def get_santiye_bazli_rapor_durumu(bugun):
     try:
-        tum_santiyeler = set(santiye_sorumlulari.keys())
+        # TÜMÜ şantiyesini filtrele
+        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         
         rows = await async_fetchall("""
@@ -1553,7 +1562,7 @@ async def get_santiye_bazli_rapor_durumu(bugun):
             if row and len(row) >= 2:
                 project_name = safe_get_tuple_value(row, 0, '')
                 user_id = safe_get_tuple_value(row, 1, 0)
-                if project_name and user_id:
+                if project_name and project_name != "TÜMÜ" and user_id:  # TÜMÜ filtrele
                     if project_name not in santiye_rapor_verenler:
                         santiye_rapor_verenler[project_name] = []
                     santiye_rapor_verenler[project_name].append(user_id)
@@ -1771,7 +1780,7 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
-# Personel özeti fonksiyonu - ŞANTİYE BAZLI
+# Personel özeti fonksiyonu - ŞANTİYE BAZLI - TÜMÜ FİLTRELENDİ
 async def generate_gelismis_personel_ozeti(target_date):
     """Güvenli tuple işleme ile gelişmiş personel özeti oluştur"""
     try:
@@ -1804,8 +1813,8 @@ async def generate_gelismis_personel_ozeti(target_date):
             yapilan_is = safe_get_tuple_value(row, 4, '')
             ai_analysis = safe_get_tuple_value(row, 5, '{}')
             
-            if not proje_adi:
-                proje_adi = 'BELİRSİZ'
+            if not proje_adi or proje_adi == "TÜMÜ":  # TÜMÜ şantiyesini filtrele
+                continue
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
@@ -1950,7 +1959,8 @@ async def generate_gelismis_personel_ozeti(target_date):
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
         aktif_projeler = set(proje_analizleri.keys())
-        tum_santiyeler = set(santiye_sorumlulari.keys())
+        # TÜMÜ şantiyesini filtrele
+        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
         
         if eksik_projeler:
@@ -1960,7 +1970,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
-# Haftalık rapor fonksiyonu
+# Haftalık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -1994,6 +2004,10 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
             
+            # TÜMÜ şantiyesini filtrele
+            if not proje_adi or proje_adi == "TÜMÜ":
+                continue
+                
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
                     'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 'toplam': 0
@@ -2057,7 +2071,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        tum_santiyeler = set(santiye_sorumlulari.keys())
+        # TÜMÜ şantiyesini filtrele
+        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2121,7 +2136,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# Aylık rapor fonksiyonu
+# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2156,6 +2171,10 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
             
+            # TÜMÜ şantiyesini filtrele
+            if not proje_adi or proje_adi == "TÜMÜ":
+                continue
+                
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
                     'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 'toplam': 0
@@ -2219,7 +2238,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        tum_santiyeler = set(santiye_sorumlulari.keys())
+        # TÜMÜ şantiyesini filtrele
+        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2394,7 +2414,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
         mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
         mesaj += f"• Admin: {len(ADMINS)}\n"
-        mesaj += f"• Şantiye: {len(santiye_sorumlulari)}\n\n"
+        mesaj += f"• Şantiye: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n\n"
         
         mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
@@ -2403,7 +2423,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
             mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
         
-        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU:\n"
+        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU (TÜMÜ hariç):\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
         
         toplam_santiye = len(durum['tum_santiyeler'])
@@ -2484,7 +2504,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.2 (Railway Optimized)\n"
+        "Versiyon: 4.6.3 (TÜMÜ Şantiyesi Filtrelendi)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2501,6 +2521,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Railway uyumlu log çıktıları\n"
         "• Kullanıcı isimleri çıktılarda gösterilmez\n"
+        "• 'TÜMÜ' şantiyesi artık şantiye listelerinde görünmez\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -2671,10 +2692,12 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj += f"📋 Aktif Kullanıcılar ({len(rapor_sorumlulari)} - Aktif/Pasif='E'):\n"
     
-    # Proje bazlı kullanıcı sayıları
+    # Proje bazlı kullanıcı sayıları - TÜMÜ hariç
     proje_kullanici_sayilari = {}
     for tid in rapor_sorumlulari:
         projeler = id_to_projects.get(tid, [])
+        # TÜMÜ şantiyesini filtrele
+        projeler = [proje for proje in projeler if proje != "TÜMÜ"]
         for proje in projeler:
             if proje not in proje_kullanici_sayilari:
                 proje_kullanici_sayilari[proje] = 0
@@ -2685,7 +2708,7 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj += f"\n🛡️ Adminler: {len(ADMINS)}\n"
     mesaj += f"👀 İzleyiciler: {len(IZLEYICILER)}\n"
-    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)}\n"
+    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n"
     
     await update.message.reply_text(mesaj)
 
@@ -2693,12 +2716,15 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI\n\n"
+    mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI (TÜMÜ hariç)\n\n"
     
-    for santiye, sorumlular in sorted(santiye_sorumlulari.items()):
+    # TÜMÜ şantiyesini filtrele
+    filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
+    
+    for santiye, sorumlular in sorted(filtered_santiyeler.items()):
         mesaj += f"{santiye} ({len(sorumlular)} sorumlu)\n\n"
     
-    mesaj += f"📊 Toplam {len(santiye_sorumlulari)} şantiye"
+    mesaj += f"📊 Toplam {len(filtered_santiyeler)} şantiye (TÜMÜ hariç)"
     
     await update.message.reply_text(mesaj)
 
@@ -2709,7 +2735,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
-    mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')}\n\n"
+    mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} (TÜMÜ hariç)\n\n"
     
     mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
     for santiye in sorted(durum['rapor_veren_santiyeler']):
@@ -2831,6 +2857,10 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             is_edited = safe_get_tuple_value(row, 9, False)
             ai_analysis = safe_get_tuple_value(row, 10, '{}')
             
+            # TÜMÜ şantiyesini filtrele
+            if proje_adi == "TÜMÜ":
+                continue
+                
             kullanici_adi = id_to_name.get(user_id, f"Kullanıcı")
             
             try:
@@ -3381,10 +3411,10 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Düzeltilmiş Versiyon v4.6.2:")
-    print("   - SyntaxError hatası giderildi")
-    print("   - Logging yapılandırması düzeltildi") 
-    print("   - Railway uyumluluğu sağlandı")
+    print("📝 Güncellenmiş Versiyon v4.6.3:")
+    print("   - 'TÜMÜ' şantiyesi şantiye listelerinden tamamen çıkarıldı")
+    print("   - Tüm raporlarda 'TÜMÜ' şantiyesi filtrelendi")
+    print("   - Şantiye bazlı sistemde 'TÜMÜ' artık görünmeyecek")
     print("   - Hata yönetimi güçlendirildi")
     
     main()
