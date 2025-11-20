@@ -442,6 +442,7 @@ def parse_santiye_list(proje_string):
     - Parantez içlerini temizle
     - 'Tümü' → tüm şantiyeler (özel işlem)
     - 'Belli değil' → atla
+    - Şantiye isimlerini normalize et
     """
     if not proje_string or pd.isna(proje_string):
         return []
@@ -460,12 +461,14 @@ def parse_santiye_list(proje_string):
     # Birden fazla ayırıcı ile böl
     parts = re.split(r'[/,\-\|]', proje_string)
     
-    # Temizle ve filtrele
+    # Temizle, filtrele ve normalize et
     santiyeler = []
     for part in parts:
         part_clean = part.strip()
         if part_clean and part_clean.upper() not in ['BELLİ DEĞİL', 'BELİRSİZ']:
-            santiyeler.append(part_clean.upper())
+            # Şantiye ismini normalize et
+            normalized_site = normalize_site_name(part_clean)
+            santiyeler.append(normalized_site)
     
     return santiyeler
 
@@ -1001,9 +1004,18 @@ def normalize_site_name(site_name):
         'PİRAMİT': 'PİRAMİT',
         'BWC': 'BWC',
         'STADYUM': 'STADYUM',
-        'FAP': 'FAP'
+        'FAP': 'FAP',
+        # YENİ EKLENEN MAPPING'LER:
+        'DMC ELLIPSE GARDEN': 'DMC',
+        'DMC ELLIPSE': 'DMC',
+        'DMC GARDEN': 'DMC',
+        'DMC': 'DMC',
+        'KÖKSARAY': 'KÖKSARAY',
+        'OHP': 'OHP',
+        'TYM': 'TYM'
     }
     
+    # Eşleşme bulunamazsa, şantiye adını olduğu gibi döndür
     return mappings.get(site_name, site_name)
 
 
