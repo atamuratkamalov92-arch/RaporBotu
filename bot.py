@@ -1,13 +1,11 @@
-```python
 """
-📋 CHANGELOG - bot.py v4.6.1
+📋 CHANGELOG - bot.py v4.6.2
 
-✅ GÜNCELLEMELER:
-- Log çıktıları düzeltildi (Railway uyumlu)
-- Çıktılardan kullanıcı isimleri kaldırıldı (sadece şantiye bazlı)
-- Eksik rapor ve istatistiklerde sadece şantiye bilgileri gösterilir
-- Tüm loglama konsola yönlendirildi
-- Performans iyileştirmeleri
+✅ ACİL DÜZELTMELER:
+- SyntaxError hatası giderildi (baştaki ```python kaldırıldı)
+- Logging yapılandırması en üste taşındı
+- PORT değişkeni logging'den sonra tanımlandı
+- Railway uyumluluğu sağlandı
 """
 
 import os
@@ -30,7 +28,17 @@ import shlex
 from unicodedata import normalize
 from dotenv import load_dotenv
 
-# Railway için PORT ayarını EN BAŞTA yap
+# Çevre değişkenlerini en başta yükle
+load_dotenv()
+
+# Loglama ayarı - Railway için konsol çıktısı (EN ÜSTE)
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()]
+)
+
+# Railway için PORT ayarı
 PORT = int(os.environ.get('PORT', 8443))
 logging.info(f"🚀 Railway PORT: {PORT}")
 
@@ -50,13 +58,6 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from psycopg2 import pool
 from bs4 import BeautifulSoup
 from openai import OpenAI
-
-# Loglama ayarı - Railway için konsol çıktısı
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler()]
-)
 
 # Çevre değişkeni doğrulama
 def validate_environment():
@@ -80,7 +81,6 @@ def validate_environment():
     logging.info("✅ Tüm gerekli çevre değişkenleri ayarlanmış")
 
 # İçe aktarımda çevre değişkenlerini doğrula
-load_dotenv()
 validate_environment()
 
 # Veritabanı bağlantı havuzu
@@ -934,7 +934,7 @@ DİKKAT:
 # Gelişmiş tarih parser fonksiyonları
 def enhanced_date_parser(text):
     """Gelişmiş tarih parser - çeşitli formatları destekler"""
-    today = dt.datetime.now(TZ).date()
+    today = dt.date.today()
     
     # Tarih pattern'leri
     patterns = [
@@ -2484,7 +2484,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.1 (Railway Optimized)\n"
+        "Versiyon: 4.6.2 (Railway Optimized)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -3381,11 +3381,10 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Düzeltilmiş Versiyon v4.6.1:")
-    print("   - Railway başlatma sorunları giderildi")
-    print("   - PORT değişkeni düzeltildi") 
-    print("   - Loglama iyileştirildi")
+    print("📝 Düzeltilmiş Versiyon v4.6.2:")
+    print("   - SyntaxError hatası giderildi")
+    print("   - Logging yapılandırması düzeltildi") 
+    print("   - Railway uyumluluğu sağlandı")
     print("   - Hata yönetimi güçlendirildi")
     
     main()
-```
