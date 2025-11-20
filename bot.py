@@ -1401,9 +1401,9 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Adminler: {len(ADMINS)}\n"
         mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
         mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
-        mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n\n"
+        mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)} \n\n"
         
-        mesaj += "🏗️ AKTİF ŞANTİYELER (TÜMÜ hariç):\n"
+        mesaj += "🏗️ AKTİF ŞANTİYELER :\n"
         for santiye in sorted(santiye_sorumlulari.keys())[:10]:
             sorumlu_sayisi = len(santiye_sorumlulari[santiye])
             mesaj += f"• {santiye}: {sorumlu_sayisi} sorumlu\n"
@@ -2414,7 +2414,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
         mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
         mesaj += f"• Admin: {len(ADMINS)}\n"
-        mesaj += f"• Şantiye: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n\n"
+        mesaj += f"• Şantiye: {len(santiye_sorumlulari)} \n\n"
         
         mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
@@ -2423,7 +2423,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
             mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
         
-        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU (TÜMÜ hariç):\n"
+        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU :\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
         
         toplam_santiye = len(durum['tum_santiyeler'])
@@ -2708,7 +2708,7 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj += f"\n🛡️ Adminler: {len(ADMINS)}\n"
     mesaj += f"👀 İzleyiciler: {len(IZLEYICILER)}\n"
-    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)} (TÜMÜ hariç)\n"
+    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)} \n"
     
     await update.message.reply_text(mesaj)
 
@@ -2716,7 +2716,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI (TÜMÜ hariç)\n\n"
+    mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI \n\n"
     
     # TÜMÜ şantiyesini filtrele
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
@@ -2724,7 +2724,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for santiye, sorumlular in sorted(filtered_santiyeler.items()):
         mesaj += f"{santiye} ({len(sorumlular)} sorumlu)\n\n"
     
-    mesaj += f"📊 Toplam {len(filtered_santiyeler)} şantiye (TÜMÜ hariç)"
+    mesaj += f"📊 Toplam {len(filtered_santiyeler)} şantiye "
     
     await update.message.reply_text(mesaj)
 
@@ -2735,7 +2735,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
-    mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} (TÜMÜ hariç)\n\n"
+    mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} \n\n"
     
     mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
     for santiye in sorted(durum['rapor_veren_santiyeler']):
