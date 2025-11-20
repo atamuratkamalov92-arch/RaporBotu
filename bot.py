@@ -2732,7 +2732,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "BWC" not in filtered_santiyeler:
         filtered_santiyeler["BWC"] = []  # Boş sorumlu listesi ile ekle
     
-    for santiye, sorumlular in sorted(filtered_santiyeler.items()):
+    for santiye in sorted(filtered_santiyeler.keys()):
         # Sadece şantiye ismini göster, sorumlu sayısını gösterme
         mesaj += f"• {santiye}\n"
     
@@ -2758,7 +2758,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if santiye in ["Belli değil", "Tümü"]:
             continue
         sorumlular = santiye_sorumlulari.get(santiye, [])
-        mesaj += f"• {santiye} \n"
+        mesaj += f"• {santiye}\n"
     
     mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş"
     
@@ -3197,7 +3197,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             for santiye in sorted(durum['eksik_santiyeler']):
                 sorumlular = santiye_sorumlulari.get(santiye, [])
                 sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
-                mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
+                mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
