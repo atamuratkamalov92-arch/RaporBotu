@@ -1,11 +1,11 @@
 """
-📋 CHANGELOG - bot.py v4.5.1
+📋 CHANGELOG - bot.py v4.6.0
 
-✅ TAKİP SÜTUNU KALDIRILDI:
-- "Takip" sütunu tamamen kaldırıldı
-- Tüm işlemler "Aktif / Pasif" sütununa göre
-- Tüm aktif kullanıcılar rapor gönderebilir
-- Raporlar şantiye bazlı kaydedilir
+✅ GÜNCELLEMELER:
+- Haftalık rapor Cuma 17:35'te gönderilir
+- Aylık rapor her ayın 1'inde 09:30'da gönderilir  
+- Excel yükleme ve parsing geliştirildi
+- Kullanıcı dosyası formatı iyileştirildi
 """
 
 import os
@@ -230,10 +230,10 @@ def safe_json_loads(json_string, default=None):
         logging.error(f"Beklenmeyen JSON parsing hatası: {e}")
         return default
 
-# Doğrulama ile gelişmiş Excel okuma - YENİ PARSING KURALLARI
+# GELİŞMİŞ EXCEL OKUMA - YENİ FORMAT DESTEĞİ
 def safe_read_excel(file_path, required_columns=None):
     """
-    GÜNCELLENDİ: "Takip" sütunu kaldırıldı, sadece "Aktif / Pasif" kullanılıyor
+    GELİŞTİRİLDİ: Yeni Excel formatını destekler
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Excel dosyası bulunamadı: {file_path}")
@@ -247,10 +247,14 @@ def safe_read_excel(file_path, required_columns=None):
             if missing_columns:
                 logging.warning(f"⚠️ Eksik kolonlar: {missing_columns}. Mevcut kolonlar: {list(df.columns)}")
                 
-                # Mevcut kolonları kontrol et ve eşleştir
+                # YENİ FORMAT EŞLEŞTİRME
                 column_mapping = {
                     'Rol': 'Botdaki Statusu / Rol',
-                    'Botdaki Statusu': 'Botdaki Statusu / Rol'
+                    'Botdaki Statusu': 'Botdaki Statusu / Rol',
+                    'Kullanici Adi Soyadi': 'Kullanici Adi Soyadi',
+                    'Telegram ID': 'Telegram ID', 
+                    'Proje / Şantiye': 'Proje / Şantiye',
+                    'Aktif / Pasif': 'Aktif / Pasif'
                 }
                 
                 for required_col in missing_columns:
@@ -261,11 +265,13 @@ def safe_read_excel(file_path, required_columns=None):
                     else:
                         # Varsayılan değerlerle ekle
                         if required_col == "Rol":
-                            df[required_col] = "KULLANICI"  # Varsayılan rol
+                            df[required_col] = "KULLANICI"
                         elif required_col == "Botdaki Statusu":
-                            df[required_col] = "Aktif"  # Varsayılan durum
+                            df[required_col] = "Aktif"
+                        elif required_col == "Aktif / Pasif":
+                            df[required_col] = "E"
                         else:
-                            df[required_col] = ""  # Boş string
+                            df[required_col] = ""
         
         return df
     except Exception as e:
@@ -306,9 +312,16 @@ def _to_int_or_none(x):
     # Sadece rakamları al
     s_clean = re.sub(r'[^\d]', '', s)
     
+    if not s_clean:
+        return None
+    
     # YENİ: 8-10 digit Telegram ID kontrolü
     if len(s_clean) < 8 or len(s_clean) > 10:
-        return None
+        # Özel durum: 10 digit ID'ler kabul edilir
+        if len(s_clean) == 10:
+            pass
+        else:
+            return None
     
     try:
         return int(s_clean)
@@ -347,7 +360,7 @@ TZ = ZoneInfo("Asia/Tashkent")
 
 SUPER_ADMIN_ID = 1000157326
 
-# Fallback kullanıcı veri yapısı - GÜNCELLENDİ: "Takip" kaldırıldı
+# Fallback kullanıcı veri yapısı
 FALLBACK_USERS = [
     {
         "Telegram ID": 1000157326,
@@ -427,7 +440,7 @@ def parse_santiye_list(proje_string):
     
     # Özel durumlar
     if proje_string.upper() == 'TÜMÜ':
-        return ['TÜMÜ']  # Özel işaret
+        return ['TÜMÜ']
     if proje_string.upper() in ['BELLİ DEĞİL', 'BELİRSİZ', '']:
         return []
     
@@ -446,9 +459,9 @@ def parse_santiye_list(proje_string):
     
     return santiyeler
 
-# Doğrulama ile gelişmiş Excel yükleme - GÜNCELLENDİ: "Takip" kaldırıldı
+# Doğrulama ile gelişmiş Excel yükleme
 def load_excel_intelligent():
-    """Kapsamlı doğrulama ile akıllı Excel dosyası yükleme - "Takip" SÜTUNU KALDIRILDI"""
+    """Kapsamlı doğrulama ile akıllı Excel dosyası yükleme"""
     global df, rapor_sorumlulari, id_to_name, id_to_projects, id_to_status, id_to_rol
     global ADMINS, IZLEYICILER, TUM_KULLANICILAR, santiye_sorumlulari, santiye_rapor_durumu
     global last_excel_update, excel_file_hash, excel_last_modified
@@ -464,11 +477,11 @@ def load_excel_intelligent():
             logging.info("✅ Excel önbellekte - Yeniden yüklemeye gerek yok")
             return
         
-        # Doğrulama için gerekli kolonları tanımla (esnek) - "Takip" KALDIRILDI
+        # Doğrulama için gerekli kolonları tanımla
         required_columns = ["Telegram ID", "Kullanici Adi Soyadi", "Rol", "Botdaki Statusu", "Proje / Şantiye"]
         
         try:
-            # Esnek Excel okuma - gerekli kolonlar yoksa uyarı ver ve devam et
+            # Esnek Excel okuma
             df = safe_read_excel(USERS_FILE, required_columns)
             logging.info("✅ Excel dosyası başarıyla yüklendi")
             
@@ -483,7 +496,7 @@ def load_excel_intelligent():
         logging.error(f"❌ Excel yükleme hatası: {e}. Fallback kullanıcı listesi kullanılıyor.")
         df = pd.DataFrame(FALLBACK_USERS)
     
-    # ŞANTİYE BAZLI SİSTEM: Güvenli tuple işleme ile Excel verilerini işle - "Takip" KALDIRILDI
+    # ŞANTİYE BAZLI SİSTEM: Güvenli tuple işleme ile Excel verilerini işle
     temp_rapor_sorumlulari = []
     temp_id_to_name = {}
     temp_id_to_projects = {}
@@ -496,11 +509,10 @@ def load_excel_intelligent():
     processed_names = set()
 
     for _, r in df.iterrows():
-        # YENİ: 8-10 digit Telegram ID parsing
+        # Telegram ID parsing
         tid = _to_int_or_none(r.get("Telegram ID"))
         fullname = str(r.get("Kullanici Adi Soyadi") or "").strip()
         
-        # GÜNCELLENDİ: "Takip" kaldırıldı, sadece "Aktif / Pasif" kullanılıyor
         aktif_pasif = str(r.get("Aktif / Pasif") or "E").strip().upper()
         status = str(r.get("Botdaki Statusu") or "Aktif").strip()
         rol = str(r.get("Rol") or "KULLANICI").strip().upper()
@@ -529,7 +541,7 @@ def load_excel_intelligent():
             if rol == "İZLEYİCİ":
                 temp_izleyiciler.append(tid)
             
-            # YENİ ŞANTİYE PARSING: parse_santiye_list fonksiyonunu kullan
+            # ŞANTİYE PARSING
             raw_projects = str(r.get("Proje / Şantiye") or "")
             projects = parse_santiye_list(raw_projects)
             temp_id_to_projects[tid] = projects
@@ -541,7 +553,7 @@ def load_excel_intelligent():
                 if tid not in temp_santiye_sorumlulari[proje]:
                     temp_santiye_sorumlulari[proje].append(tid)
             
-            # GÜNCELLENDİ: Tüm aktif kullanıcılar rapor sorumlusu listesine eklenir
+            # Tüm aktif kullanıcılar rapor sorumlusu listesine eklenir
             if tid and fullname:
                 temp_rapor_sorumlulari.append(tid)
                 processed_names.add(fullname)
@@ -909,7 +921,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 DİKKAT: 
 - Sadece JSON döndür, açıklama yapma!
 - Tüm sayıları integer olarak döndür
-- Eksik alanları 0 olarak doldur
+- Eksik alanları 0 olarak doldür
 - dis_gorev her zaman bir liste olmalı, boşsa []
 - Her zaman bu sabit JSON formatını kullan!
 - ÖZET BÖLÜMÜ VARSA DETAYLARI YOK SAY!
@@ -981,12 +993,6 @@ def normalize_site_name(site_name):
 def get_santiye_sorumlusu(santiye_adi):
     """
     Şantiye adına göre sorumlu kişiyi bul
-    
-    Args:
-        santiye_adi: Şantiye adı
-        
-    Returns:
-        int: Sorumlu user_id veya None
     """
     try:
         santiye_adi = normalize_site_name(santiye_adi)
@@ -1001,12 +1007,11 @@ def get_santiye_sorumlusu(santiye_adi):
             if sorumlular:
                 # Aktif ilk sorumluyu döndür
                 for sorumlu_id in sorumlular:
-                    if sorumlu_id in rapor_sorumlulari:  # Sadece aktif kullanıcılar
+                    if sorumlu_id in rapor_sorumlulari:
                         return sorumlu_id
                 # Eğer hiçbiri aktif değilse ilkini döndür
                 return sorumlular[0]
         
-        # Eşleşme bulunamazsa None döndür
         logging.warning(f"⚠️ Şantiye sorumlusu bulunamadı: {santiye_adi}")
         return None
         
@@ -1052,7 +1057,6 @@ def gpt_analyze(system_prompt, user_prompt):
 # Gelişmiş GPT analizi ile giriş doğrulama
 def gpt_analyze_enhanced(system_prompt, user_prompt):
     """Gelişmiş hata yönetimi ile GPT ile metin analizi"""
-    # Girişi doğrula
     is_valid, cleaned_prompt = validate_user_input(user_prompt, 4000)
     if not is_valid:
         logging.error("GPT'ye geçersiz kullanıcı girişi sağlandı")
@@ -1077,14 +1081,13 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
 
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Kapsamlı doğrulama ile gelen mesajı işle - YENİ SABİT JSON FORMATI"""
-    # Giriş doğrulama
+    """Kapsamlı doğrulama ile gelen mesajı işle"""
     is_valid, cleaned_text = validate_user_input(raw_text)
     if not is_valid:
         return [] if is_group else {"error": "geçersiz_giriş"}
     
     today = dt.date.today()
-    max_retries = 2  # Daha az retry
+    max_retries = 2
     retry_delay = 1
     
     for attempt in range(max_retries):
@@ -1098,7 +1101,6 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
             
-            # Güvenli JSON parsing
             data = safe_json_loads(content)
             if data is None:
                 if attempt < max_retries - 1:
@@ -1106,7 +1108,6 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
             
-            # Doğrulama ile veriyi işle
             if isinstance(data, dict):
                 data = [data]
             
@@ -1116,29 +1117,25 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
             
-            # Raporları filtrele ve doğrula
             filtered_reports = []
             for report in data:
                 if not isinstance(report, dict):
                     continue
                     
-                # Tarih doğrulama
                 date_str = report.get('date')
                 if date_str:
                     try:
                         report_date = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
                         if report_date > today:
-                            report['date'] = today.strftime('%Y-%m-%d')  # Gelecek tarihi bugüne düzelt
+                            report['date'] = today.strftime('%Y-%m-%d')
                     except ValueError:
                         report['date'] = today.strftime('%Y-%m-%d')
                 else:
                     report['date'] = today.strftime('%Y-%m-%d')
                 
-                # Şantiye normalizasyonu
                 site = report.get('site', 'BELİRSİZ')
                 report['site'] = normalize_site_name(site)
                 
-                # YENİ ANAHTARLARLA sayısal alanları temizle
                 for key in ['staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev_toplam', 'genel_toplam']:
                     value = report.get(key, 0)
                     if not isinstance(value, int):
@@ -1147,7 +1144,6 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         except (ValueError, TypeError):
                             report[key] = 0
                 
-                # Eksikse toplamı hesapla - YENİ FORMÜL (dış görev dahil)
                 if report.get('genel_toplam', 0) == 0:
                     staff = report.get('staff', 0)
                     calisan = report.get('calisan', 0)
@@ -1157,7 +1153,6 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     dis_gorev_toplam = report.get('dis_gorev_toplam', 0)
                     report['genel_toplam'] = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
                 
-                # Sadece anlamlı raporları ekle (genel_toplam > 0 veya staff > 0)
                 if report['genel_toplam'] > 0 or report['staff'] > 0:
                     filtered_reports.append(report)
             
@@ -1170,14 +1165,12 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     
     return [] if is_group else {"dm_info": "no_report_detected"}
 
-# YENİ RAPOR KAYIT FONKSİYONU - ŞANTİYE BAZLI SİSTEM
+# RAPOR KAYIT FONKSİYONU - ŞANTİYE BAZLI SİSTEM
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
     try:
-        # Yeni sabit formattan verileri al
         site = gpt_rapor.get('site', 'BELİRSİZ')
         date_str = gpt_rapor.get('date')
         
-        # Tarih işleme
         rapor_tarihi = None
         if date_str:
             try:
@@ -1188,14 +1181,11 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         if not rapor_tarihi:
             rapor_tarihi = parse_rapor_tarihi(orijinal_metin) or dt.datetime.now(TZ).date()
         
-        # ŞANTİYE BAZLI SİSTEM: Şantiye sorumlusunu bul
         santiye_sorumlusu_id = get_santiye_sorumlusu(site)
         
-        # Şantiye sorumlusu adına kaydet
         kaydedilecek_user_id = santiye_sorumlusu_id if santiye_sorumlusu_id else user_id
         kaydedilecek_kullanici_adi = id_to_name.get(santiye_sorumlusu_id, kullanici_adi) if santiye_sorumlusu_id else kullanici_adi
         
-        # YENİ ANAHTARLARLA personel sayılarını al
         staff = gpt_rapor.get('staff', 0)
         calisan = gpt_rapor.get('calisan', 0)
         mobilizasyon = gpt_rapor.get('mobilizasyon', 0)
@@ -1204,14 +1194,11 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev_toplam = gpt_rapor.get('dis_gorev_toplam', 0)
         genel_toplam = gpt_rapor.get('genel_toplam', 0)
         
-        # Eğer genel_toplam 0 ise, diğer değerlerden hesapla
         if genel_toplam == 0:
             genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
         
-        # Proje adını belirle - ŞANTİYE BAZLI
         project_name = site
         if not project_name or project_name == 'BELİRSİZ':
-            # Şantiye sorumlusunun projelerini kullan
             if santiye_sorumlusu_id:
                 user_projects = id_to_projects.get(santiye_sorumlusu_id, [])
             else:
@@ -1222,13 +1209,11 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             else:
                 project_name = 'BELİRSİZ'
         
-        # Aynı rapor kontrolü - ŞANTİYE BAZLI (şantiye + tarih)
         existing_report = await async_fetchone("""
             SELECT id FROM reports 
             WHERE project_name = %s AND report_date = %s
         """, (project_name, rapor_tarihi))
         
-        # GÜVENLİ KONTROL
         has_existing_report = False
         if existing_report is not None:
             existing_id = safe_get_tuple_value(existing_report, 0)
@@ -1239,22 +1224,18 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderilmiş: {project_name}")
         
-        # Rapor tipini belirle
         if izinli > 0:
             rapor_tipi = "IZIN/ISYOK"
         else:
             rapor_tipi = "RAPOR"
         
-        # İş açıklaması oluştur - YENİ: Gerçek gönderen bilgisini ekle
         work_description = f"Staff:{staff} Çalışan:{calisan} Mobilizasyon:{mobilizasyon} Ambarcı:{ambarci} İzinli:{izinli}"
         if dis_gorev_toplam > 0:
             work_description += f" DışGörevToplam:{dis_gorev_toplam}"
         
-        # Gerçek gönderen bilgisini ekle
         if santiye_sorumlusu_id and santiye_sorumlusu_id != user_id:
             work_description += f" [Raporu ileten: {kullanici_adi}]"
         
-        # AI analiz verisi - YENİ: Şantiye sorumlusu bilgisini ekle
         ai_analysis = {
             "yeni_sabit_format": gpt_rapor,
             "extraction_method": "yeni-sabit-json-format",
@@ -1278,7 +1259,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             } if santiye_sorumlusu_id else None
         }
         
-        # Veritabanına kaydet - Şantiye bazlı sistem
         await async_execute("""
             INSERT INTO reports 
             (user_id, project_name, report_date, report_type, person_count, work_description, 
@@ -1290,7 +1270,6 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             False, json.dumps(ai_analysis, ensure_ascii=False)
         ))
         
-        # Log mesajını güncelle
         if santiye_sorumlusu_id and santiye_sorumlusu_id != user_id:
             logging.info(f"✅ ŞANTİYE BAZLI Rapor #{rapor_no} ŞANTİYE SORUMLUSU adına kaydedildi: {kaydedilecek_kullanici_adi} (Raporu ileten: {kullanici_adi}) - {project_name} - {rapor_tarihi}")
         else:
@@ -1408,14 +1387,14 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• DataFrame: {'Mevcut' if df is not None else 'Yok'}\n\n"
         
         mesaj += "📈 ŞANTİYE BAZLI SİSTEM İSTATİSTİKLERİ:\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"  # GÜNCELLENDİ
+        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
         mesaj += f"• Adminler: {len(ADMINS)}\n"
         mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
         mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
         mesaj += f"• Şantiyeler: {len(santiye_sorumlulari)}\n\n"
         
         mesaj += "🏗️ AKTİF ŞANTİYELER:\n"
-        for santiye in sorted(santiye_sorumlulari.keys())[:10]:  # İlk 10 şantiye
+        for santiye in sorted(santiye_sorumlulari.keys())[:10]:
             sorumlu_sayisi = len(santiye_sorumlulari[santiye])
             mesaj += f"• {santiye}: {sorumlu_sayisi} sorumlu\n"
         
@@ -1426,7 +1405,7 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Fallback Aktif: {'Evet' if df is not None and any(df['Telegram ID'] == 1000157326) else 'Hayır'}\n"
         mesaj += f"• Super Admin: {SUPER_ADMIN_ID} ({'Aktif' if SUPER_ADMIN_ID in ADMINS else 'Pasif'})\n"
         mesaj += f"• Telegram ID Format: 8-10 digit\n"
-        mesaj += f"• Aktif/Pasif Kontrolü: 'E'/'H'\n"  # GÜNCELLENDİ
+        mesaj += f"• Aktif/Pasif Kontrolü: 'E'/'H'\n"
         
         await update.message.reply_text(mesaj)
         
@@ -1462,7 +1441,6 @@ async def yeni_uye_karşilama(update: Update, context: ContextTypes.DEFAULT_TYPE
 def init_database():
     """Kapsamlı hata yönetimi ile veritabanını başlat"""
     try:
-        # Şema versiyon tablosu oluştur
         _sync_execute_safe("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 id INTEGER PRIMARY KEY CHECK (id=1), 
@@ -1470,14 +1448,12 @@ def init_database():
             )
         """)
         
-        # Şema versiyonunu başlat
         _sync_execute_safe("""
             INSERT INTO schema_version (id, version) 
             SELECT 1, 2
             WHERE NOT EXISTS(SELECT 1 FROM schema_version WHERE id=1)
         """)
         
-        # Ana raporlar tablosunu oluştur
         _sync_execute_safe("""
             CREATE TABLE IF NOT EXISTS reports (
                 id SERIAL PRIMARY KEY,
@@ -1497,7 +1473,6 @@ def init_database():
             )
         """)
         
-        # AI logları tablosunu oluştur
         _sync_execute_safe("""
             CREATE TABLE IF NOT EXISTS ai_logs (
                 id SERIAL PRIMARY KEY,
@@ -1510,7 +1485,6 @@ def init_database():
             )
         """)
         
-        # İndeksleri oluştur
         index_queries = [
             "CREATE INDEX IF NOT EXISTS idx_reports_date_user ON reports(report_date, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_reports_project_date ON reports(project_name, report_date)",
@@ -1534,14 +1508,13 @@ init_database()
 init_db_pool()
 
 async def get_santiye_rapor_durumu(bugun):
-    """Güvenli tuple işleme ile şantiye rapor durumunu al - ŞANTİYE BAZLI"""
+    """Güvenli tuple işleme ile şantiye rapor durumunu al"""
     try:
         rows = await async_fetchall("""
             SELECT DISTINCT project_name FROM reports 
             WHERE report_date = %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
         """, (bugun,))
         
-        # GÜVENLİ İŞLEME
         if not rows:
             return set()
             
@@ -1733,7 +1706,6 @@ async def tarih_kontrol_et(rapor_tarihi, user_id):
     if rapor_tarihi < iki_ay_once:
         return False, "❌ Çok eski tarihli rapor. Lütfen son 2 ay içinde bir tarih kullanınız."
     
-    # YENİ ŞANTİYE BAZLI KONTROL: Aynı şantiye için günde 1 rapor
     result = await async_fetchone("SELECT EXISTS(SELECT 1 FROM reports WHERE project_name = %s AND report_date = %s)", 
                   (user_id, rapor_tarihi))
     
@@ -1795,9 +1767,9 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
-# GÜNCELLENDİ: Personel özeti fonksiyonu - ŞANTİYE BAZLI
+# Personel özeti fonksiyonu - ŞANTİYE BAZLI
 async def generate_gelismis_personel_ozeti(target_date):
-    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur - ŞANTİYE BAZLI"""
+    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description, ai_analysis
@@ -1810,7 +1782,6 @@ async def generate_gelismis_personel_ozeti(target_date):
         proje_analizleri = {}
         tum_projeler = set()
         
-        # YENİ DEĞİŞKENLER
         genel_staff = 0
         genel_calisan = 0
         genel_mobilizasyon = 0
@@ -1820,7 +1791,6 @@ async def generate_gelismis_personel_ozeti(target_date):
         genel_toplam = 0
         
         for row in rows:
-            # GÜVENLİ ERİŞİM
             if len(row) < 6:
                 continue
             user_id = safe_get_tuple_value(row, 0, 0)
@@ -1839,13 +1809,11 @@ async def generate_gelismis_personel_ozeti(target_date):
                     'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0
                 }
             
-            # YENİ HESAPLAMA: GPT sabit format analizinden personel dağılımını al
             try:
                 ai_data = safe_json_loads(ai_analysis)
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
-                # Eğer GPT sabit format analizi varsa, onu kullan
                 if yeni_format:
                     staff_count = yeni_format.get('staff', 0)
                     calisan_count = yeni_format.get('calisan', 0)
@@ -1860,7 +1828,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1871,7 +1838,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     )
                     
                 elif personel_dagilimi:
-                    # Personel dağılımından al - YENİ ANAHTARLAR
                     staff_count = personel_dagilimi.get('staff', 0)
                     calisan_count = personel_dagilimi.get('calisan', 0)
                     mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
@@ -1885,7 +1851,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -1895,7 +1860,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                         proje_analizleri[proje_adi]['dis_gorev_toplam']
                     )
                 else:
-                    # Eski yöntemle devam et (geçiş dönemi için)
                     yapilan_is_lower = (yapilan_is or '').lower()
                     
                     if 'staff' in yapilan_is_lower:
@@ -1913,7 +1877,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                         
             except Exception as e:
                 logging.error(f"Personel analiz hatası: {e}")
-                # Hata durumunda eski yönteme devam et
                 yapilan_is_lower = (yapilan_is or '').lower()
                 
                 if 'staff' in yapilan_is_lower:
@@ -1931,7 +1894,6 @@ async def generate_gelismis_personel_ozeti(target_date):
             
             tum_projeler.add(proje_adi)
         
-        # GENEL TOPLAMLARI HESAPLA - YENİ DEĞİŞKENLER (dış görev dahil)
         for proje_adi, analiz in proje_analizleri.items():
             genel_staff += analiz['staff']
             genel_calisan += analiz['calisan']
@@ -1960,7 +1922,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     durum_detay.append(f"Ambarcı:{analiz['ambarci']}")
                 if analiz['izinli'] > 0: 
                     durum_detay.append(f"İzinli:{analiz['izinli']}")
-                # YENİ: Dış Görev ekle
                 if analiz['dis_gorev_toplam'] > 0:
                     durum_detay.append(f"DışGörev:{analiz['dis_gorev_toplam']}")
                 
@@ -1981,7 +1942,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                 mesaj += f"• Ambarcı: {genel_ambarci} (%{genel_ambarci/genel_toplam*100:.1f})\n"
             if genel_izinli > 0:
                 mesaj += f"• İzinli: {genel_izinli} (%{genel_izinli/genel_toplam*100:.1f})\n"
-            # YENİ: Dış Görev dağılıma ekle
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
@@ -1996,7 +1956,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
-# GÜNCELLENDİ: Haftalık rapor fonksiyonu - ŞANTİYE BAZLI
+# Haftalık rapor fonksiyonu
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2010,7 +1970,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        # GÜVENLİ HESAPLAMA
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
@@ -2020,7 +1979,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
-        # YENİ SABİT FORMAT: Personel sayılarını GPT analizinden al
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
             FROM reports 
@@ -2053,7 +2011,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2070,7 +2027,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2084,7 +2040,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # Genel toplamları hesapla - YENİ DEĞİŞKENLER (dış görev dahil)
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2143,16 +2098,13 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
-                # YENİ: Dış Görev ekle
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
         
-        # Diğer projeler için de kategori dağılımı ekle
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
                 mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
                 
-                # YENİ: Tüm projeler için kategori detayı
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
                 if analiz['calisan'] > 0: detay.append(f"Çalışan:{analiz['calisan']}")
@@ -2178,7 +2130,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 mesaj += f"• Ambarcı: {genel_ambarci} (%{genel_ambarci/genel_toplam*100:.1f})\n"
             if genel_izinli > 0:
                 mesaj += f"• İzinli: {genel_izinli} (%{genel_izinli/genel_toplam*100:.1f})\n"
-            # YENİ: Dış Görev dağılıma ekle
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
@@ -2191,7 +2142,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# GÜNCELLENDİ: Aylık rapor fonksiyonu - ŞANTİYE BAZLI
+# Aylık rapor fonksiyonu
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2205,7 +2156,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        # GÜVENLİ HESAPLAMA
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
@@ -2216,7 +2166,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         en_pasif = [x for x in rows if len(x) >= 2 and safe_get_tuple_value(x, 1, 0) < gun_sayisi * 0.5]
         
-        # YENİ SABİT FORMAT: Personel sayılarını GPT analizinden al
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
             FROM reports 
@@ -2249,7 +2198,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2266,7 +2214,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                     proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
                     proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    # YENİ TOPLAM HESAPLAMA: Tüm kategorileri dahil et (dış görev dahil)
                     proje_analizleri[proje_adi]['toplam'] = (
                         proje_analizleri[proje_adi]['staff'] + 
                         proje_analizleri[proje_adi]['calisan'] + 
@@ -2280,7 +2227,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # Genel toplamları hesapla - YENİ DEĞİŞKENLER (dış görev dahil)
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2340,16 +2286,13 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
-                # YENİ: Dış Görev ekle
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
         
-        # Diğer projeler için de kategori dağılımı ekle
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
                 mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
                 
-                # YENİ: Tüm projeler için kategori detayı
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
                 if analiz['calisan'] > 0: detay.append(f"Çalışan:{analiz['calisan']}")
@@ -2375,7 +2318,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 mesaj += f"• Ambarcı: {genel_ambarci} (%{genel_ambarci/genel_toplam*100:.1f})\n"
             if genel_izinli > 0:
                 mesaj += f"• İzinli: {genel_izinli} (%{genel_izinli/genel_toplam*100:.1f})\n"
-            # YENİ: Dış Görev dağılıma ekle
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
@@ -2402,7 +2344,6 @@ async def generate_tarih_araligi_raporu(start_date, end_date):
         if not rows:
             return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
         
-        # GÜVENLİ HESAPLAMA
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
@@ -2464,7 +2405,6 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mesaj += f"🏗️ {santiye}\n"
                 mesaj += f"   👥 Sorumlular: {', '.join(sorumlu_isimler)}\n\n"
         
-        # YENİ: Hangi şantiyelerin rapor iletildiğini göster
         if durum['rapor_veren_santiyeler']:
             mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
@@ -2535,7 +2475,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         mesaj += "👥 KULLANICI İSTATİSTİKLERİ:\n"
         mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"  # GÜNCELLENDİ
+        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
         mesaj += f"• Admin: {len(ADMINS)}\n"
         mesaj += f"• Şantiye: {len(santiye_sorumlulari)}\n\n"
         
@@ -2629,7 +2569,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.5.1 (Takip Sütunu Kaldırıldı)\n"
+        "Versiyon: 4.6.0 (Güncel Excel Format Desteği)\n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2642,7 +2582,8 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Çift sayma koruması ile doğru toplamlar\n"
         "• Şantiye bazlı rapor sistemi\n"
         "• 8-10 digit Telegram ID parsing\n"
-        "• 'Takip' sütunu kaldırıldı - Tüm aktif kullanıcılar rapor gönderebilir\n"
+        "• Haftalık rapor Cuma 17:35'te gönderilir\n"
+        "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -2811,7 +2752,7 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj = "👥 TÜM KULLANICI LİSTESİ - ŞANTİYE BAZLI\n\n"
     
-    mesaj += f"📋 Aktif Kullanıcılar ({len(rapor_sorumlulari)} - Aktif/Pasif='E'):\n"  # GÜNCELLENDİ
+    mesaj += f"📋 Aktif Kullanıcılar ({len(rapor_sorumlulari)} - Aktif/Pasif='E'):\n"
     for tid in rapor_sorumlulari:
         ad = id_to_name.get(tid, "Bilinmeyen")
         projeler = ", ".join(id_to_projects.get(tid, []))
@@ -2819,10 +2760,9 @@ async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rol = id_to_rol.get(tid, "Belirsiz")
         mesaj += f"• {ad}\n  📍 Projeler: {projeler}\n  🏷️ Status: {status}\n  👤 Rol: {rol}\n\n"
     
-    # Pasif adminleri göster
     admin_pasif_olanlar = [admin for admin in ADMINS if admin not in rapor_sorumlulari]
     if admin_pasif_olanlar:
-        mesaj += f"🛡️ Pasif Adminler ({len(admin_pasif_olanlar)}):\n"  # GÜNCELLENDİ
+        mesaj += f"🛡️ Pasif Adminler ({len(admin_pasif_olanlar)}):\n"
         for tid in admin_pasif_olanlar:
             ad = id_to_name.get(tid, "Bilinmeyen")
             rol = id_to_rol.get(tid, "Belirsiz")
@@ -2917,11 +2857,9 @@ async def reset_database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("🔄 Veritabanı sıfırlanıyor... Bu işlem biraz zaman alabilir.")
     
     try:
-        # Drop schema and recreate
         _sync_execute_safe("DROP SCHEMA public CASCADE")
         _sync_execute_safe("CREATE SCHEMA public")
         
-        # Reinitialize database
         init_database()
         init_db_pool()
         
@@ -2938,14 +2876,12 @@ async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 Sequence'ler düzeltiliyor...")
     
     try:
-        # Fix reports sequence
         reports_result = await async_fetchone("SELECT COALESCE(MAX(id), 0) FROM reports")
         reports_max_id = safe_get_tuple_value(reports_result, 0, 0)
         new_reports_seq = max(reports_max_id + 1, 1)
         
         await async_execute(f"ALTER SEQUENCE reports_id_seq RESTART WITH {new_reports_seq}")
         
-        # Fix ai_logs sequence
         ai_logs_result = await async_fetchone("SELECT COALESCE(MAX(id), 0) FROM ai_logs")
         ai_logs_max_id = safe_get_tuple_value(ai_logs_result, 0, 0)
         new_ai_logs_seq = max(ai_logs_max_id + 1, 1)
@@ -3001,7 +2937,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 rapor_tarihi = str(tarih)
                 gonderme_tarihi = str(delivered_date) if delivered_date else ""
             
-            # AI analizinden personel dağılımını al - YENİ ANAHTARLAR
             staff_count = 0
             calisan_count = 0
             mobilizasyon_count = 0
@@ -3090,7 +3025,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         toplam_kullanici = len(set([x['User ID'] for x in excel_data]))
         gun_sayisi = len(set([x['Tarih'] for x in excel_data]))
         
-        # Personel toplamları - YENİ ANAHTARLAR (dış görev dahil)
         toplam_staff = sum([x['Staff'] for x in excel_data])
         toplam_calisan = sum([x['Çalışan'] for x in excel_data])
         toplam_mobilizasyon = sum([x['Mobilizasyon'] for x in excel_data])
@@ -3126,7 +3060,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             if value != '':
                 ws_summary[f'B{row_idx}'] = value
             ws_summary[f'A{row_idx}'].font = Font(bold=True)
-            if row_idx >= 9:  # Personel dağılımı satırları
+            if row_idx >= 9:
                 ws_summary[f'A{row_idx}'].font = Font(bold=False)
         
         ws_summary.column_dimensions['A'].width = 25
@@ -3138,45 +3072,83 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-# YENİ: GELİŞMİŞ HATIRLATMA SİSTEMİ - LOG HATALARI GİDERİLDİ
+# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ
 def schedule_jobs(app):
     jq = app.job_queue
     
-    # DEBUG: Job'ların başlatıldığını logla
-    logging.info("⏰ ŞANTİYE BAZLI JOB'LAR AYARLANIYOR...")
+    logging.info("⏰ GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ AYARLANIYOR...")
     logging.info(f"🔍 GROUP_ID değeri: {GROUP_ID}")
     
-    # GROUP_ID kontrolü
     if not GROUP_ID:
         logging.error("❌ GROUP_ID ayarlanmamış! Hatırlatma mesajları gönderilemeyecek.")
     else:
         logging.info(f"✅ GROUP_ID ayarlandı: {GROUP_ID}")
     
-    # TEST: Hemen çalıştır (debug için)
-    jq.run_once(test_hatirlatma_mesaji, when=5)
-    
     # Mevcut job'ları ayarla
     jq.run_repeating(auto_watch_excel, interval=60, first=10)
     jq.run_daily(gunluk_rapor_ozeti, time=dt.time(9, 0, tzinfo=TZ))
     
-    # YENİ: GELİŞMİŞ HATIRLATMA MESAJLARI - LOG HATALARI GİDERİLDİ
+    # YENİ ZAMANLAMALAR
     hatirlatma_job = jq.run_daily(hatirlatma_mesaji, time=dt.time(12, 30, tzinfo=TZ))
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # DEBUG: Job'ların ayarlandığını onayla
-    logging.info(f"✅ 12:30 hatırlatma job'ı ayarlandı")
-    logging.info(f"✅ 15:00 kontrol job'ı ayarlandı")
-    logging.info(f"✅ 17:30 kontrol job'ı ayarlandı")
+    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMA YERİNE CUMARTESİ 17:35
+    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
+    
+    # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
+    jq.run_daily(aylik_grup_raporu_kontrol, time=dt.time(9, 30, tzinfo=TZ))
     
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
-    jq.run_daily(lambda context: yedekle_postgres(), time=dt.time(23, 10, tzinfo=TZ))
+    jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
-    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 40, tzinfo=TZ), days=(4,))
-    
-    jq.run_monthly(aylik_grup_raporu, time=dt.time(17, 45, tzinfo=TZ), day=28)
-    
-    logging.info("⏰ Tüm zamanlamalar ayarlandı - ŞANTİYE BAZLI SİSTEM")
+    logging.info("⏰ Tüm zamanlamalar ayarlandı - GÜNCELLENMİŞ SİSTEM")
+
+# YENİ: ASYNC POSTGRES YEDEKLEME
+async def async_yedekle_postgres():
+    """Async Postgres yedekleme"""
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, yedekle_postgres)
+
+# YENİ: AYLIK RAPOR KONTROL FONKSİYONU
+async def aylik_grup_raporu_kontrol(context: ContextTypes.DEFAULT_TYPE):
+    """Ayın 1'inde aylık rapor gönder"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        if today.day == 1:  # Ayın 1'inde çalıştır
+            # Önceki ayın raporunu oluştur
+            start_date = today.replace(day=1) - dt.timedelta(days=1)
+            start_date = start_date.replace(day=1)
+            end_date = today.replace(day=1) - dt.timedelta(days=1)
+            
+            await aylik_grup_raporu_tarihli(context, start_date, end_date)
+    except Exception as e:
+        logging.error(f"🗓️ Aylık rapor kontrol hatası: {e}")
+
+# YENİ: TARİHLİ AYLIK RAPOR
+async def aylik_grup_raporu_tarihli(context: ContextTypes.DEFAULT_TYPE, start_date, end_date):
+    """Belirli tarih aralığı için aylık rapor gönder"""
+    try:
+        mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
+        
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🗓️ Aylık grup raporu gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"🗓️ Aylık grup raporu gönderilemedi: {e}")
+        
+        for admin_id in ADMINS:
+            try:
+                await context.bot.send_message(chat_id=admin_id, text=mesaj)
+                logging.info(f"🗓️ Aylık rapor {admin_id} adminine gönderildi")
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                if "Chat not found" not in str(e):
+                    logging.error(f"🗓️ {admin_id} adminine aylık rapor gönderilemedi: {e}")
+        
+    except Exception as e:
+        logging.error(f"🗓️ Aylık grup raporu hatası: {e}")
 
 async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -3203,28 +3175,12 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"🕘 09:00 rapor hatası: {e}")
         await hata_bildirimi(context, f"09:00 rapor hatası: {e}")
 
-# YENİ: GELİŞMİŞ TEST HATIRLATMA MESAJI
-async def test_hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    """Test için hemen hatırlatma mesajı"""
-    try:
-        logging.info("TEST: Hatırlatma mesajı tetiklendi")
-        if GROUP_ID:
-            test_msg = "TEST: Şantiye bazlı sistem çalışıyor! Bot aktif."
-            await context.bot.send_message(chat_id=GROUP_ID, text=test_msg)
-            logging.info(f"TEST mesajı gönderildi: {GROUP_ID}")
-        else:
-            logging.error("TEST: GROUP_ID ayarlanmamış")
-    except Exception as e:
-        logging.error(f"TEST hatası: {e}")
-
-# YENİ: GELİŞMİŞ HATIRLATMA MESAJI - LOG HATALARI GİDERİLDİ
 async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
     try:
         logging.info("12:30 hatırlatma mesajı tetiklendi")
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
-        # YENİ: Sadece gruba mesaj gönder - log hataları giderildi
         if GROUP_ID:
             if not durum['eksik_santiyeler']:
                 mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış."
@@ -3242,7 +3198,6 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Hatırlatma mesajı hatası: {e}")
 
-# YENİ: GELİŞMİŞ İLK RAPOR KONTROL - LOG HATALARI GİDERİLDİ
 async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     try:
         bugun = dt.datetime.now(TZ).date()
@@ -3276,7 +3231,6 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
-        # YENİ: SADECE GRUBA GÖNDER - LOG HATALARI GİDERİLDİ
         if GROUP_ID:
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
@@ -3290,7 +3244,6 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"🟠 Şantiye rapor kontrol hatası: {e}")
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
 
-# YENİ: GELİŞMİŞ SON RAPOR KONTROL - LOG HATALARI GİDERİLDİ
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
     try:
         bugun = dt.datetime.now(TZ).date()
@@ -3316,7 +3269,6 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
         mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
         
-        # YENİ: SADECE GRUBA GÖNDER - LOG HATALARI GİDERİLDİ
         if GROUP_ID:
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
@@ -3326,7 +3278,6 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         else:
             logging.error("🔴 GROUP_ID ayarlanmamış, gün sonu analizi gönderilemedi")
         
-        # YENİ: Adminlere de ayrıca özet gönder (isteğe bağlı)
         admin_mesaj = f"📋 Gün Sonu Şantiye Özeti - {bugun.strftime('%d.%m.%Y')}\n\n"
         
         if durum['rapor_veren_santiyeler']:
@@ -3343,14 +3294,12 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         
         admin_mesaj += mesaj.split('\n\n', 1)[1]
         
-        # YENİ: Adminlere mesaj gönderirken hata kontrolü
         for admin_id in ADMINS:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=admin_mesaj)
                 logging.info(f"🔴 Şantiye gün sonu özeti {admin_id} adminine gönderildi")
                 await asyncio.sleep(0.5)
             except Exception as e:
-                # "Chat not found" hatalarını filtrele
                 if "Chat not found" not in str(e):
                     logging.error(f"🔴 {admin_id} adminine şantiye gün sonu özeti gönderilemedi: {e}")
         
@@ -3361,7 +3310,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today - dt.timedelta(days=today.weekday() + 7)
+        start_date = today - dt.timedelta(days=today.weekday())
         end_date = start_date + dt.timedelta(days=6)
         
         mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
@@ -3373,14 +3322,12 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logging.error(f"📊 Haftalık grup raporu gönderilemedi: {e}")
         
-        # YENİ: Adminlere mesaj gönderirken hata kontrolü
         for admin_id in ADMINS:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=mesaj)
                 logging.info(f"📊 Haftalık rapor {admin_id} adminine gönderildi")
                 await asyncio.sleep(0.5)
             except Exception as e:
-                # "Chat not found" hatalarını filtrele
                 if "Chat not found" not in str(e):
                     logging.error(f"📊 {admin_id} adminine haftalık rapor gönderilemedi: {e}")
         
@@ -3389,11 +3336,11 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
 
 async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
+    """Mevcut aylık rapor fonksiyonu - geriye uyumluluk için"""
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today.replace(day=1) - dt.timedelta(days=1)
-        start_date = start_date.replace(day=1)
-        end_date = today.replace(day=1) - dt.timedelta(days=1)
+        start_date = today.replace(day=1)
+        end_date = today
         
         mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
         
@@ -3404,14 +3351,12 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logging.error(f"🗓️ Aylık grup raporu gönderilemedi: {e}")
         
-        # YENİ: Adminlere mesaj gönderirken hata kontrolü
         for admin_id in ADMINS:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=mesaj)
                 logging.info(f"🗓️ Aylık rapor {admin_id} adminine gönderildi")
                 await asyncio.sleep(0.5)
             except Exception as e:
-                # "Chat not found" hatalarını filtrele
                 if "Chat not found" not in str(e):
                     logging.error(f"🗓️ {admin_id} adminine aylık rapor gönderilemedi: {e}")
         
@@ -3421,16 +3366,14 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
 
 async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
     try:
-        mesaj = "🤖 Rapor Kontrol Botu Aktif! - ŞANTİYE BAZLI SİSTEM\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
+        mesaj = "🤖 Rapor Kontrol Botu Aktif! - GÜNCELLENMİŞ SİSTEM\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
         
-        # YENİ: Adminlere mesaj gönderirken hata kontrolü
         for admin_id in ADMINS:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=mesaj)
                 logging.info(f"Başlangıç mesajı {admin_id} adminine gönderildi")
                 await asyncio.sleep(0.5)
             except Exception as e:
-                # "Chat not found" hatalarını filtrele
                 if "Chat not found" not in str(e):
                     logging.error(f"Başlangıç mesajı {admin_id} adminine gönderilemedi: {e}")
         
@@ -3469,57 +3412,6 @@ async def post_init(application: Application):
     await application.bot.set_my_commands(commands)
     
     await bot_baslatici_mesaji(application)
-
-# Test fonksiyonları
-def run_tests():
-    """Temel işlevselliği doğrulamak için testleri çalıştır"""
-    print("🧪 Temel testler çalıştırılıyor...")
-    
-    # YENİ ŞANTİYE PARSING TESTİ
-    test_cases = [
-        ("SKP (DAHO) / DMC", ["SKP", "DMC"]),
-        ("LOT13, LOT71", ["LOT13", "LOT71"]),
-        ("BWC | STADYUM", ["BWC", "STADYUM"]),
-        ("Tümü", ["TÜMÜ"]),
-        ("Belli değil", []),
-        ("", []),
-    ]
-    
-    for input_str, expected in test_cases:
-        result = parse_santiye_list(input_str)
-        assert result == expected, f"Şantiye parsing hatası: {input_str} → {result} (beklenen: {expected})"
-    
-    print("✅ Şantiye parsing testleri geçti")
-    
-    # Güvenli tuple değeri fonksiyonunu test et
-    test_tuple = (1, "test", None)
-    assert safe_get_tuple_value(test_tuple, 0) == 1
-    assert safe_get_tuple_value(test_tuple, 1) == "test"
-    assert safe_get_tuple_value(test_tuple, 2) is None
-    assert safe_get_tuple_value(test_tuple, 5, "varsayılan") == "varsayılan"
-    assert safe_get_tuple_value(None, 0) is None
-    print("✅ safe_get_tuple_value testleri geçti")
-    
-    # JSON parsing test et
-    test_json = '{"test": "değer"}'
-    assert safe_json_loads(test_json) is not None
-    assert safe_json_loads("geçersiz json") is None
-    assert safe_json_loads(None) is None
-    print("✅ safe_json_loads testleri geçti")
-    
-    # Giriş doğrulama test et
-    is_valid, cleaned = validate_user_input("test girişi")
-    assert is_valid == True
-    assert cleaned == "test girişi"
-    
-    is_valid, _ = validate_user_input("")
-    assert is_valid == False
-    
-    is_valid, _ = validate_user_input("x" * 2000)
-    assert is_valid == False
-    print("✅ Giriş doğrulama testleri geçti")
-    
-    print("🎉 Tüm temel testler geçti!")
 
 def main():
     try:
@@ -3575,7 +3467,7 @@ def main():
         ))
         
         schedule_jobs(app)
-        logging.info("🚀 ŞANTİYE BAZLI SİSTEM AKTİF - Rapor Botu başlatılıyor...")
+        logging.info("🚀 GÜNCELLENMİŞ SİSTEM AKTİF - Rapor Botu başlatılıyor...")
         
         app.run_polling(drop_pending_updates=True)
         
@@ -3584,17 +3476,11 @@ def main():
         raise
 
 if __name__ == "__main__":
-    # İstenirse testleri çalıştır
-    if os.getenv("RUN_TESTS"):
-        run_tests()
-    else:
-        # Botu başlat
-        print("🚀 Telegram Bot Başlatılıyor...")
-        print("📝 Değişiklik Günlüğü v4.5.1:")
-        print("   - 'Takip' sütunu tamamen kaldırıldı")
-        print("   - Tüm aktif kullanıcılar rapor gönderebilir")
-        print("   - Sistem sadece 'Aktif / Pasif' sütununa göre çalışır")
-        print("   - Raporlar şantiye bazlı kaydedilir")
-        print("   - Eksik rapor listesi şantiye isimlerini gösterir")
-        
-        main()
+    print("🚀 Telegram Bot Başlatılıyor...")
+    print("📝 Değişiklik Günlüğü v4.6.0:")
+    print("   - Haftalık rapor Cuma 17:35'te gönderilir")
+    print("   - Aylık rapor her ayın 1'inde 09:30'da gönderilir")
+    print("   - Excel formatı geliştirildi")
+    print("   - Yeni kullanıcı dosyası formatı destekleniyor")
+    
+    main()
