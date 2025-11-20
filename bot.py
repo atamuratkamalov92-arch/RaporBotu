@@ -2524,7 +2524,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Çift sayma koruması ile doğru toplamlar\n"
         "• Şantiye bazlı rapor sistemi\n"
         "• 8-10 digit Telegram ID parsing\n"
-        "• Haftalık rapor Cuma 17:35'te gönderilir\n"
+        "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Railway uyumlu log çıktıları\n"
         "• Kullanıcı isimleri çıktılarda gösterilmez\n"
@@ -3033,7 +3033,7 @@ def schedule_jobs(app):
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMA YERİNE CUMARTESİ 17:35
+    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35
     jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
     
     # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
