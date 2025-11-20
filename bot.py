@@ -1,3 +1,4 @@
+```python
 """
 📋 CHANGELOG - bot.py v4.6.4
 
@@ -462,10 +463,23 @@ def normalize_site_name(site_name):
         'DMC ELLIPSE GARDEN': 'DMC',
         'DMC ELLIPSE': 'DMC',
         'DMC GARDEN': 'DMC',
+        'DMC Ellipse Garden Elektrik Grubu': 'DMC',
+        'DMC ELLIPSE GARDEN ELEKTRIK GRUBU': 'DMC',
+        'DMC ELLIPSE GARDEN ELEKTRIK GRUBU': 'DMC',
+        'DMC ELLIPSE ELEKTRIK GRUBU': 'DMC',
+        'DMC GARDEN ELEKTRIK GRUBU': 'DMC',
+        'DMC ELEKTRIK GRUBU': 'DMC',
+        'DMC ELEKTRIK': 'DMC',
+        'DMC ELLIPSE GARDEN ELEKTRİK': 'DMC',
+        'DMC ELLIPSE ELEKTRİK': 'DMC',
+        'DMC GARDEN ELEKTRİK': 'DMC',
         'DMC': 'DMC',
         'KÖKSARAY': 'KÖKSARAY',
         'OHP': 'OHP',
-        'TYM': 'TYM'
+        'TYM': 'TYM',
+        'YHP': 'YHP',
+        'MMP': 'MMP',
+        'RMC': 'RMC'
     }
     
     return mappings.get(site_name, site_name)
@@ -929,11 +943,15 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 5. **ŞANTİYE NORMALİZASYONU**:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC, YHP, TYM, MMP, RMC
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
    - "Piramit Tower" → "Piramit"
-   - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden" → "DMC"
+   - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
+   - "YHP" → "YHP"
+   - "TYM" → "TYM"
+   - "MMP" → "MMP"
+   - "RMC" → "RMC"
 
 6. **PERSONEL KATEGORİLERİ**:
    - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen
@@ -2110,7 +2128,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -2280,7 +2298,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -3462,3 +3480,4 @@ if __name__ == "__main__":
     print("   - Hata yönetimi güçlendirildi")
     
     main()
+```
