@@ -1,5 +1,5 @@
 """
-📋 CHANGELOG - bot.py v4.6.3
+📋 CHANGELOG - bot.py v4.6.4
 
 ✅ GÜNCELLEMELER:
 - Gelişmiş Excel okuma fonksiyonu eklendi: Yeni format desteği ve esnek kolon eşleştirme.
@@ -11,7 +11,7 @@
 - Gelişmiş kullanıcı giriş doğrulama fonksiyonu eklendi.
 - Gelişmiş tarih string doğrulama fonksiyonu eklendi.
 - Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
-
+- Santiye name normalization fonksiyonu guncellendi.
 """
 
 import os
@@ -886,7 +886,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -929,10 +929,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 5. **ŞANTİYE NORMALİZASYONU**:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
    - "Piramit Tower" → "Piramit"
+   - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden" → "DMC"
 
 6. **PERSONEL KATEGORİLERİ**:
    - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen
@@ -1648,7 +1649,7 @@ class MaliyetAnaliz:
             rapor += f"📈 Genel İstatistikler:\n"
             rapor += f"• Toplam İşlem: {toplam}\n"
             rapor += f"• Başarılı: {basarili} (%{(basarili/toplam*100):.1f})\n"
-            rapor += f"• Başarısız: {basarisiz}\n"
+            rapor += f"• Başarısız: {basarilis}\n"
             rapor += f"• İlk Kullanım: {ilk_tarih[:10] if ilk_tarih else 'Yok'}\n"
             rapor += f"• Son Kullanım: {son_tarih[:10] if son_tarih else 'Yok'}\n\n"
             
@@ -2097,7 +2098,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -2264,7 +2265,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -2513,7 +2514,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.3 \n"
+        "Versiyon: 4.6.4 \n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2529,6 +2530,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Railway uyumlu log çıktıları\n"
+        "• DMC şantiye normalizasyonu iyileştirildi\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3432,10 +3434,13 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.6.3:")
+    print("📝 Güncellenmiş Versiyon v4.6.4:")
     print("   - 'TÜMÜ' şantiyesi şantiye listelerinden tamamen çıkarıldı")
     print("   - Tüm raporlarda 'TÜMÜ' şantiyesi filtrelendi")
     print("   - Şantiye bazlı sistemde 'TÜMÜ' artık görünmeyecek")
+    print("   - DMC şantiye normalizasyonu iyileştirildi")
+    print("   - 'DMC ELLIPSE GARDEN', 'DMC ELLIPSE', 'DMC GARDEN' artık 'DMC' olarak normalize ediliyor")
+    print("   - AI sistem prompt'unda DMC normalizasyon kuralları eklendi")
     print("   - Hata yönetimi güçlendirildi")
     
     main()
