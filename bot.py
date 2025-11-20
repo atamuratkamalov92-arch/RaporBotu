@@ -2723,15 +2723,20 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
     
-    mesaj = "🏗️ ŞANTİYE LİSTESİ ve SORUMLULARI \n\n"
+    mesaj = "🏗️ ŞANTİYE LİSTESİ\n\n"
     
     # TÜMÜ şantiyesini filtrele
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
-    for santiye, sorumlular in sorted(filtered_santiyeler.items()):
-        mesaj += f"{santiye} \n\n"
+    # BWC şantiyesini manuel olarak ekle (eğer yoksa)
+    if "BWC" not in filtered_santiyeler:
+        filtered_santiyeler["BWC"] = []  # Boş sorumlu listesi ile ekle
     
-    mesaj += f"📊 Toplam {len(filtered_santiyeler)} şantiye "
+    for santiye, sorumlular in sorted(filtered_santiyeler.items()):
+        # Sadece şantiye ismini göster, sorumlu sayısını gösterme
+        mesaj += f"• {santiye}\n"
+    
+    mesaj += f"\n📊 Toplam {len(filtered_santiyeler)} şantiye"
     
     await update.message.reply_text(mesaj)
 
