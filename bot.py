@@ -1154,6 +1154,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     report['date'] = today.strftime('%Y-%m-%d')
                 
                 site = report.get('site', 'BELİRSİZ')
+                # GPT'DEN GELEN ŞANTİYE İSMİNİ NORMALİZE ET - EKLENDİ
                 report['site'] = normalize_site_name(site)
                 
                 for key in ['staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev_toplam', 'genel_toplam']:
@@ -1190,6 +1191,9 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
     try:
         site = gpt_rapor.get('site', 'BELİRSİZ')
         date_str = gpt_rapor.get('date')
+        
+        # GPT'DEN GELEN ŞANTİYE İSMİNİ NORMALİZE ET - EKLENDİ
+        site = normalize_site_name(site)
         
         rapor_tarihi = None
         if date_str:
@@ -1538,7 +1542,7 @@ async def get_santiye_rapor_durumu(bugun):
         if not rows:
             return set()
             
-        return set(safe_get_tuple_value(row, 0, '') for row in rows 
+        return set(normalize_site_name(safe_get_tuple_value(row, 0, '')) for row in rows 
                   if safe_get_tuple_value(row, 0, '') and safe_get_tuple_value(row, 0, '') != "TÜMÜ")
     except Exception as e:
         logging.error(f"Şantiye rapor durumu hatası: {e}")
@@ -1571,6 +1575,8 @@ async def get_santiye_bazli_rapor_durumu(bugun):
         for row in rows:
             if row and len(row) >= 2:
                 project_name = safe_get_tuple_value(row, 0, '')
+                # PROJE ADINI NORMALİZE ET - EKLENDİ
+                project_name = normalize_site_name(project_name)
                 user_id = safe_get_tuple_value(row, 1, 0)
                 if project_name and project_name != "TÜMÜ" and user_id:  # TÜMÜ filtrele
                     if project_name not in santiye_rapor_verenler:
@@ -1823,7 +1829,10 @@ async def generate_gelismis_personel_ozeti(target_date):
             yapilan_is = safe_get_tuple_value(row, 4, '')
             ai_analysis = safe_get_tuple_value(row, 5, '{}')
             
-            if not proje_adi or proje_adi == "TÜMÜ":  # TÜMÜ şantiyesini filtrele
+            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            proje_adi = normalize_site_name(proje_adi)
+            
+            if not proje_adi or proje_adi == "TÜMÜ":
                 continue
                 
             if proje_adi not in proje_analizleri:
@@ -2014,6 +2023,9 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
             
+            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            proje_adi = normalize_site_name(proje_adi)
+            
             # TÜMÜ şantiyesini filtrele
             if not proje_adi or proje_adi == "TÜMÜ":
                 continue
@@ -2180,6 +2192,9 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
+            
+            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            proje_adi = normalize_site_name(proje_adi)
             
             # TÜMÜ şantiyesini filtrele
             if not proje_adi or proje_adi == "TÜMÜ":
@@ -2870,6 +2885,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             delivered_date = safe_get_tuple_value(row, 8, '')
             is_edited = safe_get_tuple_value(row, 9, False)
             ai_analysis = safe_get_tuple_value(row, 10, '{}')
+            
+            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            proje_adi = normalize_site_name(proje_adi)
             
             # TÜMÜ şantiyesini filtrele
             if proje_adi == "TÜMÜ":
