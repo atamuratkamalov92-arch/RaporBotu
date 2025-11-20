@@ -592,7 +592,7 @@ def load_excel_intelligent():
     
     # "TÜMÜ" şantiyesi olup olmadığını kontrol et
     tumu_sayisi = sum(1 for projects in temp_id_to_projects.values() if "TÜMÜ" in projects)
-    logging.info(f"✅ ŞANTİYE BAZLI SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye, {tumu_sayisi} kullanıcıda 'TÜMÜ' şantiyesi (filtrelendi)")
+    logging.info(f"✅ SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye, {tumu_sayisi} kullanıcıda 'TÜMÜ' şantiyesi (filtrelendi)")
 
 # Excel yüklemeyi başlat
 load_excel_intelligent()
@@ -1403,7 +1403,7 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• Son Yükleme: {dt.datetime.fromtimestamp(excel_last_modified).strftime('%d.%m.%Y %H:%M') if excel_last_modified else 'Yok'}\n"
         mesaj += f"• DataFrame: {'Mevcut' if df is not None else 'Yok'}\n\n"
         
-        mesaj += "📈 ŞANTİYE BAZLI SİSTEM İSTATİSTİKLERİ:\n"
+        mesaj += "📈 ŞANTİYE İSTATİSTİKLERİ:\n"
         mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} \n"
         mesaj += f"• Adminler: {len(ADMINS)}\n"
         mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
@@ -2410,7 +2410,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
-        mesaj = "📊 GENEL İSTATİSTİKLER - ŞANTİYE BAZLI SİSTEM\n\n"
+        mesaj = "📊 GENEL İSTATİSTİKLER \n\n"
         
         mesaj += "📅 GÜNLÜK İSTATİSTİKLER:\n"
         mesaj += f"• Bugünkü Rapor: {bugun_rapor_sayisi}\n"
@@ -2447,7 +2447,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Rapor Botu Aktif! - ŞANTİYE BAZLI SİSTEM\n\n"
+        "🤖 Rapor Botu Aktif! \n\n"
         "Komutlar için `/info` yazın.\n\n"
         "📋 Temel Kullanım:\n"
         "• Rapor göndermek için direkt mesaj yazın\n"
@@ -2509,7 +2509,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
-        "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
+        "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
         "Versiyon: 4.6.3 \n"
         "Özellikler:\n"
@@ -3047,7 +3047,7 @@ def schedule_jobs(app):
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
-    logging.info("⏰ Tüm zamanlamalar ayarlandı - GÜNCELLENMİŞ SİSTEM")
+    logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
 
 # YENİ: ASYNC POSTGRES YEDEKLEME
 async def async_yedekle_postgres():
@@ -3132,6 +3132,9 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
             else:
                 mesaj = "❌ Eksik raporlar var:\n" + "\n".join(sorted(durum['eksik_santiyeler']))
             
+            # SABİT NOT EKLENİYOR
+            mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
+            
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
                 logging.info(f"🟡 12:30 hatırlatma mesajı gruba gönderildi: {GROUP_ID}")
@@ -3168,6 +3171,9 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
+        # SABİT NOT EKLENİYOR
+        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik raporları iletir misiniz?"
+        
         if GROUP_ID:
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
@@ -3195,8 +3201,6 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['eksik_santiyeler']:
             mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
             for santiye in sorted(durum['eksik_santiyeler']):
-                sorumlular = santiye_sorumlulari.get(santiye, [])
-                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
                 mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
@@ -3204,6 +3208,9 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         
         mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
         mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
+        
+        # SABİT NOT EKLENİYOR (Kullanıcılar için)
+        mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         
         for user_id in rapor_sorumlulari:
             try:
@@ -3218,16 +3225,18 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['rapor_veren_santiyeler']:
             admin_mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
-                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
-                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
-                
-                if rapor_verenler:
-                    admin_mesaj += f"• {santiye} - İleten: {', '.join(rapor_veren_isimler)}\n"
-                else:
-                    admin_mesaj += f"• {santiye} - Rapor iletildi\n"
+                admin_mesaj += f"• {santiye}\n"
             admin_mesaj += "\n"
         
-        admin_mesaj += mesaj.split('\n\n', 1)[1]
+        # GÜVENLİ BÖLÜM EKLEME
+        mesaj_parts = mesaj.split('\n\n', 1)
+        if len(mesaj_parts) > 1:
+            admin_mesaj += mesaj_parts[1]  # İlk bölümü atla, ikinci bölümü al
+        else:
+            admin_mesaj += mesaj  # Eğer bölünemezse tüm mesajı al
+        
+        # SABİT NOT EKLENİYOR (Adminler için)
+        admin_mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         
         for admin_id in ADMINS:
             try:
@@ -3300,7 +3309,7 @@ async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
 
 async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
     try:
-        mesaj = "🤖 Rapor Kontrol Botu Aktif! - GÜNCELLENMİŞ SİSTEM\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
+        mesaj = "🤖 Rapor Kontrol Botu Aktif!\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
         
         for admin_id in ADMINS:
             try:
