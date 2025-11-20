@@ -264,14 +264,19 @@ def safe_read_excel(file_path, required_columns=None):
             if missing_columns:
                 logging.warning(f"⚠️ Eksik kolonlar: {missing_columns}. Mevcut kolonlar: {list(df.columns)}")
                 
-                # YENİ FORMAT EŞLEŞTİRME
+                # YENİ FORMAT EŞLEŞTİRME - GÜNCELLENDİ
                 column_mapping = {
                     'Rol': 'Botdaki Statusu / Rol',
                     'Botdaki Statusu': 'Botdaki Statusu / Rol',
                     'Kullanici Adi Soyadi': 'Kullanici Adi Soyadi',
                     'Telegram ID': 'Telegram ID', 
                     'Proje / Şantiye': 'Proje / Şantiye',
-                    'Aktif / Pasif': 'Aktif / Pasif'
+                    'Aktif / Pasif': 'Aktif / Pasif',
+                    # YENİ EŞLEŞMELER
+                    'Username': 'Username',
+                    'Telefon Numarası': 'Telefon Numarası',
+                    'Pozisyon Kodu': 'Pozisyon Kodu',
+                    'Özel Rapor': 'Özel Rapor'
                 }
                 
                 for required_col in missing_columns:
@@ -948,41 +953,9 @@ DİKKAT:
 """
 
 # Gelişmiş tarih parser fonksiyonları
+# Gelişmiş tarih parser fonksiyonları
 def enhanced_date_parser(text):
-    """Gelişmiş tarih parser - çeşitli formatları destekler"""
-    today = dt.date.today()
-    
-    # Tarih pattern'leri
-    patterns = [
-        r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',  # 13.11.2025
-        r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',  # 13.11.25
-        r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',  # 2025-11-13
-    ]
-    
-    for pattern in patterns:
-        matches = re.finditer(pattern, text)
-        for match in matches:
-            try:
-                groups = match.groups()
-                if len(groups[2]) == 4:  # YYYY format
-                    day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
-                else:  # YY format
-                    day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
-                    year += 2000
-                parsed_date = dt.date(year, month, day)
-                if parsed_date <= today:  # Gelecek tarih kontrolü
-                    return parsed_date
-            except ValueError:
-                continue
-    
-    # Özel ifadeler
-    text_lower = text.lower()
-    if 'bugün' in text_lower or 'bugun' in text_lower:
-        return today
-    if 'dün' in text_lower or 'dun' in text_lower:
-        return today - dt.timedelta(days=1)
-    
-    return today  # Varsayılan bugün
+    # ... mevcut kod ...
 
 def normalize_site_name(site_name):
     """Şantiye isimlerini standartlaştır"""
@@ -1018,6 +991,44 @@ def normalize_site_name(site_name):
     # Eşleşme bulunamazsa, şantiye adını olduğu gibi döndür
     return mappings.get(site_name, site_name)
 
+# YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
+def parse_santiye_list(proje_string):
+    """
+    YENİ ŞANTİYE PARSING KURALLARI:
+    - 'SKP (DAHO) / DMC' → ['SKP', 'DMC']
+    - '/' , ',' , '-' , '|' ile ayır
+    - Parantez içlerini temizle
+    - 'Tümü' → tüm şantiyeler (özel işlem)
+    - 'Belli değil' → atla
+    - Şantiye isimlerini normalize et
+    """
+    if not proje_string or pd.isna(proje_string):
+        return []
+    
+    proje_string = str(proje_string).strip()
+    
+    # Özel durumlar
+    if proje_string.upper() == 'TÜMÜ':
+        return ['TÜMÜ']
+    if proje_string.upper() in ['BELLİ DEĞİL', 'BELİRSİZ', '']:
+        return []
+    
+    # Parantez içlerini temizle: 'SKP (DAHO)' → 'SKP'
+    proje_string = re.sub(r'\([^)]*\)', '', proje_string)
+    
+    # Birden fazla ayırıcı ile böl
+    parts = re.split(r'[/,\-\|]', proje_string)
+    
+    # Temizle, filtrele ve normalize et
+    santiyeler = []
+    for part in parts:
+        part_clean = part.strip()
+        if part_clean and part_clean.upper() not in ['BELLİ DEĞİL', 'BELİRSİZ']:
+            # Şantiye ismini normalize et
+            normalized_site = normalize_site_name(part_clean)
+            santiyeler.append(normalized_site)
+    
+    return santiyeler
 
 def get_santiye_sorumlusu(santiye_adi):
     """
