@@ -2,9 +2,16 @@
 📋 CHANGELOG - bot.py v4.6.3
 
 ✅ GÜNCELLEMELER:
-- "TÜMÜ" şantiyesi şantiye listesinden tamamen çıkarıldı
-- Tüm şantiye listeleri ve raporlardan "TÜMÜ" filtrelendi
-- Şantiye bazlı sistemde "TÜMÜ" artık görünmeyecek
+- Gelişmiş Excel okuma fonksiyonu eklendi: Yeni format desteği ve esnek kolon eşleştirme.
+- Gelişmiş HTTP istek fonksiyonu eklendi: Timeout ve hata yönetimi.
+- Gelişmiş veritabanı bağlantı havuzu yönetimi: Hata yönetimi ve bağlantı doğrulama.
+- Gelişmiş JSON parsing fonksiyonu eklendi: Kapsamlı hata yönetimi.
+- Gelişmiş dosya hash alma fonksiyonu eklendi: Değişiklik tespiti için.
+- Gelişmiş yedekleme fonksiyonları eklendi: Google Cloud Storage entegrasyonu.
+- Gelişmiş kullanıcı giriş doğrulama fonksiyonu eklendi.
+- Gelişmiş tarih string doğrulama fonksiyonu eklendi.
+- Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
+
 """
 
 import os
