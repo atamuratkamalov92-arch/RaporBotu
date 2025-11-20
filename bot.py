@@ -998,7 +998,6 @@ def normalize_site_name(site_name):
         'BWC': 'BWC',
         'STADYUM': 'STADYUM',
         'FAP': 'FAP',
-        # YENİ EKLENEN MAPPING'LER:
         'DMC ELLIPSE GARDEN': 'DMC',
         'DMC ELLIPSE': 'DMC',
         'DMC GARDEN': 'DMC',
@@ -1008,7 +1007,6 @@ def normalize_site_name(site_name):
         'TYM': 'TYM'
     }
     
-    # Eşleşme bulunamazsa, şantiye adını olduğu gibi döndür
     return mappings.get(site_name, site_name)
 
 # YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
