@@ -954,7 +954,28 @@ DİKKAT:
 
 # Gelişmiş tarih parser fonksiyonları
 def enhanced_date_parser(text):
-    # ... mevcut kod ...
+    """Gelişmiş tarih parser - geçici implementasyon"""
+    try:
+        # Basit tarih parsing implementasyonu
+        patterns = [
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                try:
+                    if len(match) == 3:
+                        day, month, year = int(match[0]), int(match[1]), int(match[2])
+                        if len(str(year)) == 2:
+                            year += 2000
+                        return dt.datetime(year, month, day).date()
+                except ValueError:
+                    continue
+        return None
+    except Exception:
+        return None
 
 def normalize_site_name(site_name):
     """Şantiye isimlerini standartlaştır"""
