@@ -2511,7 +2511,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında - ŞANTİYE BAZLI SİSTEM\n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.3\n"
+        "Versiyon: 4.6.3 \n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2729,7 +2729,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
     for santiye, sorumlular in sorted(filtered_santiyeler.items()):
-        mesaj += f"{santiye} ({len(sorumlular)} sorumlu)\n\n"
+        mesaj += f"{santiye} \n\n"
     
     mesaj += f"📊 Toplam {len(filtered_santiyeler)} şantiye "
     
@@ -2753,7 +2753,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if santiye in ["Belli değil", "Tümü"]:
             continue
         sorumlular = santiye_sorumlulari.get(santiye, [])
-        mesaj += f"• {santiye} ({len(sorumlular)} sorumlu)\n"
+        mesaj += f"• {santiye} \n"
     
     mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş"
     
