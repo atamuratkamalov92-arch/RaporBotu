@@ -953,7 +953,6 @@ DİKKAT:
 """
 
 # Gelişmiş tarih parser fonksiyonları
-# Gelişmiş tarih parser fonksiyonları
 def enhanced_date_parser(text):
     # ... mevcut kod ...
 
