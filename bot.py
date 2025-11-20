@@ -1,3 +1,4 @@
+```python
 """
 📋 CHANGELOG - bot.py v4.6.1
 
@@ -884,7 +885,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - **ambarci**: ambarcı, depo sorumlusu, malzemeci
    - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
-   - **dis_gorev**: başka şantiye görevi, dış görev, Lot 71 dış görev, Fap dış görev
+   - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev
 
 7. **HESAPLAMALAR**:
    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
@@ -2341,7 +2342,7 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mesaj += f"🏗️ {santiye} ({len(sorumlular)} sorumlu)\n\n"
         
         if durum['rapor_veren_santiyeler']:
-            mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler']}):\n"
+            mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
                 mesaj += f"• {santiye}\n"
         
@@ -3137,21 +3138,22 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
 
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
+    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi"""
     try:
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
         result = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
-        toplam_rapor = safe_get_tuple_value(result, 0, 0)
+        toplam_rapor = result[0] if result else 0
         
         mesaj = "🕠 Gün Sonu Şantiye Rapor Analizi\n\n"
         
         if durum['eksik_santiyeler']:
             mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
             for santiye in sorted(durum['eksik_santiyeler']):
-                if santiye in ["Belli değil", "Tümü"]:
-                    continue
-                mesaj += f"• {santiye}\n"
+                sorumlular = santiye_sorumlulari.get(santiye, [])
+                sorumlu_isimler = [id_to_name.get(sid, f"Kullanıcı {sid}") for sid in sorumlular]
+                mesaj += f"• {santiye} - Sorumlular: {', '.join(sorumlu_isimler)}\n"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
@@ -3159,21 +3161,26 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
         mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
         
-        if GROUP_ID:
+        for user_id in rapor_sorumlulari:
             try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🔴 17:30 gün sonu analizi gruba gönderildi: {GROUP_ID}")
+                await context.bot.send_message(chat_id=user_id, text=mesaj)
+                logging.info(f"🔴 Şantiye gün sonu analizi {user_id} kullanıcısına gönderildi")
+                await asyncio.sleep(0.3)
             except Exception as e:
-                logging.error(f"🔴 Gruba gün sonu analizi gönderilemedi: {e}")
-        else:
-            logging.error("🔴 GROUP_ID ayarlanmamış, gün sonu analizi gönderilemedi")
+                logging.error(f"🔴 {user_id} kullanıcısına şantiye gün sonu analizi gönderilemedi: {e}")
         
         admin_mesaj = f"📋 Gün Sonu Şantiye Özeti - {bugun.strftime('%d.%m.%Y')}\n\n"
         
         if durum['rapor_veren_santiyeler']:
             admin_mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
             for santiye in sorted(durum['rapor_veren_santiyeler']):
-                admin_mesaj += f"• {santiye}\n"
+                rapor_verenler = durum['santiye_rapor_verenler'].get(santiye, [])
+                rapor_veren_isimler = [id_to_name.get(uid, f"Kullanıcı {uid}") for uid in rapor_verenler]
+                
+                if rapor_verenler:
+                    admin_mesaj += f"• {santiye} - İleten: {', '.join(rapor_veren_isimler)}\n"
+                else:
+                    admin_mesaj += f"• {santiye} - Rapor iletildi\n"
             admin_mesaj += "\n"
         
         admin_mesaj += mesaj.split('\n\n', 1)[1]
@@ -3184,8 +3191,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
                 logging.info(f"🔴 Şantiye gün sonu özeti {admin_id} adminine gönderildi")
                 await asyncio.sleep(0.5)
             except Exception as e:
-                if "Chat not found" not in str(e):
-                    logging.error(f"🔴 {admin_id} adminine şantiye gün sonu özeti gönderilemedi: {e}")
+                logging.error(f"🔴 {admin_id} adminine şantiye gün sonu özeti gönderilemedi: {e}")
         
     except Exception as e:
         logging.error(f"🔴 Şantiye son rapor kontrol hatası: {e}")
@@ -3368,3 +3374,4 @@ if __name__ == "__main__":
     print("   - Performans iyileştirmeleri")
     
     main()
+```
