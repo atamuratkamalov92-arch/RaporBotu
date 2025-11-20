@@ -1,4 +1,3 @@
-```python
 """
 📋 CHANGELOG - bot.py v4.6.4
 
@@ -3480,4 +3479,3 @@ if __name__ == "__main__":
     print("   - Hata yönetimi güçlendirildi")
     
     main()
-```
