@@ -438,6 +438,38 @@ def validate_date_string(date_str):
     except ValueError:
         return False
 
+def normalize_site_name(site_name):
+    """Şantiye isimlerini standartlaştır"""
+    if not site_name:
+        return "BELİRSİZ"
+        
+    site_name = site_name.upper().strip()
+    
+    mappings = {
+        'LOT 13': 'LOT13',
+        'LOT-13': 'LOT13', 
+        'LOT13': 'LOT13',
+        'LOT 71': 'LOT71',
+        'LOT-71': 'LOT71',
+        'LOT71': 'LOT71',
+        'SKP DAHO': 'SKP',
+        'SKP': 'SKP',
+        'PİRAMİT TOWER': 'PİRAMİT',
+        'PİRAMİT': 'PİRAMİT',
+        'BWC': 'BWC',
+        'STADYUM': 'STADYUM',
+        'FAP': 'FAP',
+        'DMC ELLIPSE GARDEN': 'DMC',
+        'DMC ELLIPSE': 'DMC',
+        'DMC GARDEN': 'DMC',
+        'DMC': 'DMC',
+        'KÖKSARAY': 'KÖKSARAY',
+        'OHP': 'OHP',
+        'TYM': 'TYM'
+    }
+    
+    return mappings.get(site_name, site_name)
+
 # YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
 def parse_santiye_list(proje_string):
     """
@@ -976,77 +1008,6 @@ def enhanced_date_parser(text):
         return None
     except Exception:
         return None
-
-def normalize_site_name(site_name):
-    """Şantiye isimlerini standartlaştır"""
-    if not site_name:
-        return "BELİRSİZ"
-        
-    site_name = site_name.upper().strip()
-    
-    mappings = {
-        'LOT 13': 'LOT13',
-        'LOT-13': 'LOT13', 
-        'LOT13': 'LOT13',
-        'LOT 71': 'LOT71',
-        'LOT-71': 'LOT71',
-        'LOT71': 'LOT71',
-        'SKP DAHO': 'SKP',
-        'SKP': 'SKP',
-        'PİRAMİT TOWER': 'PİRAMİT',
-        'PİRAMİT': 'PİRAMİT',
-        'BWC': 'BWC',
-        'STADYUM': 'STADYUM',
-        'FAP': 'FAP',
-        'DMC ELLIPSE GARDEN': 'DMC',
-        'DMC ELLIPSE': 'DMC',
-        'DMC GARDEN': 'DMC',
-        'DMC': 'DMC',
-        'KÖKSARAY': 'KÖKSARAY',
-        'OHP': 'OHP',
-        'TYM': 'TYM'
-    }
-    
-    return mappings.get(site_name, site_name)
-
-# YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
-def parse_santiye_list(proje_string):
-    """
-    YENİ ŞANTİYE PARSING KURALLARI:
-    - 'SKP (DAHO) / DMC' → ['SKP', 'DMC']
-    - '/' , ',' , '-' , '|' ile ayır
-    - Parantez içlerini temizle
-    - 'Tümü' → tüm şantiyeler (özel işlem)
-    - 'Belli değil' → atla
-    - Şantiye isimlerini normalize et
-    """
-    if not proje_string or pd.isna(proje_string):
-        return []
-    
-    proje_string = str(proje_string).strip()
-    
-    # Özel durumlar
-    if proje_string.upper() == 'TÜMÜ':
-        return ['TÜMÜ']
-    if proje_string.upper() in ['BELLİ DEĞİL', 'BELİRSİZ', '']:
-        return []
-    
-    # Parantez içlerini temizle: 'SKP (DAHO)' → 'SKP'
-    proje_string = re.sub(r'\([^)]*\)', '', proje_string)
-    
-    # Birden fazla ayırıcı ile böl
-    parts = re.split(r'[/,\-\|]', proje_string)
-    
-    # Temizle, filtrele ve normalize et
-    santiyeler = []
-    for part in parts:
-        part_clean = part.strip()
-        if part_clean and part_clean.upper() not in ['BELLİ DEĞİL', 'BELİRSİZ']:
-            # Şantiye ismini normalize et
-            normalized_site = normalize_site_name(part_clean)
-            santiyeler.append(normalized_site)
-    
-    return santiyeler
 
 def get_santiye_sorumlusu(santiye_adi):
     """
