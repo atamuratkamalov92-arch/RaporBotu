@@ -1404,7 +1404,7 @@ async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += f"• DataFrame: {'Mevcut' if df is not None else 'Yok'}\n\n"
         
         mesaj += "📈 ŞANTİYE BAZLI SİSTEM İSTATİSTİKLERİ:\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
+        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} \n"
         mesaj += f"• Adminler: {len(ADMINS)}\n"
         mesaj += f"• İzleyiciler: {len(IZLEYICILER)}\n"
         mesaj += f"• Toplam Kullanıcı: {len(TUM_KULLANICILAR)}\n"
@@ -2419,7 +2419,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         mesaj += "👥 KULLANICI İSTATİSTİKLERİ:\n"
         mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} (Aktif/Pasif='E')\n"
+        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} \n"
         mesaj += f"• Admin: {len(ADMINS)}\n"
         mesaj += f"• Şantiye: {len(santiye_sorumlulari)} \n\n"
         
