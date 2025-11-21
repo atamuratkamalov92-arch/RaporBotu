@@ -1287,8 +1287,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
                 "calisan": calisan,
                 "mobilizasyon": mobilizasyon,
                 "ambarci": ambarci,
-                "izinli": izinli,
-                "dis_gorev_toplam": dis_gorev_toplam
+                "izinli": izinli
             },
             "rapor_gonderen": {
                 "user_id": user_id,
@@ -2762,9 +2761,12 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TÜMÜ şantiyesini filtrele
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
-    # BWC şantiyesini manuel olarak ekle (eğer yoksa)
-    if "BWC" not in filtered_santiyeler:
-        filtered_santiyeler["BWC"] = []  # Boş sorumlu listesi ile ekle
+    # Sabit şantiyeleri ekle
+    sabit_santiyeler = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
+    
+    for santiye in sabit_santiyeler:
+        if santiye not in filtered_santiyeler:
+            filtered_santiyeler[santiye] = []
     
     for santiye in sorted(filtered_santiyeler.keys()):
         # Sadece şantiye ismini göster, sorumlu sayısını gösterme
@@ -2781,20 +2783,24 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
+    # Sabit şantiyeleri ekle
+    sabit_santiyeler = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
+    tum_santiyeler_with_sabit = durum['tum_santiyeler'].union(set(sabit_santiyeler))
+    eksik_santiyeler_with_sabit = tum_santiyeler_with_sabit - durum['rapor_veren_santiyeler']
+    
     mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} \n\n"
     
     mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
     for santiye in sorted(durum['rapor_veren_santiyeler']):
         mesaj += f"• {santiye}\n"
     
-    mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
-    for santiye in sorted(durum['eksik_santiyeler']):
+    mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(eksik_santiyeler_with_sabit)}):\n"
+    for santiye in sorted(eksik_santiyeler_with_sabit):
         if santiye in ["Belli değil", "Tümü"]:
             continue
-        sorumlular = santiye_sorumlulari.get(santiye, [])
         mesaj += f"• {santiye}\n"
     
-    mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş"
+    mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(tum_santiyeler_with_sabit)} şantiye rapor iletmiş"
     
     await update.message.reply_text(mesaj)
 
@@ -3477,5 +3483,6 @@ if __name__ == "__main__":
     print("   - 'DMC ELLIPSE GARDEN', 'DMC ELLIPSE', 'DMC GARDEN' artık 'DMC' olarak normalize ediliyor")
     print("   - AI sistem prompt'unda DMC normalizasyon kuralları eklendi")
     print("   - Hata yönetimi güçlendirildi")
+    print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     
     main()
