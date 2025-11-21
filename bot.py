@@ -3276,14 +3276,13 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
                 admin_mesaj += f"• {santiye}\n"
             admin_mesaj += "\n"
         
-        # GÜVENLİ BÖLÜM EKLEME
-        mesaj_parts = mesaj.split('\n\n', 1)
-        if len(mesaj_parts) > 1:
-            admin_mesaj += mesaj_parts[1]  # İlk bölümü atla, ikinci bölümü al
-        else:
-            admin_mesaj += mesaj  # Eğer bölünemezse tüm mesajı al
+        # GÜVENLİ BÖLÜM EKLEME - NOT ÖNCESİ KISMI ALIYORUZ
+        mesaj_parts = mesaj.split('\n\n📝 Not:', 1)  # "📝 Not:" kısmından bölüyoruz
+        if len(mesaj_parts) > 0:
+            # Sadece not öncesi kısmı alıyoruz (ilk parça)
+            admin_mesaj += mesaj_parts[0]
         
-        # SABİT NOT EKLENİYOR (Adminler için)
+        # SABİT NOT EKLENİYOR (Adminler için) - BİR KEZ EKLENİYOR
         admin_mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         
         for admin_id in ADMINS:
@@ -3301,8 +3300,10 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today - dt.timedelta(days=today.weekday())
-        end_date = start_date + dt.timedelta(days=6)
+        
+        # SON 7 GÜN İÇİN RAPOR HAZIRLA (Bugünden 7 gün geriye)
+        end_date = today  # Bugün dahil
+        start_date = today - dt.timedelta(days=6)  # 6 gün geri (7 günlük periyot)
         
         mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
         
