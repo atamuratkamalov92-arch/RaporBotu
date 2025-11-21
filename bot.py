@@ -1,5 +1,5 @@
 """
-📋 CHANGELOG - bot.py v4.6.4
+📋 CHANGELOG - bot.py v4.6.5
 
 ✅ GÜNCELLEMELER:
 - Gelişmiş Excel okuma fonksiyonu eklendi: Yeni format desteği ve esnek kolon eşleştirme.
@@ -12,6 +12,7 @@
 - Gelişmiş tarih string doğrulama fonksiyonu eklendi.
 - Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
 - Santiye name normalization fonksiyonu guncellendi.
+- Rapor özeti fonksiyonlarında şantiye filtreleme iyileştirildi
 """
 
 import os
@@ -416,6 +417,9 @@ excel_last_modified = 0
 user_role_cache = {}
 user_role_cache_time = 0
 
+# Sabit şantiye listesi - TÜM raporlarda kullanılacak
+SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
+
 # Giriş doğrulama fonksiyonları
 def validate_user_input(text, max_length=1000):
     """Kullanıcı giriş metnini doğrula"""
@@ -620,7 +624,7 @@ def load_excel_intelligent():
                     if tid not in temp_santiye_sorumlulari[proje]:
                         temp_santiye_sorumlulari[proje].append(tid)
             
-            # Tüm aktif kullanıcılar rapor sorumlusu listesine eklenir
+            # Tüm aktif kullanıcılar rapor sorumlusu listesene eklenir
             if tid and fullname:
                 temp_rapor_sorumlulari.append(tid)
                 processed_names.add(fullname)
@@ -1566,8 +1570,10 @@ async def get_santiye_rapor_durumu(bugun):
 
 async def get_eksik_santiyeler(bugun):
     try:
-        # TÜMÜ şantiyesini filtrele
+        # TÜMÜ şantiyesini filtrele ve sabit şantiyeleri ekle
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
+        # SABİT ŞANTİYELERİ EKLE
+        tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         eksik_santiyeler = tum_santiyeler - rapor_veren_santiyeler
         
@@ -1578,8 +1584,9 @@ async def get_eksik_santiyeler(bugun):
 
 async def get_santiye_bazli_rapor_durumu(bugun):
     try:
-        # TÜMÜ şantiyesini filtrele
+        # TÜMÜ şantiyesini filtrele ve SABİT ŞANTİYELERİ EKLE
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
+        tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         
         rows = await async_fetchall("""
@@ -1993,9 +2000,9 @@ async def generate_gelismis_personel_ozeti(target_date):
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         aktif_projeler = set(proje_analizleri.keys())
-        # TÜMÜ şantiyesini filtrele
-        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
         
         if eksik_projeler:
@@ -2109,8 +2116,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        # TÜMÜ şantiyesini filtrele
-        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2279,8 +2286,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        # TÜMÜ şantiyesini filtrele
-        tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2545,7 +2552,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.4 \n"
+        "Versiyon: 4.6.5 \n"
         "Özellikler:\n"
         "• Raporları otomatik analiz eder\n"
         "• Çoklu şantiye desteği\n"
@@ -2562,6 +2569,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Railway uyumlu log çıktıları\n"
         "• DMC şantiye normalizasyonu iyileştirildi\n"
+        "• Tüm sabit şantiyeler (MMP, RMC, TYM, YHP) eksik rapor listelerinde gösterilir\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -2762,9 +2770,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
     # Sabit şantiyeleri ekle
-    sabit_santiyeler = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
-    
-    for santiye in sabit_santiyeler:
+    for santiye in SABIT_SANTIYELER:
         if santiye not in filtered_santiyeler:
             filtered_santiyeler[santiye] = []
     
@@ -2783,9 +2789,8 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
-    # Sabit şantiyeleri ekle
-    sabit_santiyeler = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
-    tum_santiyeler_with_sabit = durum['tum_santiyeler'].union(set(sabit_santiyeler))
+    # Sabit şantiyeleri ekle - artık get_santiye_bazli_rapor_durumu içinde zaten ekleniyor
+    tum_santiyeler_with_sabit = durum['tum_santiyeler']
     eksik_santiyeler_with_sabit = tum_santiyeler_with_sabit - durum['rapor_veren_santiyeler']
     
     mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} \n\n"
@@ -3475,7 +3480,7 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.6.4:")
+    print("📝 Güncellenmiş Versiyon v4.6.5:")
     print("   - 'TÜMÜ' şantiyesi şantiye listelerinden tamamen çıkarıldı")
     print("   - Tüm raporlarda 'TÜMÜ' şantiyesi filtrelendi")
     print("   - Şantiye bazlı sistemde 'TÜMÜ' artık görünmeyecek")
@@ -3484,5 +3489,6 @@ if __name__ == "__main__":
     print("   - AI sistem prompt'unda DMC normalizasyon kuralları eklendi")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
+    print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
     
     main()
