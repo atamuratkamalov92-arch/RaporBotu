@@ -13,7 +13,7 @@
 - Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
 - Santiye name normalization fonksiyonu guncellendi.
 - Rapor özeti fonksiyonlarında şantiye filtreleme iyileştirildi
-- PİRAMİT şantiyesi tüm sistemlere eklendi
+- Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi
 """
 
 import os
@@ -420,6 +420,23 @@ user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
 SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
+
+# Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
+SANTIYE_USERNAME_MAPPING = {
+    'BWC': ['YsF1434'],
+    'SKP': ['uzyusufmutlu'],
+    'DMC': ['uzyusufmutlu'],
+    'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
+    'FAP': ['Adnan.Keleş'],
+    'LOT13': ['Adnan.Keleş'],
+    'LOT71': ['Adnan.Keleş'],
+    'OHP': ['Erdoğan.Karamısır'],
+    'YHP': ['Orhan.Ceylan'],
+    'MMP': ['Orhan.Ceylan'],
+    'RMC': ['Orhan.Ceylan'],
+    'TYM': ['Orhan.Ceylan'],
+    'PİRAMİT': ['ON5428']
+}
 
 # Giriş doğrulama fonksiyonları
 def validate_user_input(text, max_length=1000):
@@ -2565,22 +2582,16 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Geliştirici: Atamurat Kamalov\n"
         "Versiyon: 4.6.5 \n"
         "Özellikler:\n"
-        "• Raporları otomatik analiz eder\n"
+        "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
-        "• Gelişmiş tarih parser\n"
+        "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
         "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
-        "• Çoklu rapor parsing yapar\n"
-        "• Optimize edilmiş veritabanı kullanır\n"
         "• Gün içinde gruba otomatik hatırlatma mesajları gönderir\n"
         "• Çift sayma koruması ile doğru toplamlar\n"
         "• Şantiye bazlı rapor sistemi\n"
-        "• 8-10 digit Telegram ID parsing\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• Railway uyumlu log çıktıları\n"
-        "• DMC şantiye normalizasyonu iyileştirildi\n"
-        "• Tüm sabit şantiyeler (MMP, RMC, TYM, YHP, PİRAMİT) eksik rapor listelerinde gösterilir\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3189,7 +3200,16 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
             if not durum['eksik_santiyeler']:
                 mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış."
             else:
-                mesaj = "❌ Eksik raporlar var:\n" + "\n".join(sorted(durum['eksik_santiyeler']))
+                mesaj = "❌ Eksik raporlar var:\n"
+                for santiye in sorted(durum['eksik_santiyeler']):
+                    # Şantiye için kullanıcı adlarını al
+                    usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
+                    if usernames:
+                        # Kullanıcı adlarını @ ile birleştir
+                        username_str = " @" + ", @".join(usernames)
+                        mesaj += f"• {santiye} ({username_str} )\n"
+                    else:
+                        mesaj += f"• {santiye}\n"
             
             # SABİT NOT EKLENİYOR
             mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
@@ -3504,5 +3524,6 @@ if __name__ == "__main__":
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
     print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
     print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
+    print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
     
     main()
