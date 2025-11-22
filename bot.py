@@ -13,6 +13,7 @@
 - Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
 - Santiye name normalization fonksiyonu guncellendi.
 - Rapor özeti fonksiyonlarında şantiye filtreleme iyileştirildi
+- PİRAMİT şantiyesi tüm sistemlere eklendi
 """
 
 import os
@@ -418,7 +419,7 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC']
+SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
 
 # Giriş doğrulama fonksiyonları
 def validate_user_input(text, max_length=1000):
@@ -460,6 +461,16 @@ def normalize_site_name(site_name):
         'SKP': 'SKP',
         'PİRAMİT TOWER': 'PİRAMİT',
         'PİRAMİT': 'PİRAMİT',
+        'PRAMİT': 'PİRAMİT',
+        'PRAMIT': 'PİRAMİT',
+        'PİRAMİT TOWEr': 'PİRAMİT',
+        'PİRAMİT TOWAR': 'PİRAMİT',
+        'PIRAMIT': 'PİRAMİT',
+        'PIRAMIT TOWER': 'PİRAMİT',
+        'PİRAMİD': 'PİRAMİT',
+        'PIRAMID': 'PİRAMİT',
+        'PYRAMIT': 'PİRAMİT',
+        'PYRAMID': 'PİRAMİT',
         'BWC': 'BWC',
         'STADYUM': 'STADYUM',
         'FAP': 'FAP',
@@ -946,10 +957,10 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 5. **ŞANTİYE NORMALİZASYONU**:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC, YHP, TYM, MMP, RMC
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC, YHP, TYM, MMP, RMC, PİRAMİT
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
-   - "Piramit Tower" → "Piramit"
+   - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"   # YENİ EKLENDİ
    - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
    - "YHP" → "YHP"
    - "TYM" → "TYM"
@@ -2133,7 +2144,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -2303,7 +2314,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
@@ -2569,7 +2580,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Railway uyumlu log çıktıları\n"
         "• DMC şantiye normalizasyonu iyileştirildi\n"
-        "• Tüm sabit şantiyeler (MMP, RMC, TYM, YHP) eksik rapor listelerinde gösterilir\n"
+        "• Tüm sabit şantiyeler (MMP, RMC, TYM, YHP, PİRAMİT) eksik rapor listelerinde gösterilir\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3491,5 +3502,7 @@ if __name__ == "__main__":
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
+    print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
+    print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
     
     main()
