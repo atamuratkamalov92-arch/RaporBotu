@@ -2131,7 +2131,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Verimlilik: %{verimlilik:.1f}\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
-        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
+        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
@@ -2301,7 +2301,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
-        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n"
+        mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
