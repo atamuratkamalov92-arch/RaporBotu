@@ -3176,7 +3176,7 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         dun = (dt.datetime.now(TZ) - dt.timedelta(days=1)).date()
         rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
         
-        hedef_kullanicilar = [709746899, 1000157326]
+        hedef_kullanicilar = [709746899]  # Sadece Eren Boz
         
         for user_id in hedef_kullanicilar:
             try:
@@ -3291,38 +3291,14 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         # SABİT NOT EKLENİYOR (Kullanıcılar için)
         mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         
-        for user_id in rapor_sorumlulari:
-            try:
-                await context.bot.send_message(chat_id=user_id, text=mesaj)
-                logging.info(f"🔴 Şantiye gün sonu analizi {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.3)
-            except Exception as e:
-                logging.error(f"🔴 {user_id} kullanıcısına şantiye gün sonu analizi gönderilemedi: {e}")
-        
-        admin_mesaj = f"📋 Gün Sonu Şantiye Özeti - {bugun.strftime('%d.%m.%Y')}\n\n"
-        
-        if durum['rapor_veren_santiyeler']:
-            admin_mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
-            for santiye in sorted(durum['rapor_veren_santiyeler']):
-                admin_mesaj += f"• {santiye}\n"
-            admin_mesaj += "\n"
-        
-        # GÜVENLİ BÖLÜM EKLEME - NOT ÖNCESİ KISMI ALIYORUZ
-        mesaj_parts = mesaj.split('\n\n📝 Not:', 1)  # "📝 Not:" kısmından bölüyoruz
-        if len(mesaj_parts) > 0:
-            # Sadece not öncesi kısmı alıyoruz (ilk parça)
-            admin_mesaj += mesaj_parts[0]
-        
-        # SABİT NOT EKLENİYOR (Adminler için) - BİR KEZ EKLENİYOR
-        admin_mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
-        
+        # SADECE ADMINLERE GÖNDER
         for admin_id in ADMINS:
             try:
-                await context.bot.send_message(chat_id=admin_id, text=admin_mesaj)
-                logging.info(f"🔴 Şantiye gün sonu özeti {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)
+                await context.bot.send_message(chat_id=admin_id, text=mesaj)
+                logging.info(f"🔴 Şantiye gün sonu analizi {admin_id} adminine gönderildi")
+                await asyncio.sleep(0.3)
             except Exception as e:
-                logging.error(f"🔴 {admin_id} adminine şantiye gün sonu özeti gönderilemedi: {e}")
+                logging.error(f"🔴 {admin_id} adminine şantiye gün sonu analizi gönderilemedi: {e}")
         
     except Exception as e:
         logging.error(f"🔴 Şantiye son rapor kontrol hatası: {e}")
@@ -3513,17 +3489,14 @@ def main():
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
     print("📝 Güncellenmiş Versiyon v4.6.5:")
-    print("   - 'TÜMÜ' şantiyesi şantiye listelerinden tamamen çıkarıldı")
-    print("   - Tüm raporlarda 'TÜMÜ' şantiyesi filtrelendi")
-    print("   - Şantiye bazlı sistemde 'TÜMÜ' artık görünmeyecek")
-    print("   - DMC şantiye normalizasyonu iyileştirildi")
-    print("   - 'DMC ELLIPSE GARDEN', 'DMC ELLIPSE', 'DMC GARDEN' artık 'DMC' olarak normalize ediliyor")
-    print("   - AI sistem prompt'unda DMC normalizasyon kuralları eklendi")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
     print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
     print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
     print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
+    print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
+    print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
+    print("   - Haftalık rapor job'ı aktif edildi")
     
     main()
