@@ -3176,7 +3176,8 @@ async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
         dun = (dt.datetime.now(TZ) - dt.timedelta(days=1)).date()
         rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
         
-        hedef_kullanicilar = [709746899]  # Sadece Eren Boz
+        # DÜZELTİLDİ: Hem Eren Boz'a hem de sana (Super Admin) gönder
+        hedef_kullanicilar = [709746899, 1000157326]  # Eren Boz ve Atamurat Kamalov
         
         for user_id in hedef_kullanicilar:
             try:
@@ -3267,7 +3268,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
 
 async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi"""
+    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi - GRUBA GÖNDER"""
     try:
         bugun = dt.datetime.now(TZ).date()
         durum = await get_santiye_bazli_rapor_durumu(bugun)
@@ -3291,14 +3292,15 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         # SABİT NOT EKLENİYOR (Kullanıcılar için)
         mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         
-        # SADECE ADMINLERE GÖNDER
-        for admin_id in ADMINS:
+        # DÜZELTİLDİ: GRUBA GÖNDER
+        if GROUP_ID:
             try:
-                await context.bot.send_message(chat_id=admin_id, text=mesaj)
-                logging.info(f"🔴 Şantiye gün sonu analizi {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.3)
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🔴 17:30 gün sonu analizi gruba gönderildi: {GROUP_ID}")
             except Exception as e:
-                logging.error(f"🔴 {admin_id} adminine şantiye gün sonu analizi gönderilemedi: {e}")
+                logging.error(f"🔴 Gruba gün sonu analizi gönderilemedi: {e}")
+        else:
+            logging.error("🔴 GROUP_ID ayarlanmamış, gün sonu analizi gönderilemedi")
         
     except Exception as e:
         logging.error(f"🔴 Şantiye son rapor kontrol hatası: {e}")
