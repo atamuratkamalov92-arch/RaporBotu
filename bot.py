@@ -419,7 +419,7 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
+SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
@@ -427,14 +427,15 @@ SANTIYE_USERNAME_MAPPING = {
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
     'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
-    'FAP': ['Adnan.Keleş'],
-    'LOT13': ['Adnan.Keleş'],
-    'LOT71': ['Adnan.Keleş'],
+    'FAP': ['AdnanKeleş'],
+    'STADYUM': ['AdnanKeleş'],
+    'LOT13': ['AdnanKeleş'],
+    'LOT71': ['AdnanKeleş'],
     'OHP': ['Erdoğan.Karamısır'],
-    'YHP': ['Orhan.Ceylan'],
-    'MMP': ['Orhan.Ceylan'],
-    'RMC': ['Orhan.Ceylan'],
-    'TYM': ['Orhan.Ceylan'],
+    'YHP': ['OrhanCeylan'],
+    'MMP': ['OrhanCeylan'],
+    'RMC': ['OrhanCeylan'],
+    'TYM': ['OrhanCeylan'],
     'PİRAMİT': ['ON5428']
 }
 
@@ -2161,7 +2162,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
-        onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
+        onemli_projeler = ["SKP", "LOT13", "LOT71", "STADYUM", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             if proje_adi in onemli_projeler and analiz['toplam'] > 0:
                 mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
