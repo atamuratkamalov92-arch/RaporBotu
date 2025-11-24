@@ -3253,7 +3253,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
         # SABİT NOT EKLENİYOR
-        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik raporları iletir misiniz?"
+        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları iletin lütfen."
         
         if GROUP_ID:
             try:
