@@ -1,19 +1,12 @@
 """
-📋 CHANGELOG - bot.py v4.6.5
+📋 CHANGELOG - bot.py v4.6.7
 
 ✅ GÜNCELLEMELER:
-- Gelişmiş Excel okuma fonksiyonu eklendi: Yeni format desteği ve esnek kolon eşleştirme.
-- Gelişmiş HTTP istek fonksiyonu eklendi: Timeout ve hata yönetimi.
-- Gelişmiş veritabanı bağlantı havuzu yönetimi: Hata yönetimi ve bağlantı doğrulama.
-- Gelişmiş JSON parsing fonksiyonu eklendi: Kapsamlı hata yönetimi.
-- Gelişmiş dosya hash alma fonksiyonu eklendi: Değişiklik tespiti için.
-- Gelişmiş yedekleme fonksiyonları eklendi: Google Cloud Storage entegrasyonu.
-- Gelişmiş kullanıcı giriş doğrulama fonksiyonu eklendi.
-- Gelişmiş tarih string doğrulama fonksiyonu eklendi.
-- Gelişmiş Telegram ID parsing fonksiyonu eklendi: 8-10 digit ID desteği.
-- Santiye name normalization fonksiyonu guncellendi.
-- Rapor özeti fonksiyonlarında şantiye filtreleme iyileştirildi
-- Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi
+- Grup mesajları için format hatası bildirimi eklendi
+- GPT'nin işleyemediği mesajlarda kullanıcıyı etiketleyerek format örneği gösterir
+- Eksik bilgi durumlarında kullanıcıdan düzeltme isteyen gelişmiş format hatası bildirimi
+- FAP şantiyesi listeden kaldırıldı
+- Diğer tüm fonksiyonlar korundu
 """
 
 import os
@@ -418,8 +411,8 @@ excel_last_modified = 0
 user_role_cache = {}
 user_role_cache_time = 0
 
-# Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
+# Sabit şantiye listesi - TÜM raporlarda kullanılacak (FAP kaldırıldı)
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
@@ -427,15 +420,14 @@ SANTIYE_USERNAME_MAPPING = {
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
     'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
-    'FAP': ['AdnanKeleş'],
     'STADYUM': ['AdnanKeleş'],
     'LOT13': ['AdnanKeleş'],
     'LOT71': ['AdnanKeleş'],
     'OHP': ['Erdoğan.Karamısır'],
-    'YHP': ['OrhanCeylan'],
-    'MMP': ['OrhanCeylan'],
-    'RMC': ['OrhanCeylan'],
-    'TYM': ['OrhanCeylan'],
+    'YHP': ['Orhan_Ceylan'],
+    'MMP': ['Orhan_Ceylan'],
+    'RMC': ['Orhan_Ceylan'],
+    'TYM': ['Orhan_Ceylan'],
     'PİRAMİT': ['ON5428']
 }
 
@@ -491,7 +483,6 @@ def normalize_site_name(site_name):
         'PYRAMID': 'PİRAMİT',
         'BWC': 'BWC',
         'STADYUM': 'STADYUM',
-        'FAP': 'FAP',
         'DMC ELLIPSE GARDEN': 'DMC',
         'DMC ELLIPSE': 'DMC',
         'DMC GARDEN': 'DMC',
@@ -975,7 +966,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 5. **ŞANTİYE NORMALİZASYONU**:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC, YHP, TYM, MMP, RMC, PİRAMİT
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
    - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"   # YENİ EKLENDİ
@@ -986,12 +977,12 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "RMC" → "RMC"
 
 6. **PERSONEL KATEGORİLERİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı
    - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
-   - **ambarci**: ambarcı, depo sorumlusu, malzemeci
+   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
    - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
-   - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev
+   - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev
 
 7. **HESAPLAMALAR**:
    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
@@ -1019,7 +1010,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     "izinli": 1,
     "dis_gorev": [
       {"gorev_yeri": "LOT71", "sayi": 3},
-      {"gorev_yeri": "FAP", "sayi": 2}
+      {"gorev_yeri": "STADYUM", "sayi": 2}
     ],
     "dis_gorev_toplam": 5,
     "genel_toplam": 15
@@ -1148,6 +1139,156 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
     except Exception as e:
         logging.error(f"GPT analiz hatası: {e}")
         return ""
+
+# YENİ: GELİŞMİŞ FORMAT HATASI BİLDİRİM FONKSİYONU
+async def gelismis_format_hatasi_bildirimi(update: Update, kullanici_adi: str, orijinal_mesaj: str, eksik_bilgiler=None):
+    """Eksik bilgi durumlarında kullanıcıya detaylı format örneği göster"""
+    try:
+        # Kullanıcı adını etiketlemek için
+        kullanici_etiketi = f"@{kullanici_adi}" if kullanici_adi and not kullanici_adi.startswith('@') else kullanici_adi
+        
+        # Eksik bilgilere göre özelleştirilmiş mesaj
+        if eksik_bilgiler:
+            mesaj_basligi = f"Selamun aleyküm {kullanici_etiketi} 👋\n\n"
+            
+            if "tarih" in eksik_bilgiler:
+                mesaj_basligi += "📅 **Tarih belirtilmemiş** - "
+            if "santiye" in eksik_bilgiler:
+                mesaj_basligi += "📍 **Şantiye adı belirtilmemiş** - "
+            if "genel_ozet" in eksik_bilgiler:
+                mesaj_basligi += "📝 **Genel özet bulunamadı** - "
+            if "coklu_rapor" in eksik_bilgiler:
+                mesaj_basligi += "🔄 **Birden fazla tarih/şantiye tespit edildi** - "
+            
+            mesaj_basligi += "İşlem yapabilmem için raporunuzu aşağıdaki örnek formatta göndermelisiniz:\n\n"
+        else:
+            mesaj_basligi = f"Selamun aleyküm {kullanici_etiketi} 👋\n\nİşlem yapabilmem için raporunuzu aşağıdaki örnek formatta göndermelisiniz:\n\n"
+        
+        ornek_format = f"""
+{mesaj_basligi}
+📍 **ŞANTİYE**: LOT13 
+📅 **TARİH**: 25.11.2025
+
+**ÇALIŞMA DETAYLARI:**
+B1 bodrum tava konsol montaj 2 kişi
+B1 bodrum tava konsol montaj 2 kişi  
+3.kat tava montajı 2 kişi
+2.kat tava montajı 2 kişi
+
+📝 **GENEL ÖZET:**
+• Toplam staff: 2
+• Toplam imalat: 12
+• Toplam mobilizasyon: 1 kişi
+• İzinli: 0
+• Genel toplam: 12 kişi
+• Dış görev stadyum 2 kişi
+
+---
+
+**Eğer çalışma yok ise:**
+
+📍 **ŞANTİYE**: LOT13 
+📅 **TARİH**: 25.11.2025
+
+Çalışma yok
+
+
+**Not:** Tarihleri mutlaka belirtmelisiniz, her tarihe ve santiyeye ait raporu ayri ayri gondermelisiniz
+"""
+        
+        await update.message.reply_text(ornek_format)
+        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgiler}")
+        
+    except Exception as e:
+        logging.error(f"❌ Gelişmiş format hatası bildirimi gönderilemedi: {e}")
+
+# YENİ: RAPOR ANALİZ FONKSİYONU - EKSİK BİLGİ TESPİTİ
+def analyze_report_for_missing_info(metin, gpt_raporlar):
+    """Rapor metnini analiz ederek eksik bilgileri tespit et"""
+    eksik_bilgiler = []
+    
+    try:
+        # Tarih kontrolü
+        tarih_patterns = [
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',
+            r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',
+            r'\b(bugün|bugun|dün|dun)\b'
+        ]
+        
+        has_date = False
+        for pattern in tarih_patterns:
+            if re.search(pattern, metin, re.IGNORECASE):
+                has_date = True
+                break
+        
+        if not has_date:
+            eksik_bilgiler.append("tarih")
+        
+        # Şantiye kontrolü
+        santiye_patterns = [
+            r'\b(LOT13|LOT71|SKP|BWC|PİRAMİT|STADYUM|DMC|YHP|TYM|MMP|RMC|KÖKSARAY|OHP)\b',
+            r'\b(LOT\s*13|LOT\s*71)\b',
+            r'\b(Piramit|Piramit Tower)\b'
+        ]
+        
+        has_santiye = False
+        for pattern in santiye_patterns:
+            if re.search(pattern, metin, re.IGNORECASE):
+                has_santiye = True
+                break
+        
+        if not has_santiye:
+            eksik_bilgiler.append("santiye")
+        
+        # Genel özet kontrolü
+        genel_ozet_patterns = [
+            r'\b(genel\s+toplam|toplam\s+personel|toplam\s+kişi|özet|summary)\b',
+            r'\b(staff|çalışan|mobilizasyon|ambarci|izinli)\s*:?\s*\d+\b'
+        ]
+        
+        has_genel_ozet = False
+        for pattern in genel_ozet_patterns:
+            if re.search(pattern, metin, re.IGNORECASE):
+                has_genel_ozet = True
+                break
+        
+        if not has_genel_ozet:
+            eksik_bilgiler.append("genel_ozet")
+        
+        # Çoklu rapor kontrolü (birden fazla tarih veya şantiye)
+        tarih_sayisi = len(re.findall(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin))
+        santiye_sayisi = len(re.findall(r'\b(LOT13|LOT71|SKP|BWC|PİRAMİT|STADYUM|DMC|YHP|TYM|MMP|RMC)\b', metin, re.IGNORECASE))
+        
+        if tarih_sayisi > 1 or santiye_sayisi > 1:
+            eksik_bilgiler.append("coklu_rapor")
+        
+        # GPT raporlarını kontrol et
+        if gpt_raporlar and isinstance(gpt_raporlar, list):
+            for rapor in gpt_raporlar:
+                if isinstance(rapor, dict):
+                    if not rapor.get('date') or rapor.get('date') == '':
+                        if "tarih" not in eksik_bilgiler:
+                            eksik_bilgiler.append("tarih")
+                    if not rapor.get('site') or rapor.get('site') in ['BELİRSİZ', '']:
+                        if "santiye" not in eksik_bilgiler:
+                            eksik_bilgiler.append("santiye")
+                    if rapor.get('genel_toplam', 0) == 0 and sum([
+                        rapor.get('staff', 0), 
+                        rapor.get('calisan', 0), 
+                        rapor.get('mobilizasyon', 0),
+                        rapor.get('ambarci', 0),
+                        rapor.get('izinli', 0),
+                        rapor.get('dis_gorev_toplam', 0)
+                    ]) == 0:
+                        if "genel_ozet" not in eksik_bilgiler:
+                            eksik_bilgiler.append("genel_ozet")
+        
+        return eksik_bilgiler
+        
+    except Exception as e:
+        logging.error(f"Rapor analiz hatası: {e}")
+        return ["analiz_hatasi"]
 
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
@@ -1356,6 +1497,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         logging.error(f"❌ Şantiye bazlı rapor kaydetme hatası: {e}")
         raise e
 
+# GÜNCELLENMİŞ: YENİ GPT RAPOR İŞLEME FONKSİYONU
 async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.edited_message
     if not msg:
@@ -1381,6 +1523,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         raporlar = process_incoming_message(metin, is_group)
         
+        # DM için özel işlem
         if is_dm and isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
             await msg.reply_text(
                 "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
@@ -1389,12 +1532,20 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
         
+        # GPT rapor algıladı ama işleyemedi veya eksik bilgi var
         if not raporlar or (isinstance(raporlar, list) and len(raporlar) == 0):
-            logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
+            logging.info(f"🤖 GPT: Rapor algılandı ancak işlenemedi - {user_id} (Chat Type: {chat_type})")
             
-            if is_dm:
+            # Eksik bilgileri analiz et
+            eksik_bilgiler = analyze_report_for_missing_info(metin, raporlar)
+            
+            # Grup mesajı ise gelişmiş format hatası bildirimi gönder
+            if is_group:
+                kullanici_adi = msg.from_user.username or msg.from_user.first_name
+                await gelismis_format_hatasi_bildirimi(update, kullanici_adi, metin, eksik_bilgiler)
+            elif is_dm:
                 await msg.reply_text(
-                    "❌ Rapor bulunamadı.\n\n"
+                    "❌ Raporunuz algılandı ancak işlenemedi.\n\n"
                     "Lütfen şantiye raporunuzu aşağıdaki formatta gönderin:\n"
                     "• Tarih (01.01.2025)\n" 
                     "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
@@ -1406,6 +1557,15 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
 
         logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id} (Chat Type: {chat_type})")
         
+        # GPT raporları çıkarıldı ama eksik bilgi kontrolü yap
+        eksik_bilgiler = analyze_report_for_missing_info(metin, raporlar)
+        
+        # Eksik bilgi varsa ve grup mesajı ise bildirim gönder
+        if eksik_bilgiler and is_group:
+            kullanici_adi = msg.from_user.username or msg.from_user.first_name
+            await gelismis_format_hatasi_bildirimi(update, kullanici_adi, metin, eksik_bilgiler)
+            return
+        
         kullanici_adi = id_to_name.get(user_id, "Kullanıcı")
         
         basarili_kayitlar = 0
@@ -1415,9 +1575,17 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                 basarili_kayitlar += 1
             except Exception as e:
                 logging.error(f"❌ Rapor {i+1} kaydetme hatası: {e}")
+                
+                # Grup mesajı ise ve kayıt hatası olursa format hatası bildirimi gönder
+                if is_group and "zaten rapor" not in str(e).lower():
+                    kullanici_adi = msg.from_user.username or msg.from_user.first_name
+                    eksik_bilgiler = ["kayit_hatasi"]
+                    await gelismis_format_hatasi_bildirimi(update, kullanici_adi, metin, eksik_bilgiler)
+                    
                 if is_dm:
                     await msg.reply_text(f"❌ Rapor {i+1} kaydedilemedi: {str(e)}")
         
+        # Başarılı kayıt bildirimi - SADECE DM'DE
         if is_dm:
             if basarili_kayitlar == len(raporlar):
                 if len(raporlar) == 1:
@@ -1431,6 +1599,16 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             
     except Exception as e:
         logging.error(f"❌ GPT rapor işleme hatası: {e}")
+        
+        # Grup mesajı ise genel hata durumunda da format hatası bildirimi gönder
+        if is_group:
+            try:
+                kullanici_adi = msg.from_user.username or msg.from_user.first_name
+                eksik_bilgiler = ["sistem_hatasi"]
+                await gelismis_format_hatasi_bildirimi(update, kullanici_adi, metin, eksik_bilgiler)
+            except Exception as format_error:
+                logging.error(f"❌ Format hatası bildirimi gönderilemedi: {format_error}")
+                
         if is_dm:
             await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
 
@@ -1601,7 +1779,7 @@ async def get_eksik_santiyeler(bugun):
     try:
         # TÜMÜ şantiyesini filtrele ve sabit şantiyeleri ekle
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
-        # SABİT ŞANTİYELERİ EKLE
+        # SABİT ŞANTİYELERİ EKLE (FAP kaldırıldı)
         tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         eksik_santiyeler = tum_santiyeler - rapor_veren_santiyeler
@@ -1613,7 +1791,7 @@ async def get_eksik_santiyeler(bugun):
 
 async def get_santiye_bazli_rapor_durumu(bugun):
     try:
-        # TÜMÜ şantiyesini filtrele ve SABİT ŞANTİYELERİ EKLE
+        # TÜMÜ şantiyesini filtrele ve SABİT ŞANTİYELERİ EKLE (FAP kaldırıldı)
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
@@ -2029,7 +2207,7 @@ async def generate_gelismis_personel_ozeti(target_date):
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET (FAP kaldırıldı)
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         aktif_projeler = set(proje_analizleri.keys())
         eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
@@ -2145,7 +2323,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET (FAP kaldırıldı)
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
@@ -2315,7 +2493,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             genel_izinli += proje['izinli']
             genel_dis_gorev_toplam += proje['dis_gorev_toplam']
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET (FAP kaldırıldı)
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
@@ -2581,7 +2759,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.5 \n"
+        "Versiyon: 4.6.7 \n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -2593,6 +2771,8 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Şantiye bazlı rapor sistemi\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
+        "• Format hatası bildirimi ile kullanıcıları yönlendirir\n"
+        "• Eksik bilgi tespiti ve düzeltme isteği\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -2792,7 +2972,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TÜMÜ şantiyesini filtrele
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
-    # Sabit şantiyeleri ekle
+    # Sabit şantiyeleri ekle (FAP kaldırıldı)
     for santiye in SABIT_SANTIYELER:
         if santiye not in filtered_santiyeler:
             filtered_santiyeler[santiye] = []
@@ -2812,7 +2992,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
-    # Sabit şantiyeleri ekle - artık get_santiye_bazli_rapor_durumu içinde zaten ekleniyor
+    # Sabit şantiyeleri ekle - artık get_santiye_bazli_rapor_durumu içinde zaten ekleniyor (FAP kaldırıldı)
     tum_santiyeler_with_sabit = durum['tum_santiyeler']
     eksik_santiyeler_with_sabit = tum_santiyeler_with_sabit - durum['rapor_veren_santiyeler']
     
@@ -3491,15 +3671,12 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.6.5:")
-    print("   - Hata yönetimi güçlendirildi")
-    print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
-    print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
-    print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
-    print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
-    print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
-    print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
-    print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
-    print("   - Haftalık rapor job'ı aktif edildi")
+    print("📝 Güncellenmiş Versiyon v4.6.7:")
+    print("   - Format hatası bildirimi eklendi")
+    print("   - GPT'nin işleyemediği mesajlarda kullanıcıyı etiketleyerek format örneği gösterir")
+    print("   - Grup mesajları için geliştirilmiş kullanıcı deneyimi")
+    print("   - Eksik bilgi tespiti ve düzeltme isteği")
+    print("   - FAP şantiyesi listeden kaldırıldı")
+    print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
