@@ -3427,7 +3427,13 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             for santiye in sorted(durum['eksik_santiyeler']):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
-                mesaj += f"• {santiye}\n"
+                # Şantiye için kullanıcı adlarını al ve etiketle
+                usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
+                if usernames:
+                    username_str = " @" + ", @".join(usernames)
+                    mesaj += f"• {santiye} ({username_str} )\n"
+                else:
+                    mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
@@ -3462,7 +3468,13 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['eksik_santiyeler']:
             mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
             for santiye in sorted(durum['eksik_santiyeler']):
-                mesaj += f"• {santiye}\n"
+                # Şantiye için kullanıcı adlarını al ve etiketle
+                usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
+                if usernames:
+                    username_str = " @" + ", @".join(usernames)
+                    mesaj += f"• {santiye} ({username_str} )\n"
+                else:
+                    mesaj += f"• {santiye}\n"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
