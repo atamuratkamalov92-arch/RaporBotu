@@ -1,11 +1,9 @@
 """
-📋 CHANGELOG - bot.py v4.6.7
+📋 CHANGELOG - bot.py v4.6.8
 
 ✅ GÜNCELLEMELER:
-- Grup mesajları için format hatası bildirimi eklendi
-- GPT'nin işleyemediği mesajlarda kullanıcıyı etiketleyerek format örneği gösterir
-- Eksik bilgi durumlarında kullanıcıdan düzeltme isteyen gelişmiş format hatası bildirimi
-- FAP şantiyesi listeden kaldırıldı
+- "Yerel Ekipbaşı" kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi
+- BWC raporlarındaki "Toplam Yerel Ekipbaşı" değeri artık staff kategorisine eklenecek
 - Diğer tüm fonksiyonlar korundu
 """
 
@@ -419,7 +417,7 @@ SANTIYE_USERNAME_MAPPING = {
     'BWC': ['YsF1434'],
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
-    'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
+    'KÖKSARAY': ['Erdoğan.Karamısır'],
     'STADYUM': ['AdnanKeleş'],
     'LOT13': ['AdnanKeleş'],
     'LOT71': ['AdnanKeleş'],
@@ -923,7 +921,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -977,7 +975,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "RMC" → "RMC"
 
 6. **PERSONEL KATEGORİLERİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı
    - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
    - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
    - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
@@ -994,6 +992,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Ambarcı: 2" → ambarci: 2
    - "Toplam staff: 1" → staff: 1
    - "Toplam mobilizasyon: 2" → mobilizasyon: 2
+   - "Toplam Yerel Ekipbaşı: 4" → staff: 4 (Yerel Ekipbaşı staff kategorisine eklenir)
    - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
    - "Beldersoy: 17 kişi" → calisan: 17
    - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
@@ -1197,7 +1196,7 @@ B1 bodrum tava konsol montaj 2 kişi
 """
         
         await update.message.reply_text(ornek_format)
-        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgiler}")
+        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgier}")
         
     except Exception as e:
         logging.error(f"❌ Gelişmiş format hatası bildirimi gönderilemedi: {e}")
@@ -1254,7 +1253,7 @@ def analyze_report_for_missing_info(metin, gpt_raporlar):
                 break
         
         if not has_genel_ozet:
-            eksik_bilgiler.append("genel_ozet")
+            eksik_bilgier.append("genel_ozet")
         
         # Çoklu rapor kontrolü (birden fazla tarih veya şantiye)
         tarih_sayisi = len(re.findall(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin))
@@ -2759,7 +2758,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.7 \n"
+        "Versiyon: 4.6.8 \n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -2773,6 +2772,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Format hatası bildirimi ile kullanıcıları yönlendirir\n"
         "• Eksik bilgi tespiti ve düzeltme isteği\n"
+        "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3683,12 +3683,9 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.6.7:")
-    print("   - Format hatası bildirimi eklendi")
-    print("   - GPT'nin işleyemediği mesajlarda kullanıcıyı etiketleyerek format örneği gösterir")
-    print("   - Grup mesajları için geliştirilmiş kullanıcı deneyimi")
-    print("   - Eksik bilgi tespiti ve düzeltme isteği")
-    print("   - FAP şantiyesi listeden kaldırıldı")
+    print("📝 Güncellenmiş Versiyon v4.6.8:")
+    print("   - 'Yerel Ekipbaşı' kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi")
+    print("   - BWC raporlarındaki 'Toplam Yerel Ekipbaşı' değeri artık staff kategorisine eklenecek")
     print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
