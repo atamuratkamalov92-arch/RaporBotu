@@ -1,7 +1,10 @@
+[file name]: bot.py
+[file content begin]
 """
-📋 CHANGELOG - bot.py v4.7.1
+📋 CHANGELOG - bot.py v4.7.2
 
 ✅ GÜNCELLEMELER:
+- BWC ekip başı toplama sorunu düzeltildi: "Yerel Ekipbaşı" artık staff kategorisinde sayılıyor
 - Şantiye isim standardizasyonu geliştirildi: "KOK SARAY" → "KÖKSARAY" dönüşümü eklendi
 - Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi
 - İstatistik raporları artık şantiye performans puanlarını gösteriyor
@@ -926,7 +929,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ - ÖNCELİK KURALI GÜÇLENDİRİLDİ
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ - ÖNCELİK KURALI GÜÇLENDİRİLDİ - BWC EKİP BAŞI DÜZELTMESİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -979,11 +982,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "MMP" → "MMP"
    - "RMC" → "RMC"
 
-6. **PERSONEL KATEGORİLERİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı
-   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
-   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
-   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
+6. **PERSONEL KATEGORİLERİ - GÜNCELLENDİ**:
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Toplam Yerel Ekipbaşı
+   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, Toplam imalat
+   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar, Toplam ambar
+   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev
 
@@ -991,16 +994,18 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
    dis_gorev_toplam = tüm dış görevlerin toplamı
 
-8. **DİKKAT EDİLECEK NOKTALAR**:
+8. **DİKKAT EDİLECEK NOKTALAR - GÜNCELLENDİ**:
    - "Çalışan: 10" → calisan: 10
    - "İzinli: 1" → izinli: 1
    - "Ambarcı: 2" → ambarci: 2
    - "Toplam staff: 1" → staff: 1
    - "Toplam mobilizasyon: 2" → mobilizasyon: 2
-   - "Toplam Yerel Ekipbaşı: 4" → staff: 4 (Yerel Ekipbaşı staff kategorisine eklenir)
+   - "Toplam Yerel Ekipbaşı: 4" → staff: 4 (Yerel Ekipbaşı staff kategorisine eklenir) - DÜZELTİLDİ
    - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
    - "Beldersoy: 17 kişi" → calisan: 17
    - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
+   - "Toplam imalat: 131 kişi" → calisan: 131
+   - "Toplam ambar: 3 kişi" → ambarci: 3
 
 9. **ÖRNEK ÇIKTI FORMATI**:
 [
@@ -3369,7 +3374,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.1 - BUTONLU MENÜ SİSTEMİ & ŞANTİYE PUANLAMA\n"
+        "Versiyon: 4.7.2 - BWC EKİP BAŞI DÜZELTMESİ & ŞANTİYE PUANLAMA\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -3383,7 +3388,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Format hatası bildirimi ile kullanıcıları yönlendirir\n"
         "• Eksik bilgi tespiti ve düzeltme isteği\n"
-        "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır\n"
+        "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır - DÜZELTİLDİ\n"
         "• BUTONLU MENÜ SİSTEMİ ile kullanım kolaylığı\n"
         "• Kategori bazlı arayüz\n"
         "• ŞANTİYE BAZLI PUANLAMA SİSTEMİ\n"
@@ -4055,7 +4060,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
         # SABİT NOT EKLENİYOR
-        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları iletin lütfen."
+        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
         
         if GROUP_ID:
             try:
@@ -4304,7 +4309,8 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.1 - BUTONLU MENÜ SİSTEMİ & ŞANTİYE PUANLAMA:")
+    print("📝 Güncellenmiş Versiyon v4.7.2 - BWC EKİP BAŞI DÜZELTMESİ & ŞANTİYE PUANLAMA:")
+    print("   - BWC ekip başı toplama sorunu düzeltildi: 'Yerel Ekipbaşı' artık staff kategorisinde sayılıyor")
     print("   - Şantiye isim standardizasyonu geliştirildi: 'KOK SARAY' → 'KÖKSARAY' dönüşümü eklendi")
     print("   - Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi")
     print("   - İstatistik raporları artık şantiye performans puanlarını gösteriyor")
@@ -4313,3 +4319,4 @@ if __name__ == "__main__":
     print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
+[file content end]
