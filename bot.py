@@ -924,7 +924,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ - ÖNCELİK KURALI GÜÇLENDİRİLDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
