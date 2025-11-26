@@ -1,12 +1,12 @@
 """
-📋 CHANGELOG - bot.py v4.7.0
+📋 CHANGELOG - bot.py v4.7.1
 
 ✅ GÜNCELLEMELER:
-- "Yerel Ekipbaşı" kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi
-- BWC raporlarındaki "Toplam Yerel Ekipbaşı" değeri artık staff kategorisine eklenecek
-- BUTONLU MENÜ SİSTEMİ eklendi - Kategori bazlı arayüz
-- Tüm komutlar butonlara entegre edildi
-- Kullanıcı deneyimi iyileştirildi
+- Şantiye isim standardizasyonu geliştirildi: "KOK SARAY" → "KÖKSARAY" dönüşümü eklendi
+- Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi
+- İstatistik raporları artık şantiye performans puanlarını gösteriyor
+- Puanlama sistemi: 1️⃣ 2️⃣ 3️⃣ emoji numaraları kullanılıyor
+- Performans önerileri eklendi
 - Diğer tüm fonksiyonlar korundu
 """
 
@@ -455,7 +455,7 @@ def validate_date_string(date_str):
         return False
 
 def normalize_site_name(site_name):
-    """Şantiye isimlerini standartlaştır"""
+    """Şantiye isimlerini standartlaştır - GÜNCELLENDİ: KOK SARAY → KÖKSARAY"""
     if not site_name:
         return "BELİRSİZ"
         
@@ -499,6 +499,8 @@ def normalize_site_name(site_name):
         'DMC GARDEN ELEKTRİK': 'DMC',
         'DMC': 'DMC',
         'KÖKSARAY': 'KÖKSARAY',
+        'KOK SARAY': 'KÖKSARAY',  # YENİ EKLENDİ: KOK SARAY → KÖKSARAY
+        'KOKSARAY': 'KÖKSARAY',   # YENİ EKLENDİ
         'OHP': 'OHP',
         'TYM': 'TYM',
         'YHP': 'YHP',
@@ -2836,7 +2838,177 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
+# YENİ: GELİŞMİŞ AYLIK İSTATİSTİK RAPORU - ŞANTİYE BAZLI PUANLAMA
+async def generate_aylik_istatistik_mesaji(start_date, end_date):
+    """YENİ: Aylık istatistik raporu - şantiye bazlı puanlama sistemi"""
+    try:
+        # Şantiye bazlı rapor analizi
+        proje_detay_rows = await async_fetchall("""
+            SELECT project_name, ai_analysis, report_date
+            FROM reports 
+            WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
+        """, (start_date, end_date))
+        
+        if not proje_detay_rows:
+            return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
+        
+        # Şantiye performans analizi
+        santiye_performans = {}
+        gun_sayisi = (end_date - start_date).days + 1
+        
+        for row in proje_detay_rows:
+            if len(row) < 3:
+                continue
+                
+            proje_adi = safe_get_tuple_value(row, 0, '')
+            ai_analysis = safe_get_tuple_value(row, 1, '{}')
+            report_date = safe_get_tuple_value(row, 2, '')
+            
+            # PROJE ADINI NORMALİZE ET
+            proje_adi = normalize_site_name(proje_adi)
+            
+            if not proje_adi or proje_adi == "TÜMÜ":
+                continue
+                
+            if proje_adi not in santiye_performans:
+                santiye_performans[proje_adi] = {
+                    'rapor_sayisi': 0,
+                    'toplam_personel': 0,
+                    'gunler': set(),
+                    'staff_toplam': 0,
+                    'calisan_toplam': 0,
+                    'mobilizasyon_toplam': 0,
+                    'ambarci_toplam': 0,
+                    'izinli_toplam': 0,
+                    'dis_gorev_toplam': 0
+                }
+            
+            santiye_performans[proje_adi]['rapor_sayisi'] += 1
+            santiye_performans[proje_adi]['gunler'].add(report_date)
+            
+            try:
+                ai_data = safe_json_loads(ai_analysis)
+                yeni_format = ai_data.get('yeni_sabit_format', {})
+                personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                
+                if yeni_format:
+                    staff_count = yeni_format.get('staff', 0)
+                    calisan_count = yeni_format.get('calisan', 0)
+                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
+                    ambarci_count = yeni_format.get('ambarci', 0)
+                    izinli_count = yeni_format.get('izinli', 0)
+                    dis_gorev_count = yeni_format.get('dis_gorev_toplam', 0)
+                    genel_toplam = yeni_format.get('genel_toplam', 0)
+                    
+                    santiye_performans[proje_adi]['staff_toplam'] += staff_count
+                    santiye_performans[proje_adi]['calisan_toplam'] += calisan_count
+                    santiye_performans[proje_adi]['mobilizasyon_toplam'] += mobilizasyon_count
+                    santiye_performans[proje_adi]['ambarci_toplam'] += ambarci_count
+                    santiye_performans[proje_adi]['izinli_toplam'] += izinli_count
+                    santiye_performans[proje_adi]['dis_gorev_toplam'] += dis_gorev_count
+                    santiye_performans[proje_adi]['toplam_personel'] += genel_toplam if genel_toplam > 0 else (
+                        staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count + dis_gorev_count
+                    )
+                    
+                elif personel_dagilimi:
+                    staff_count = personel_dagilimi.get('staff', 0)
+                    calisan_count = personel_dagilimi.get('calisan', 0)
+                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
+                    ambarci_count = personel_dagilimi.get('ambarci', 0)
+                    izinli_count = personel_dagilimi.get('izinli', 0)
+                    dis_gorev_count = personel_dagilimi.get('dis_gorev_toplam', 0)
+                    
+                    santiye_performans[proje_adi]['staff_toplam'] += staff_count
+                    santiye_performans[proje_adi]['calisan_toplam'] += calisan_count
+                    santiye_performans[proje_adi]['mobilizasyon_toplam'] += mobilizasyon_count
+                    santiye_performans[proje_adi]['ambarci_toplam'] += ambarci_count
+                    santiye_performans[proje_adi]['izinli_toplam'] += izinli_count
+                    santiye_performans[proje_adi]['dis_gorev_toplam'] += dis_gorev_count
+                    santiye_performans[proje_adi]['toplam_personel'] += (
+                        staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count + dis_gorev_count
+                    )
+                    
+            except Exception as e:
+                logging.error(f"Şantiye performans analiz hatası: {e}")
+                continue
+        
+        # Performans puanlaması
+        santiye_puanlari = []
+        for santiye, veri in santiye_performans.items():
+            # Rapor süreklilik puanı (%)
+            rapor_orani = (len(veri['gunler']) / gun_sayisi) * 100
+            
+            # Ortalama personel verimliliği
+            ortalama_personel = veri['toplam_personel'] / len(veri['gunler']) if veri['gunler'] else 0
+            
+            # Toplam puan hesaplama
+            puan = (rapor_orani * 0.4) + (ortalama_personel * 0.6)
+            
+            santiye_puanlari.append({
+                'santiye': santiye,
+                'puan': puan,
+                'rapor_orani': rapor_orani,
+                'ortalama_personel': ortalama_personel,
+                'rapor_gun_sayisi': len(veri['gunler']),
+                'toplam_personel': veri['toplam_personel'],
+                'staff_toplam': veri['staff_toplam'],
+                'calisan_toplam': veri['calisan_toplam']
+            })
+        
+        # Puanlara göre sırala
+        santiye_puanlari.sort(key=lambda x: x['puan'], reverse=True)
+        
+        # Genel istatistikler
+        toplam_rapor = sum([veri['rapor_sayisi'] for veri in santiye_performans.values()])
+        toplam_personel = sum([veri['toplam_personel'] for veri in santiye_performans.values()])
+        
+        mesaj = f"📊 AYLIK PERFORMANS İSTATİSTİKLERİ\n"
+        mesaj += f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n\n"
+        
+        mesaj += f"📈 GENEL İSTATİSTİKLER:\n"
+        mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
+        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n"
+        mesaj += f"• İş Günü: {gun_sayisi} gün\n"
+        mesaj += f"• Günlük Ort.: {toplam_personel/gun_sayisi:.1f} kişi\n"
+        mesaj += f"• Aktif Şantiye: {len(santiye_performans)}\n\n"
+        
+        mesaj += f"🏆 ŞANTİYE PERFORMANS SIRALAMASI:\n\n"
+        
+        # Performans sıralaması (1️⃣ 2️⃣ 3️⃣ emoji numaraları)
+        performans_emojiler = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+        
+        for i, santiye in enumerate(santiye_puanlari[:10]):  # İlk 10 şantiye
+            emoji = performans_emojiler[i] if i < len(performans_emojiler) else f"{i+1}."
+            
+            mesaj += f"{emoji} {santiye['santiye']}\n"
+            mesaj += f"   └─ Puan: {santiye['puan']:.1f} | Rapor: %{santiye['rapor_orani']:.1f} | Ort: {santiye['ortalama_personel']:.1f} kişi\n"
+            mesaj += f"   └─ Staff:{santiye['staff_toplam']} Çalışan:{santiye['calisan_toplam']} | {santiye['rapor_gun_sayisi']}/{gun_sayisi} gün\n\n"
+        
+        # Performans önerileri
+        mesaj += f"💡 PERFORMANS ÖNERİLERİ:\n"
+        
+        if santiye_puanlari:
+            en_iyi = santiye_puanlari[0]
+            en_kotu = santiye_puanlari[-1] if len(santiye_puanlari) > 1 else None
+            
+            mesaj += f"• En Başarılı: {en_iyi['santiye']} (%{en_iyi['rapor_orani']:.1f} rapor oranı)\n"
+            
+            if en_kotu and en_kotu['rapor_orani'] < 70:
+                mesaj += f"• Gelişim Gereken: {en_kotu['santiye']} - Rapor oranını artırmalı\n"
+            
+            # Genel öneriler
+            dusuk_rapor_santiyeler = [s for s in santiye_puanlari if s['rapor_orani'] < 60]
+            if dusuk_rapor_santiyeler:
+                mesaj += f"• Düşük Rapor: {', '.join([s['santiye'] for s in dusuk_rapor_santiyeler])}\n"
+        
+        mesaj += f"\n📝 Not: Puanlama; rapor sürekliliği (%40) ve personel verimliliğine (%60) göre hesaplanır."
+        
+        return mesaj
+        
+    except Exception as e:
+        return f"❌ Aylık istatistik raporu oluşturulurken hata: {e}"
+
+# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ (ESKİ VERSİYON - KORUNDU)
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -3197,7 +3369,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.0 - BUTONLU MENÜ SİSTEMİ\n"
+        "Versiyon: 4.7.1 - BUTONLU MENÜ SİSTEMİ & ŞANTİYE PUANLAMA\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -3214,6 +3386,8 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır\n"
         "• BUTONLU MENÜ SİSTEMİ ile kullanım kolaylığı\n"
         "• Kategori bazlı arayüz\n"
+        "• ŞANTİYE BAZLI PUANLAMA SİSTEMİ\n"
+        "• Performans önerileri\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3291,6 +3465,7 @@ async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(mesaj)
 
 async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """YENİ: Aylık istatistik komutu - şantiye bazlı puanlama"""
     if not await admin_kontrol(update, context):
         return
     
@@ -3300,7 +3475,7 @@ async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     start_date = today.replace(day=1)
     end_date = today
     
-    mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
+    mesaj = await generate_aylik_istatistik_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj)
 
 async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4129,12 +4304,12 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.0 - BUTONLU MENÜ SİSTEMİ:")
-    print("   - 'Yerel Ekipbaşı' kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi")
-    print("   - BWC raporlarındaki 'Toplam Yerel Ekipbaşı' değeri artık staff kategorisine eklenecek")
-    print("   - BUTONLU MENÜ SİSTEMİ eklendi - Kategori bazlı arayüz")
-    print("   - Tüm komutlar butonlara entegre edildi")
-    print("   - Kullanıcı deneyimi iyileştirildi")
+    print("📝 Güncellenmiş Versiyon v4.7.1 - BUTONLU MENÜ SİSTEMİ & ŞANTİYE PUANLAMA:")
+    print("   - Şantiye isim standardizasyonu geliştirildi: 'KOK SARAY' → 'KÖKSARAY' dönüşümü eklendi")
+    print("   - Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi")
+    print("   - İstatistik raporları artık şantiye performans puanlarını gösteriyor")
+    print("   - Puanlama sistemi: 1️⃣ 2️⃣ 3️⃣ emoji numaraları kullanılıyor")
+    print("   - Performans önerileri eklendi")
     print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
