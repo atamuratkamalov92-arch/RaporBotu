@@ -1,5 +1,3 @@
-[file name]: bot.py
-[file content begin]
 """
 📋 CHANGELOG - bot.py v4.7.2
 
@@ -1206,7 +1204,7 @@ B1 bodrum tava konsol montaj 2 kişi
 """
         
         await update.message.reply_text(ornek_format)
-        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgier}")
+        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgiler}")
         
     except Exception as e:
         logging.error(f"❌ Gelişmiş format hatası bildirimi gönderilemedi: {e}")
@@ -1263,7 +1261,7 @@ def analyze_report_for_missing_info(metin, gpt_raporlar):
                 break
         
         if not has_genel_ozet:
-            eksik_bilgier.append("genel_ozet")
+            eksik_bilgiler.append("genel_ozet")
         
         # Çoklu rapor kontrolü (birden fazla tarih veya şantiye)
         tarih_sayisi = len(re.findall(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin))
@@ -2340,7 +2338,7 @@ class MaliyetAnaliz:
             rapor += f"📈 Genel İstatistikler:\n"
             rapor += f"• Toplam İşlem: {toplam}\n"
             rapor += f"• Başarılı: {basarili} (%{(basarili/toplam*100):.1f})\n"
-            rapor += f"• Başarısız: {basarilis}\n"
+            rapor += f"• Başarısız: {basarisiz}\n"
             rapor += f"• İlk Kullanım: {ilk_tarih[:10] if ilk_tarih else 'Yok'}\n"
             rapor += f"• Son Kullanım: {son_tarih[:10] if son_tarih else 'Yok'}\n\n"
             
@@ -2599,7 +2597,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                 if 'staff' in yapilan_is_lower:
                     proje_analizleri[proje_adi]['staff'] += kisi_sayisi
                 elif 'mobilizasyon' in yapilan_is_lower:
-                    proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                        proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
                 elif 'ambarci' in yapilan_is_lower or 'ambarcı' in yapilan_is_lower:
                     proje_analizleri[proje_adi]['ambarci'] += kisi_sayisi
                 elif rapor_tipi == "IZIN/ISYOK":
@@ -4319,4 +4317,3 @@ if __name__ == "__main__":
     print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
-[file content end]
