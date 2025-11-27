@@ -419,7 +419,7 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'FAP', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT']
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
@@ -427,7 +427,6 @@ SANTIYE_USERNAME_MAPPING = {
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
     'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
-    'FAP': ['AdnanKeleş'],
     'STADYUM': ['AdnanKeleş'],
     'LOT13': ['AdnanKeleş'],
     'LOT71': ['AdnanKeleş'],
@@ -491,7 +490,6 @@ def normalize_site_name(site_name):
         'PYRAMID': 'PİRAMİT',
         'BWC': 'BWC',
         'STADYUM': 'STADYUM',
-        'FAP': 'FAP',
         'DMC ELLIPSE GARDEN': 'DMC',
         'DMC ELLIPSE': 'DMC',
         'DMC GARDEN': 'DMC',
@@ -975,7 +973,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 5. **ŞANTİYE NORMALİZASYONU**:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, FAP, DMC, YHP, TYM, MMP, RMC, PİRAMİT
+   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
    - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"   # YENİ EKLENDİ
