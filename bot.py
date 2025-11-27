@@ -14,6 +14,8 @@
 - Santiye name normalization fonksiyonu guncellendi.
 - Rapor özeti fonksiyonlarında şantiye filtreleme iyileştirildi
 - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi
+- Yerel Ekipbaşı staff kategorisine eklendi
+- Dış görev toplamları genel toplama dahil edilmez
 """
 
 import os
@@ -505,6 +507,7 @@ def normalize_site_name(site_name):
         'DMC GARDEN ELEKTRİK': 'DMC',
         'DMC': 'DMC',
         'KÖKSARAY': 'KÖKSARAY',
+        'KOK SARAY': 'KÖKSARAY',
         'OHP': 'OHP',
         'TYM': 'TYM',
         'YHP': 'YHP',
@@ -930,7 +933,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU
+# YENİ SİSTEM_PROMPT - YEREL EKİPBAŞI STAFF KATEGORİSİNE EKLENDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -976,15 +979,16 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
-   - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"   # YENİ EKLENDİ
+   - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
    - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
    - "YHP" → "YHP"
    - "TYM" → "TYM"
    - "MMP" → "MMP"
    - "RMC" → "RMC"
+   - "KOK SARAY" → "KÖKSARAY"
 
 6. **PERSONEL KATEGORİLERİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı
    - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
    - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
    - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
@@ -992,8 +996,8 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev
 
 7. **HESAPLAMALAR**:
-   genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
-   dis_gorev_toplam = tüm dış görevlerin toplamı
+   genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
+   dis_gorev_toplam = tüm dış görevlerin toplamı (genel_toplam'a EKLENMEZ!)
 
 8. **DİKKAT EDİLECEK NOKTALAR**:
    - "Çalışan: 10" → calisan: 10
@@ -1004,6 +1008,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
    - "Beldersoy: 17 kişi" → calisan: 17
    - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
+   - "Yerel Ekipbaşı: 5 kişi" → staff: 5 (staff'a EKLE!)
 
 9. **ÖRNEK ÇIKTI FORMATI**:
 [
@@ -1020,7 +1025,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
       {"gorev_yeri": "FAP", "sayi": 2}
     ],
     "dis_gorev_toplam": 5,
-    "genel_toplam": 15
+    "genel_toplam": 10
   }
 ]
 
@@ -1031,6 +1036,8 @@ DİKKAT:
 - dis_gorev her zaman bir liste olmalı, boşsa []
 - Her zaman bu sabit JSON formatını kullan!
 - ÖZET BÖLÜMÜ VARSA DETAYLARI YOK SAY!
+- genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli (dis_gorev_toplam dahil DEĞİL!)
+- Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -3251,7 +3258,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
         # SABİT NOT EKLENİYOR
-        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları iletin lütfen."
+        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
         
         if GROUP_ID:
             try:
