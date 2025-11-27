@@ -1,13 +1,9 @@
 """
-📋 CHANGELOG - bot.py v4.7.2
+📋 CHANGELOG - bot.py v4.6.8
 
 ✅ GÜNCELLEMELER:
-- BWC ekip başı toplama sorunu düzeltildi: "Yerel Ekipbaşı" artık staff kategorisinde sayılıyor
-- Şantiye isim standardizasyonu geliştirildi: "KOK SARAY" → "KÖKSARAY" dönüşümü eklendi
-- Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi
-- İstatistik raporları artık şantiye performans puanlarını gösteriyor
-- Puanlama sistemi: 1️⃣ 2️⃣ 3️⃣ emoji numaraları kullanılıyor
-- Performans önerileri eklendi
+- "Yerel Ekipbaşı" kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi
+- BWC raporlarındaki "Toplam Yerel Ekipbaşı" değeri artık staff kategorisine eklenecek
 - Diğer tüm fonksiyonlar korundu
 """
 
@@ -46,14 +42,14 @@ PORT = int(os.environ.get('PORT', 8443))
 logging.info(f"🚀 Railway PORT: {PORT}")
 
 try:
-    from telegram import Update, BotCommand, BotCommandScopeAllPrivateChats, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+    from telegram import Update, BotCommand, BotCommandScopeAllPrivateChats
     HAS_PRIVATE_SCOPE = True
 except Exception as e:
     HAS_PRIVATE_SCOPE = False
     logging.warning(f"BotCommandScopeAllPrivateChats yüklenemedi: {e}")
 
 from telegram.ext import (
-    Application, MessageHandler, CommandHandler, ContextTypes, filters, CallbackQueryHandler
+    Application, MessageHandler, CommandHandler, ContextTypes, filters
 )
 from zoneinfo import ZoneInfo
 from openpyxl import Workbook
@@ -456,7 +452,7 @@ def validate_date_string(date_str):
         return False
 
 def normalize_site_name(site_name):
-    """Şantiye isimlerini standartlaştır - GÜNCELLENDİ: KOK SARAY → KÖKSARAY"""
+    """Şantiye isimlerini standartlaştır"""
     if not site_name:
         return "BELİRSİZ"
         
@@ -471,6 +467,9 @@ def normalize_site_name(site_name):
         'LOT71': 'LOT71',
         'SKP DAHO': 'SKP',
         'SKP': 'SKP',
+        'SKP-DAHO': 'SKP',
+        'SKP DAHO ELEKTRİK': 'SKP',
+        'SKP ELEKTRİK': 'SKP',
         'PİRAMİT TOWER': 'PİRAMİT',
         'PİRAMİT': 'PİRAMİT',
         'PRAMİT': 'PİRAMİT',
@@ -484,7 +483,10 @@ def normalize_site_name(site_name):
         'PYRAMIT': 'PİRAMİT',
         'PYRAMID': 'PİRAMİT',
         'BWC': 'BWC',
+        'BWC ELEKTRİK': 'BWC',
+        'BWC ELEKTRIK': 'BWC',
         'STADYUM': 'STADYUM',
+        'STADYUM ELEKTRİK': 'STADYUM',
         'DMC ELLIPSE GARDEN': 'DMC',
         'DMC ELLIPSE': 'DMC',
         'DMC GARDEN': 'DMC',
@@ -500,13 +502,21 @@ def normalize_site_name(site_name):
         'DMC GARDEN ELEKTRİK': 'DMC',
         'DMC': 'DMC',
         'KÖKSARAY': 'KÖKSARAY',
-        'KOK SARAY': 'KÖKSARAY',  # YENİ EKLENDİ: KOK SARAY → KÖKSARAY
-        'KOKSARAY': 'KÖKSARAY',   # YENİ EKLENDİ
+        'KÖKSARAY ELEKTRİK': 'KÖKSARAY',
         'OHP': 'OHP',
+        'OHP ELEKTRİK': 'OHP',
         'TYM': 'TYM',
+        'TYM ELEKTRİK': 'TYM',
         'YHP': 'YHP',
+        'YHP ELEKTRİK': 'YHP',
         'MMP': 'MMP',
-        'RMC': 'RMC'
+        'MMP ELEKTRİK': 'MMP',
+        'RMC': 'RMC',
+        'RMC ELEKTRİK': 'RMC',
+        'LOT 13 ELEKTRİK': 'LOT13',
+        'LOT13 ELEKTRİK': 'LOT13',
+        'LOT 71 ELEKTRİK': 'LOT71',
+        'LOT71 ELEKTRİK': 'LOT71'
     }
     
     return mappings.get(site_name, site_name)
@@ -927,7 +937,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ - ÖNCELİK KURALI GÜÇLENDİRİLDİ - BWC EKİP BAŞI DÜZELTMESİ
+# YENİ SİSTEM_PROMPT - ÇİFT SAYMA DÜZELTMESİ VE DMC NORMALİZASYONU - YEREL EKİPBAŞI EKLENDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -980,11 +990,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "MMP" → "MMP"
    - "RMC" → "RMC"
 
-6. **PERSONEL KATEGORİLERİ - GÜNCELLENDİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Toplam Yerel Ekipbaşı
-   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, Toplam imalat
-   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar, Toplam ambar
-   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon
+6. **PERSONEL KATEGORİLERİ**:
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Ekipbaşı, Ekip başı, Ekip Başı, Ekipbaşları, Ekip Başları
+   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
+   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
+   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev
 
@@ -992,18 +1002,16 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
    dis_gorev_toplam = tüm dış görevlerin toplamı
 
-8. **DİKKAT EDİLECEK NOKTALAR - GÜNCELLENDİ**:
+8. **DİKKAT EDİLECEK NOKTALAR**:
    - "Çalışan: 10" → calisan: 10
    - "İzinli: 1" → izinli: 1
    - "Ambarcı: 2" → ambarci: 2
    - "Toplam staff: 1" → staff: 1
    - "Toplam mobilizasyon: 2" → mobilizasyon: 2
-   - "Toplam Yerel Ekipbaşı: 4" → staff: 4 (Yerel Ekipbaşı staff kategorisine eklenir) - DÜZELTİLDİ
+   - "Toplam Yerel Ekipbaşı: 4" → staff: 4 (Yerel Ekipbaşı staff kategorisine eklenir)
    - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
    - "Beldersoy: 17 kişi" → calisan: 17
    - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
-   - "Toplam imalat: 131 kişi" → calisan: 131
-   - "Toplam ambar: 3 kişi" → ambarci: 3
 
 9. **ÖRNEK ÇIKTI FORMATI**:
 [
@@ -1204,7 +1212,7 @@ B1 bodrum tava konsol montaj 2 kişi
 """
         
         await update.message.reply_text(ornek_format)
-        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgiler}")
+        logging.info(f"📝 Gelişmiş format hatası bildirimi gönderildi: {kullanici_adi}, Eksikler: {eksik_bilgier}")
         
     except Exception as e:
         logging.error(f"❌ Gelişmiş format hatası bildirimi gönderilemedi: {e}")
@@ -1261,7 +1269,7 @@ def analyze_report_for_missing_info(metin, gpt_raporlar):
                 break
         
         if not has_genel_ozet:
-            eksik_bilgiler.append("genel_ozet")
+            eksik_bilgier.append("genel_ozet")
         
         # Çoklu rapor kontrolü (birden fazla tarih veya şantiye)
         tarih_sayisi = len(re.findall(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', metin))
@@ -1619,452 +1627,6 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         if is_dm:
             await msg.reply_text("❌ Rapor işlenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
 
-# YENİ: BUTONLU MENÜ SİSTEMİ
-async def ana_menu_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ana menüyü göster"""
-    keyboard = [
-        [InlineKeyboardButton("📊 Rapor İşlemleri", callback_data="kategori_rapor")],
-        [InlineKeyboardButton("🏗️ Şantiye İşlemleri", callback_data="kategori_santiye")],
-        [InlineKeyboardButton("📈 İstatistik & Raporlar", callback_data="kategori_istatistik")],
-        [InlineKeyboardButton("🛠️ Admin İşlemleri", callback_data="kategori_admin")],
-        [InlineKeyboardButton("ℹ️ Yardım & Bilgi", callback_data="kategori_yardim")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if update.message:
-        await update.message.reply_text(
-            "🤖 RAPOR BOTU - ANA MENÜ\n\n"
-            "Lütfen bir kategori seçin:",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.callback_query.edit_message_text(
-            "🤖 RAPOR BOTU - ANA MENÜ\n\n"
-            "Lütfen bir kategori seçin:",
-            reply_markup=reply_markup
-        )
-
-async def rapor_kategori_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Rapor işlemleri kategorisi"""
-    keyboard = [
-        [InlineKeyboardButton("📝 Hızlı Rapor Gönder", callback_data="hizli_rapor_gonder")],
-        [InlineKeyboardButton("📅 Bugünün Raporu", callback_data="rapor_bugun")],
-        [InlineKeyboardButton("📅 Dünün Raporu", callback_data="rapor_dun")],
-        [InlineKeyboardButton("📈 Haftalık Rapor", callback_data="rapor_haftalik")],
-        [InlineKeyboardButton("🗓️ Aylık Rapor", callback_data="rapor_aylik")],
-        [InlineKeyboardButton("🔙 Ana Menü", callback_data="ana_menu")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "📊 RAPOR İŞLEMLERİ\n\n"
-        "Hangi rapor işlemini yapmak istiyorsunuz?",
-        reply_markup=reply_markup
-    )
-
-async def santiye_kategori_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Şantiye işlemleri kategorisi"""
-    keyboard = [
-        [InlineKeyboardButton("👁️ Şantiye Durumu", callback_data="santiye_durum")],
-        [InlineKeyboardButton("❌ Eksik Raporlar", callback_data="eksik_raporlar")],
-        [InlineKeyboardButton("📋 Şantiye Listesi", callback_data="santiye_listesi")],
-        [InlineKeyboardButton("🔍 Şantiye Detay", callback_data="santiye_detay_sec")],
-        [InlineKeyboardButton("🔙 Ana Menü", callback_data="ana_menu")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "🏗️ ŞANTİYE İŞLEMLERİ\n\n"
-        "Şantiye ile ilgili işlemleri seçin:",
-        reply_markup=reply_markup
-    )
-
-async def istatistik_kategori_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """İstatistik kategorisi"""
-    keyboard = [
-        [InlineKeyboardButton("📊 Genel İstatistik", callback_data="genel_istatistik")],
-        [InlineKeyboardButton("👤 Kullanıcı İstatistik", callback_data="kullanici_istatistik")],
-        [InlineKeyboardButton("🏗️ Şantiye İstatistik", callback_data="santiye_istatistik")],
-        [InlineKeyboardButton("🤖 AI Kullanım Raporu", callback_data="ai_raporu")],
-        [InlineKeyboardButton("💰 Maliyet Analizi", callback_data="maliyet_analizi")],
-        [InlineKeyboardButton("🔙 Ana Menü", callback_data="ana_menu")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "📈 İSTATİSTİK & RAPORLAR\n\n"
-        "Hangi istatistik raporunu görüntülemek istiyorsunuz?",
-        reply_markup=reply_markup
-    )
-
-async def admin_kategori_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin işlemleri kategorisi"""
-    user_id = update.callback_query.from_user.id
-    
-    if not is_admin(user_id):
-        await update.callback_query.answer("❌ Bu menüye erişim yetkiniz yok!", show_alert=True)
-        return
-    
-    keyboard = [
-        [InlineKeyboardButton("💾 Sistem Yedekleme", callback_data="admin_yedekle")],
-        [InlineKeyboardButton("🔄 Excel Yenile", callback_data="admin_excel_yenile")],
-        [InlineKeyboardButton("🗃️ Veritabanı İşlemleri", callback_data="admin_veritabani")],
-        [InlineKeyboardButton("👥 Kullanıcı Yönetimi", callback_data="admin_kullanici")],
-        [InlineKeyboardButton("⚙️ Sistem Ayarları", callback_data="admin_ayarlar")],
-        [InlineKeyboardButton("🔙 Ana Menü", callback_data="ana_menu")]
-    ]
-    
-    # Super admin için ek butonlar
-    if is_super_admin(user_id):
-        keyboard.insert(3, [InlineKeyboardButton("🛡️ Super Admin", callback_data="super_admin_panel")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "🛠️ ADMIN İŞLEMLERİ\n\n"
-        "Sistem yönetim işlemlerini seçin:",
-        reply_markup=reply_markup
-    )
-
-async def yardim_kategori_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yardım kategorisi"""
-    keyboard = [
-        [InlineKeyboardButton("📋 Komut Listesi", callback_data="yardim_komutlar")],
-        [InlineKeyboardButton("❓ Nasıl Kullanılır?", callback_data="yardim_kullanim")],
-        [InlineKeyboardButton("📝 Rapor Formatı", callback_data="yardim_format")],
-        [InlineKeyboardButton("🏗️ Şantiye Kodları", callback_data="yardim_santiyeler")],
-        [InlineKeyboardButton("🔙 Ana Menü", callback_data="ana_menu")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "ℹ️ YARDIM & BİLGİ\n\n"
-        "Hangi konuda yardıma ihtiyacınız var?",
-        reply_markup=reply_markup
-    )
-
-async def kategorik_buton_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buton tıklamalarını işle"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    data = query.data
-    
-    # Kategori yönlendirmeleri
-    if data == "kategori_rapor":
-        await rapor_kategori_goster(update, context)
-    
-    elif data == "kategori_santiye":
-        await santiye_kategori_goster(update, context)
-    
-    elif data == "kategori_istatistik":
-        await istatistik_kategori_goster(update, context)
-    
-    elif data == "kategori_admin":
-        if is_admin(user_id):
-            await admin_kategori_goster(update, context)
-        else:
-            await query.edit_message_text("❌ Bu kategoriye erişim yetkiniz yok!")
-    
-    elif data == "kategori_yardim":
-        await yardim_kategori_goster(update, context)
-    
-    # Rapor Kategorisi İşlemleri
-    elif data == "hizli_rapor_gonder":
-        await query.edit_message_text(
-            "📝 HIZLI RAPOR GÖNDER\n\n"
-            "Lütfen raporunuzu aşağıdaki formatta gönderin:\n\n"
-            "Örnek: \"LOT13 2.kat elektrik montajı 5 kişi\"\n\n"
-            "Veya detaylı rapor için şantiye, tarih ve iş bilgilerini içeren mesaj gönderin."
-        )
-    
-    elif data == "rapor_bugun":
-        if is_admin(user_id):
-            await bugun_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "rapor_dun":
-        if is_admin(user_id):
-            await dun_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "rapor_haftalik":
-        if is_admin(user_id):
-            await haftalik_rapor_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "rapor_aylik":
-        if is_admin(user_id):
-            await aylik_rapor_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    # Şantiye Kategorisi İşlemleri
-    elif data == "santiye_durum":
-        if is_admin(user_id):
-            await santiye_durum_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "eksik_raporlar":
-        if is_admin(user_id):
-            await eksikraporlar_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "santiye_listesi":
-        if is_admin(user_id):
-            await santiyeler_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    # İstatistik Kategorisi İşlemleri
-    elif data == "genel_istatistik":
-        if is_admin(user_id):
-            await istatistik_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "ai_raporu":
-        if is_admin(user_id):
-            await ai_rapor_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    elif data == "maliyet_analizi":
-        if is_admin(user_id):
-            await maliyet_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için admin yetkisi gerekiyor!")
-    
-    # Admin Kategorisi İşlemleri
-    elif data == "admin_yedekle":
-        if is_super_admin(user_id):
-            await yedekle_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için super admin yetkisi gerekiyor!")
-    
-    elif data == "admin_excel_yenile":
-        if is_super_admin(user_id):
-            await reload_cmd_callback(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için super admin yetkisi gerekiyor!")
-    
-    elif data == "super_admin_panel":
-        if is_super_admin(user_id):
-            await super_admin_panel_goster(update, context)
-        else:
-            await query.edit_message_text("❌ Bu işlem için super admin yetkisi gerekiyor!")
-    
-    # Yardım Kategorisi İşlemleri
-    elif data == "yardim_komutlar":
-        await info_cmd_callback(update, context)
-    
-    elif data == "yardim_kullanim":
-        await query.edit_message_text(
-            "❓ NASIL KULLANILIR?\n\n"
-            "1. 📝 Rapor göndermek için:\n"
-            "   - Direkt mesaj yazın: \"LOT13 2.kat kablo çekimi 5 kişi\"\n"
-            "   - Veya detaylı rapor formatı kullanın\n\n"
-            "2. 🏗️ Şantiye seçimi:\n"
-            "   - LOT13, LOT71, SKP, BWC, DMC, YHP, TYM, MMP, RMC, PİRAMİT\n\n"
-            "3. 📅 Tarih formatı:\n"
-            "   - 01.11.2024 veya bugün/dün\n\n"
-            "4. 👥 Personel kategorileri:\n"
-            "   - Staff, Çalışan, Mobilizasyon, Ambarcı, İzinli"
-        )
-    
-    elif data == "yardim_format":
-        await query.edit_message_text(
-            "📝 ÖRNEK RAPOR FORMATI:\n\n"
-            "📍 ŞANTİYE: LOT13\n"
-            "📅 TARİH: 25.11.2024\n\n"
-            "**ÇALIŞMA DETAYLARI:**\n"
-            "B1 bodrum tava konsol montaj 2 kişi\n"
-            "3.kat tava montajı 2 kişi\n"
-            "2.kat tava montajı 2 kişi\n\n"
-            "📝 **GENEL ÖZET:**\n"
-            "• Toplam staff: 2\n"
-            "• Toplam imalat: 6\n"
-            "• Toplam mobilizasyon: 1\n"
-            "• İzinli: 0\n"
-            "• Genel toplam: 9 kişi"
-        )
-    
-    elif data == "yardim_santiyeler":
-        santiyeler_text = "🏗️ ŞANTİYE KODLARI:\n\n"
-        for santiye in SABIT_SANTIYELER:
-            santiyeler_text += f"• {santiye}\n"
-        
-        await query.edit_message_text(santiyeler_text)
-    
-    # Ana menüye dönüş
-    elif data == "ana_menu":
-        await ana_menu_goster(update, context)
-    
-    else:
-        await query.edit_message_text("❌ Geçersiz işlem seçildi.")
-
-# Callback fonksiyonları
-async def bugun_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bugünün raporu buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Bugünün raporu hazırlanıyor...")
-    
-    target_date = dt.datetime.now(TZ).date()
-    rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
-    
-    # Mesajı bölmek gerekiyorsa böl
-    if len(rapor_mesaji) > 4096:
-        for i in range(0, len(rapor_mesaji), 4096):
-            await query.edit_message_text(rapor_mesaji[i:i+4096] if i == 0 else rapor_mesaji[i:i+4096])
-    else:
-        await query.edit_message_text(rapor_mesaji)
-
-async def dun_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Dünün raporu buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Dünün raporu hazırlanıyor...")
-    
-    target_date = dt.datetime.now(TZ).date() - dt.timedelta(days=1)
-    rapor_mesaji = await generate_gelismis_personel_ozeti(target_date)
-    
-    if len(rapor_mesaji) > 4096:
-        for i in range(0, len(rapor_mesaji), 4096):
-            await query.edit_message_text(rapor_mesaji[i:i+4096] if i == 0 else rapor_mesaji[i:i+4096])
-    else:
-        await query.edit_message_text(rapor_mesaji)
-
-async def haftalik_rapor_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Haftalık rapor buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Haftalık rapor hazırlanıyor...")
-    
-    today = dt.datetime.now(TZ).date()
-    start_date = today - dt.timedelta(days=today.weekday())
-    end_date = start_date + dt.timedelta(days=6)
-    
-    mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
-    
-    if len(mesaj) > 4096:
-        for i in range(0, len(mesaj), 4096):
-            await query.edit_message_text(mesaj[i:i+4096] if i == 0 else mesaj[i:i+4096])
-    else:
-        await query.edit_message_text(mesaj)
-
-async def aylik_rapor_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Aylık rapor buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Aylık rapor hazırlanıyor...")
-    
-    today = dt.datetime.now(TZ).date()
-    start_date = today.replace(day=1)
-    end_date = today
-    
-    mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
-    
-    if len(mesaj) > 4096:
-        for i in range(0, len(mesaj), 4096):
-            await query.edit_message_text(mesaj[i:i+4096] if i == 0 else mesaj[i:i+4096])
-    else:
-        await query.edit_message_text(mesaj)
-
-async def santiye_durum_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Şantiye durumu buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Şantiye durumu hazırlanıyor...")
-    await santiye_durum_cmd(update, context)
-
-async def eksikraporlar_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Eksik raporlar buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Eksik raporlar kontrol ediliyor...")
-    await eksikraporlar_cmd(update, context)
-
-async def santiyeler_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Şantiye listesi buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Şantiye listesi hazırlanıyor...")
-    await santiyeler_cmd(update, context)
-
-async def istatistik_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """İstatistik buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ İstatistikler hazırlanıyor...")
-    await istatistik_cmd(update, context)
-
-async def ai_rapor_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """AI raporu buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ AI raporu hazırlanıyor...")
-    await ai_rapor_cmd(update, context)
-
-async def maliyet_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maliyet analizi buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("⌛ Maliyet analizi hazırlanıyor...")
-    await maliyet_cmd(update, context)
-
-async def yedekle_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yedekleme buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("💾 Yedekleme işlemi başlatılıyor...")
-    await yedekle_cmd(update, context)
-
-async def reload_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Excel yenile buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("🔄 Excel dosyası yenileniyor...")
-    await reload_cmd(update, context)
-
-async def info_cmd_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Info buton callback"""
-    query = update.callback_query
-    await query.edit_message_text("ℹ️ Komut listesi hazırlanıyor...")
-    await info_cmd(update, context)
-
-async def super_admin_panel_goster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Super admin paneli"""
-    keyboard = [
-        [InlineKeyboardButton("🗃️ Veritabanı Sıfırla", callback_data="reset_database")],
-        [InlineKeyboardButton("🔧 Sequence Düzelt", callback_data="fix_sequences")],
-        [InlineKeyboardButton("📊 Excel Durumu", callback_data="excel_durum")],
-        [InlineKeyboardButton("🆔 Chat ID Göster", callback_data="chatid")],
-        [InlineKeyboardButton("🔙 Admin Menüsü", callback_data="kategori_admin")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query = update.callback_query
-    await query.edit_message_text(
-        "🛡️ SUPER ADMIN PANELİ\n\n"
-        "Sistem yönetim işlemlerini seçin:",
-        reply_markup=reply_markup
-    )
-
-# Mevcut komut fonksiyonları buton sistemi ile uyumlu hale getirildi
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Güncellenmiş start komutu - direkt menü göster"""
-    await ana_menu_goster(update, context)
-
-async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menü komutu"""
-    await ana_menu_goster(update, context)
-
 async def excel_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await super_admin_kontrol(update, context):
         return
@@ -2338,7 +1900,7 @@ class MaliyetAnaliz:
             rapor += f"📈 Genel İstatistikler:\n"
             rapor += f"• Toplam İşlem: {toplam}\n"
             rapor += f"• Başarılı: {basarili} (%{(basarili/toplam*100):.1f})\n"
-            rapor += f"• Başarısız: {basarisiz}\n"
+            rapor += f"• Başarısız: {basarilis}\n"
             rapor += f"• İlk Kullanım: {ilk_tarih[:10] if ilk_tarih else 'Yok'}\n"
             rapor += f"• Son Kullanım: {son_tarih[:10] if son_tarih else 'Yok'}\n\n"
             
@@ -2597,7 +2159,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                 if 'staff' in yapilan_is_lower:
                     proje_analizleri[proje_adi]['staff'] += kisi_sayisi
                 elif 'mobilizasyon' in yapilan_is_lower:
-                        proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                    proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
                 elif 'ambarci' in yapilan_is_lower or 'ambarcı' in yapilan_is_lower:
                     proje_analizleri[proje_adi]['ambarci'] += kisi_sayisi
                 elif rapor_tipi == "IZIN/ISYOK":
@@ -2841,177 +2403,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# YENİ: GELİŞMİŞ AYLIK İSTATİSTİK RAPORU - ŞANTİYE BAZLI PUANLAMA
-async def generate_aylik_istatistik_mesaji(start_date, end_date):
-    """YENİ: Aylık istatistik raporu - şantiye bazlı puanlama sistemi"""
-    try:
-        # Şantiye bazlı rapor analizi
-        proje_detay_rows = await async_fetchall("""
-            SELECT project_name, ai_analysis, report_date
-            FROM reports 
-            WHERE report_date BETWEEN %s AND %s AND project_name IS NOT NULL AND project_name != 'BELİRSİZ'
-        """, (start_date, end_date))
-        
-        if not proje_detay_rows:
-            return f"📭 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} arasında rapor bulunamadı."
-        
-        # Şantiye performans analizi
-        santiye_performans = {}
-        gun_sayisi = (end_date - start_date).days + 1
-        
-        for row in proje_detay_rows:
-            if len(row) < 3:
-                continue
-                
-            proje_adi = safe_get_tuple_value(row, 0, '')
-            ai_analysis = safe_get_tuple_value(row, 1, '{}')
-            report_date = safe_get_tuple_value(row, 2, '')
-            
-            # PROJE ADINI NORMALİZE ET
-            proje_adi = normalize_site_name(proje_adi)
-            
-            if not proje_adi or proje_adi == "TÜMÜ":
-                continue
-                
-            if proje_adi not in santiye_performans:
-                santiye_performans[proje_adi] = {
-                    'rapor_sayisi': 0,
-                    'toplam_personel': 0,
-                    'gunler': set(),
-                    'staff_toplam': 0,
-                    'calisan_toplam': 0,
-                    'mobilizasyon_toplam': 0,
-                    'ambarci_toplam': 0,
-                    'izinli_toplam': 0,
-                    'dis_gorev_toplam': 0
-                }
-            
-            santiye_performans[proje_adi]['rapor_sayisi'] += 1
-            santiye_performans[proje_adi]['gunler'].add(report_date)
-            
-            try:
-                ai_data = safe_json_loads(ai_analysis)
-                yeni_format = ai_data.get('yeni_sabit_format', {})
-                personel_dagilimi = ai_data.get('personel_dagilimi', {})
-                
-                if yeni_format:
-                    staff_count = yeni_format.get('staff', 0)
-                    calisan_count = yeni_format.get('calisan', 0)
-                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
-                    ambarci_count = yeni_format.get('ambarci', 0)
-                    izinli_count = yeni_format.get('izinli', 0)
-                    dis_gorev_count = yeni_format.get('dis_gorev_toplam', 0)
-                    genel_toplam = yeni_format.get('genel_toplam', 0)
-                    
-                    santiye_performans[proje_adi]['staff_toplam'] += staff_count
-                    santiye_performans[proje_adi]['calisan_toplam'] += calisan_count
-                    santiye_performans[proje_adi]['mobilizasyon_toplam'] += mobilizasyon_count
-                    santiye_performans[proje_adi]['ambarci_toplam'] += ambarci_count
-                    santiye_performans[proje_adi]['izinli_toplam'] += izinli_count
-                    santiye_performans[proje_adi]['dis_gorev_toplam'] += dis_gorev_count
-                    santiye_performans[proje_adi]['toplam_personel'] += genel_toplam if genel_toplam > 0 else (
-                        staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count + dis_gorev_count
-                    )
-                    
-                elif personel_dagilimi:
-                    staff_count = personel_dagilimi.get('staff', 0)
-                    calisan_count = personel_dagilimi.get('calisan', 0)
-                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
-                    ambarci_count = personel_dagilimi.get('ambarci', 0)
-                    izinli_count = personel_dagilimi.get('izinli', 0)
-                    dis_gorev_count = personel_dagilimi.get('dis_gorev_toplam', 0)
-                    
-                    santiye_performans[proje_adi]['staff_toplam'] += staff_count
-                    santiye_performans[proje_adi]['calisan_toplam'] += calisan_count
-                    santiye_performans[proje_adi]['mobilizasyon_toplam'] += mobilizasyon_count
-                    santiye_performans[proje_adi]['ambarci_toplam'] += ambarci_count
-                    santiye_performans[proje_adi]['izinli_toplam'] += izinli_count
-                    santiye_performans[proje_adi]['dis_gorev_toplam'] += dis_gorev_count
-                    santiye_performans[proje_adi]['toplam_personel'] += (
-                        staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count + dis_gorev_count
-                    )
-                    
-            except Exception as e:
-                logging.error(f"Şantiye performans analiz hatası: {e}")
-                continue
-        
-        # Performans puanlaması
-        santiye_puanlari = []
-        for santiye, veri in santiye_performans.items():
-            # Rapor süreklilik puanı (%)
-            rapor_orani = (len(veri['gunler']) / gun_sayisi) * 100
-            
-            # Ortalama personel verimliliği
-            ortalama_personel = veri['toplam_personel'] / len(veri['gunler']) if veri['gunler'] else 0
-            
-            # Toplam puan hesaplama
-            puan = (rapor_orani * 0.4) + (ortalama_personel * 0.6)
-            
-            santiye_puanlari.append({
-                'santiye': santiye,
-                'puan': puan,
-                'rapor_orani': rapor_orani,
-                'ortalama_personel': ortalama_personel,
-                'rapor_gun_sayisi': len(veri['gunler']),
-                'toplam_personel': veri['toplam_personel'],
-                'staff_toplam': veri['staff_toplam'],
-                'calisan_toplam': veri['calisan_toplam']
-            })
-        
-        # Puanlara göre sırala
-        santiye_puanlari.sort(key=lambda x: x['puan'], reverse=True)
-        
-        # Genel istatistikler
-        toplam_rapor = sum([veri['rapor_sayisi'] for veri in santiye_performans.values()])
-        toplam_personel = sum([veri['toplam_personel'] for veri in santiye_performans.values()])
-        
-        mesaj = f"📊 AYLIK PERFORMANS İSTATİSTİKLERİ\n"
-        mesaj += f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n\n"
-        
-        mesaj += f"📈 GENEL İSTATİSTİKLER:\n"
-        mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
-        mesaj += f"• Toplam Personel: {toplam_personel} kişi\n"
-        mesaj += f"• İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"• Günlük Ort.: {toplam_personel/gun_sayisi:.1f} kişi\n"
-        mesaj += f"• Aktif Şantiye: {len(santiye_performans)}\n\n"
-        
-        mesaj += f"🏆 ŞANTİYE PERFORMANS SIRALAMASI:\n\n"
-        
-        # Performans sıralaması (1️⃣ 2️⃣ 3️⃣ emoji numaraları)
-        performans_emojiler = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
-        
-        for i, santiye in enumerate(santiye_puanlari[:10]):  # İlk 10 şantiye
-            emoji = performans_emojiler[i] if i < len(performans_emojiler) else f"{i+1}."
-            
-            mesaj += f"{emoji} {santiye['santiye']}\n"
-            mesaj += f"   └─ Puan: {santiye['puan']:.1f} | Rapor: %{santiye['rapor_orani']:.1f} | Ort: {santiye['ortalama_personel']:.1f} kişi\n"
-            mesaj += f"   └─ Staff:{santiye['staff_toplam']} Çalışan:{santiye['calisan_toplam']} | {santiye['rapor_gun_sayisi']}/{gun_sayisi} gün\n\n"
-        
-        # Performans önerileri
-        mesaj += f"💡 PERFORMANS ÖNERİLERİ:\n"
-        
-        if santiye_puanlari:
-            en_iyi = santiye_puanlari[0]
-            en_kotu = santiye_puanlari[-1] if len(santiye_puanlari) > 1 else None
-            
-            mesaj += f"• En Başarılı: {en_iyi['santiye']} (%{en_iyi['rapor_orani']:.1f} rapor oranı)\n"
-            
-            if en_kotu and en_kotu['rapor_orani'] < 70:
-                mesaj += f"• Gelişim Gereken: {en_kotu['santiye']} - Rapor oranını artırmalı\n"
-            
-            # Genel öneriler
-            dusuk_rapor_santiyeler = [s for s in santiye_puanlari if s['rapor_orani'] < 60]
-            if dusuk_rapor_santiyeler:
-                mesaj += f"• Düşük Rapor: {', '.join([s['santiye'] for s in dusuk_rapor_santiyeler])}\n"
-        
-        mesaj += f"\n📝 Not: Puanlama; rapor sürekliliği (%40) ve personel verimliliğine (%60) göre hesaplanır."
-        
-        return mesaj
-        
-    except Exception as e:
-        return f"❌ Aylık istatistik raporu oluşturulurken hata: {e}"
-
-# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ (ESKİ VERSİYON - KORUNDU)
+# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -3316,6 +2708,16 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Rapor Botu Aktif! \n\n"
+        "Komutlar için `/info` yazın.\n\n"
+        "📋 Temel Kullanım:\n"
+        "• Rapor göndermek için direkt mesaj yazın\n"
+        "• `/info` - Tüm komutları görüntüle\n"
+        "• `/hakkinda` - Bot hakkında bilgi"
+    )
+
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
@@ -3372,7 +2774,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.2 - BWC EKİP BAŞI DÜZELTMESİ & ŞANTİYE PUANLAMA\n"
+        "Versiyon: 4.6.8 \n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -3386,11 +2788,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• Format hatası bildirimi ile kullanıcıları yönlendirir\n"
         "• Eksik bilgi tespiti ve düzeltme isteği\n"
-        "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır - DÜZELTİLDİ\n"
-        "• BUTONLU MENÜ SİSTEMİ ile kullanım kolaylığı\n"
-        "• Kategori bazlı arayüz\n"
-        "• ŞANTİYE BAZLI PUANLAMA SİSTEMİ\n"
-        "• Performans önerileri\n"
+        "• 'Yerel Ekipbaşı' kategorisi staff olarak tanınır\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3468,7 +2866,6 @@ async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(mesaj)
 
 async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """YENİ: Aylık istatistik komutu - şantiye bazlı puanlama"""
     if not await admin_kontrol(update, context):
         return
     
@@ -3478,7 +2875,7 @@ async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     start_date = today.replace(day=1)
     end_date = today
     
-    mesaj = await generate_aylik_istatistik_mesaji(start_date, end_date)
+    mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj)
 
 async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4058,7 +3455,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
         
         # SABİT NOT EKLENİYOR
-        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
+        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları iletin lütfen."
         
         if GROUP_ID:
             try:
@@ -4196,7 +3593,6 @@ async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application: Application):
     commands = [
         BotCommand("start", "Botu başlat"),
-        BotCommand("menu", "Ana menüyü göster"),
         BotCommand("info", "Komut bilgisi"),
         BotCommand("hakkinda", "Bot hakkında bilgi"),
         
@@ -4239,7 +3635,6 @@ def main():
         
         # Handler'ları ekle
         app.add_handler(CommandHandler("start", start_cmd))
-        app.add_handler(CommandHandler("menu", menu_cmd))
         app.add_handler(CommandHandler("info", info_cmd))
         app.add_handler(CommandHandler("hakkinda", hakkinda_cmd))
         
@@ -4265,9 +3660,6 @@ def main():
         app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
         app.add_handler(CommandHandler("reset_database", reset_database_cmd))
         app.add_handler(CommandHandler("fix_sequences", fix_sequences_cmd))
-        
-        # YENİ: Buton handler'ları
-        app.add_handler(CallbackQueryHandler(kategorik_buton_handler))
         
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
@@ -4307,13 +3699,9 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.2 - BWC EKİP BAŞI DÜZELTMESİ & ŞANTİYE PUANLAMA:")
-    print("   - BWC ekip başı toplama sorunu düzeltildi: 'Yerel Ekipbaşı' artık staff kategorisinde sayılıyor")
-    print("   - Şantiye isim standardizasyonu geliştirildi: 'KOK SARAY' → 'KÖKSARAY' dönüşümü eklendi")
-    print("   - Aylık istatistik raporu tamamen yenilendi: Şantiye bazlı puanlama sistemi eklendi")
-    print("   - İstatistik raporları artık şantiye performans puanlarını gösteriyor")
-    print("   - Puanlama sistemi: 1️⃣ 2️⃣ 3️⃣ emoji numaraları kullanılıyor")
-    print("   - Performans önerileri eklendi")
+    print("📝 Güncellenmiş Versiyon v4.6.8:")
+    print("   - 'Yerel Ekipbaşı' kategorisi staff olarak tanınacak şekilde SYSTEM_PROMPT güncellendi")
+    print("   - BWC raporlarındaki 'Toplam Yerel Ekipbaşı' değeri artık staff kategorisine eklenecek")
     print("   - Diğer tüm fonksiyonlar korundu")
     
     main()
