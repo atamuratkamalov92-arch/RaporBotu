@@ -965,8 +965,8 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 ]
 
 2. **ÖNCELİK KURALI - ÇOK ÖNEMLİ**:
-   - ÖNCE mesajda "Genel toplam", "Toplam", "Özet" gibi bölüm ara
-   - Eğer özet bölümü varsa (ÖRNEK: "Genel toplam: 25 kişi"):
+   - ÖNCE mesajda "Genel toplam", "Toplam", "Özet", "📝 GENEL TOPLAM:", "GENEL TOPLAM:", "GENEL TOPLAM", "📝 Genel Toplam:", "Genel Toplam:", "Genel toplam", "genel toplam", "📝 GENEL TOPLAM", "📝 Genel toplam:", "GENEL TOPLAM —", "GENEL TOPLAM:", "Genel Toplam:" gibi bölüm ara  gibi bölüm ara
+   - Eğer "özet", "📝 GENEL ÖZET", "GENEL ÖZET", "📝 Genel Özet", "📝 GENEL OZET", "GENEL ÖZET:": bölümü varsa (ÖRNEK: "Genel toplam: 25 kişi",):
      → SADECE özet bölümündeki sayıları kullan
      → Detaylı maddeleri TAMAMEN YOK SAY ve parse etme!
    - Özet yoksa veya eksikse, o zaman detaylı maddelerden say
@@ -1012,10 +1012,10 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "KOK SARAY" → "KÖKSARAY"
 
 9. **PERSONEL KATEGORİLERİ**:
-   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı
-   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
-   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
-   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi
+   - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Toplam Yerel Ekipbaşı:, Toplam Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff:, Toplam staff
+   - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, Toplam imalat:, Toplam imalat
+   - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar, Toplam ambar:, Toplam ambar
+   - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon:, Toplam mobilizasyon, Toplam mobilizasyon, mobilizasyon
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, başka şantiye, farklı şantiye, yurt dışı görev
 
