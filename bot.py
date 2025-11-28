@@ -1016,7 +1016,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar, Toplam ambar, Ambarcı
     - **mobilizasyon**: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon, Mobilizasyon
     - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni, İzinli, Hasta
-    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, başka şantiye, farklı şantiye, yurt dışı görev, Dış görev, Şantiye dışı
+    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, Şantiye dışı görev:, başka şantiye, farklı şantiye, yurt dışı görev, Dış görev, Şantiye dışı
 
 11. **HESAPLAMALAR**:
     genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
