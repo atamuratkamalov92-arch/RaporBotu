@@ -1,7 +1,10 @@
 """
-📋 CHANGELOG - bot.py v4.6.5
+📋 CHANGELOG - bot.py v4.7.0
 
 ✅ GÜNCELLEMELER:
+- DIŞ GÖREVLER genel toplama dahil edilmez - KRİTİK DEĞİŞİKLİK
+- YEREL EKİPBAŞI staff kategorisine eklendi - KRİTİK DEĞİŞİKLİK  
+- GPT matematik kontrolü eklendi - kullanıcının genel toplamını körü körüne kabul etmez
 - Gelişmiş Excel okuma fonksiyonu eklendi: Yeni format desteği ve esnek kolon eşleştirme.
 - Gelişmiş HTTP istek fonksiyonu eklendi: Timeout ve hata yönetimi.
 - Gelişmiş veritabanı bağlantı havuzu yönetimi: Hata yönetimi ve bağlantı doğrulama.
@@ -933,7 +936,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - YEREL EKİPBAŞI STAFF KATEGORİSİNE EKLENDİ
+# YENİ SİSTEM_PROMPT - KRİTİK DÜZELTMELERLE
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -970,12 +973,30 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Özet bulduğunda detayları GÖRMEZDEN GEL!
    - ÖRNEK: Mesajda hem detaylı işler hem de "Genel toplam: 25 kişi" varsa, SADECE 25 kullan!
 
-4. **TARİH ALGILAMA**:
+4. **YEREL EKİPBAŞI KURALI - YENİ**:
+   - "Yerel Ekipbaşı" personel DAİMA "staff" kategorisine DAHİLDİR
+   - Raporda "Yerel Ekipbaşı: 5 kişi" görürsen → "staff"a EKLE!
+   - ÖRNEK: "Staff: 8, Yerel Ekipbaşı: 5" → staff = 13
+   - Yerel Ekipbaşı'yı asla ayrı bir kategori olarak sayma!
+
+5. **DIŞ GÖREV KURALI - YENİ**:
+   - "dis_gorev_toplam" asla "genel_toplam"a DAHİL EDİLMEZ!
+   - Genel toplam = staff + calisan + mobilizasyon + ambarci + izinli
+   - Dış görevler sadece bilgi amaçlı "dis_gorev" listesinde gösterilir
+   - ÖRNEK: Staff:2 + Çalışan:3 = 5, Dış görev:5 → genel_toplam = 5 (10 değil!)
+
+6. **GENEL TOPLAM DOĞRULAMA - YENİ**:
+   - Kullanıcı "Genel toplam: X" yazsa bile SEN MATEMATİK KONTROLÜ YAP!
+   - Eğer staff+calisan+mobilizasyon+ambarci+izinli ≠ genel_toplam ise
+   - O ZAMAN kendi hesapladığın doğru toplamı kullan!
+   - ÖRNEK: "Genel toplam: 10" ama staff:2 + çalışan:3 = 5 ise → genel_toplam = 5 kullan!
+
+7. **TARİH ALGILAMA**:
    - Format: YYYY-AA-GG
    - Örnek: "13.11.2025" → "2025-11-13"
    - Tarih yoksa bugünün tarihini kullan
 
-5. **ŞANTİYE NORMALİZASYONU**:
+8. **ŞANTİYE NORMALİZASYONU**:
    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT
    - "Lot 13", "lot13", "LOT-13" → "LOT13"
    - "SKP Daho" → "SKP"
@@ -987,7 +1008,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "RMC" → "RMC"
    - "KOK SARAY" → "KÖKSARAY"
 
-6. **PERSONEL KATEGORİLERİ**:
+9. **PERSONEL KATEGORİLERİ**:
    - **staff**: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı
    - **calisan**: usta, işçi, yardımcı, operatör, imalat, çalışan, worker
    - **ambarci**: ambarcı, depo sorumlusu, malzemeci, ambar
@@ -995,27 +1016,26 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - **izinli**: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni
    - **dis_gorev**: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev
 
-7. **HESAPLAMALAR**:
-   genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
-   dis_gorev_toplam = tüm dış görevlerin toplamı (genel_toplam'a EKLENMEZ!)
+10. **HESAPLAMALAR**:
+    genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
+    dis_gorev_toplam = tüm dış görevlerin toplamı (genel_toplam'a EKLENMEZ!)
 
-8. **DİKKAT EDİLECEK NOKTALAR**:
-   - "Çalışan: 10" → calisan: 10
-   - "İzinli: 1" → izinli: 1
-   - "Ambarcı: 2" → ambarci: 2
-   - "Toplam staff: 1" → staff: 1
-   - "Toplam mobilizasyon: 2" → mobilizasyon: 2
-   - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
-   - "Beldersoy: 17 kişi" → calisan: 17
-   - "Genel toplam: 10 kişi" → genel_toplam: 10 (doğrulama için kullan)
-   - "Yerel Ekipbaşı: 5 kişi" → staff: 5 (staff'a EKLE!)
+11. **DİKKAT EDİLECEK NOKTALAR**:
+    - "Çalışan: 10" → calisan: 10
+    - "İzinli: 1" → izinli: 1
+    - "Ambarcı: 2" → ambarci: 2
+    - "Toplam staff: 1" → staff: 1
+    - "Toplam mobilizasyon: 2" → mobilizasyon: 2
+    - "Yerel Ekipbaşı: 5 kişi" → staff: 5 (staff'a EKLE!)
+    - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
+    - "Genel toplam: 10 kişi" → genel_toplam: 10 (ama MATEMATİK KONTROLÜ yap!)
 
-9. **ÖRNEK ÇIKTI FORMATI**:
+12. **ÖRNEK ÇIKTI FORMATI**:
 [
   {
     "date": "2025-11-13",
     "site": "LOT13",
-    "staff": 1,
+    "staff": 13,
     "calisan": 5,
     "mobilizasyon": 2,
     "ambarci": 1,
@@ -1025,7 +1045,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
       {"gorev_yeri": "FAP", "sayi": 2}
     ],
     "dis_gorev_toplam": 5,
-    "genel_toplam": 10
+    "genel_toplam": 22
   }
 ]
 
@@ -1038,6 +1058,7 @@ DİKKAT:
 - ÖZET BÖLÜMÜ VARSA DETAYLARI YOK SAY!
 - genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli (dis_gorev_toplam dahil DEĞİL!)
 - Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
+- Kullanıcının genel toplamını KÖRÜ KÖRÜNE KABUL ETME, matematik kontrolü yap!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -1156,7 +1177,7 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
 
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Kapsamlı doğrulama ile gelen mesajı işle"""
+    """Kapsamlı doğrulama ile gelen mesajı işle - GÜNCELLENDİ: Tanımlanmamış kategori kontrolü"""
     is_valid, cleaned_text = validate_user_input(raw_text)
     if not is_valid:
         return [] if is_group else {"error": "geçersiz_giriş"}
@@ -1220,14 +1241,41 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         except (ValueError, TypeError):
                             report[key] = 0
                 
-                if report.get('genel_toplam', 0) == 0:
-                    staff = report.get('staff', 0)
-                    calisan = report.get('calisan', 0)
-                    mobilizasyon = report.get('mobilizasyon', 0)
-                    ambarci = report.get('ambarci', 0)
-                    izinli = report.get('izinli', 0)
-                    dis_gorev_toplam = report.get('dis_gorev_toplam', 0)
-                    report['genel_toplam'] = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
+                # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez + Tanımlanmamış kategori kontrolü
+                calculated_total = (
+                    report.get('staff', 0) + 
+                    report.get('calisan', 0) + 
+                    report.get('mobilizasyon', 0) + 
+                    report.get('ambarci', 0) + 
+                    report.get('izinli', 0)
+                )
+                
+                # TANIMSIZ KATEGORİ KONTROLÜ - YENİ EKLENDİ
+                tanimli_kategoriler_toplami = calculated_total
+                tanimsiz_kategori_var = False
+                
+                # GPT'nin ekstra kategoriler ekleyip eklemediğini kontrol et
+                tum_anahtarlar = set(report.keys())
+                tanimli_anahtarlar = {'date', 'site', 'staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev', 'dis_gorev_toplam', 'genel_toplam'}
+                ekstra_anahtarlar = tum_anahtarlar - tanimli_anahtarlar
+                
+                # Ekstra sayısal anahtarları kontrol et (operatör, usta başı vb.)
+                for ekstra_anahtar in ekstra_anahtarlar:
+                    deger = report.get(ekstra_anahtar, 0)
+                    if isinstance(deger, (int, float)) and deger > 0:
+                        tanimsiz_kategori_var = True
+                        logging.warning(f"⚠️ Tanımlanmamış kategori tespit edildi: {ekstra_anahtar} = {deger}")
+                        # Ekstra kategoriyi "calisan"a ekle (varsayılan)
+                        report['calisan'] = report.get('calisan', 0) + int(deger)
+                        calculated_total += int(deger)
+                        logging.info(f"✅ Tanımlanmamış kategori '{ekstra_anahtar}' çalışanlara eklendi: +{deger}")
+                
+                # Eğer kullanıcının genel toplamı yanlışsa, doğru olanı kullan
+                if report.get('genel_toplam', 0) != calculated_total:
+                    logging.info(f"🔢 Genel toplam düzeltildi: {report.get('genel_toplam', 0)} → {calculated_total}")
+                    if tanimsiz_kategori_var:
+                        logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
+                    report['genel_toplam'] = calculated_total
                 
                 if report['genel_toplam'] > 0 or report['staff'] > 0:
                     filtered_reports.append(report)
@@ -1273,8 +1321,11 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev_toplam = gpt_rapor.get('dis_gorev_toplam', 0)
         genel_toplam = gpt_rapor.get('genel_toplam', 0)
         
-        if genel_toplam == 0:
-            genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli + dis_gorev_toplam
+        # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez
+        calculated_total = staff + calisan + mobilizasyon + ambarci + izinli
+        if genel_toplam != calculated_total:
+            logging.info(f"🔢 Rapor kaydında genel toplam düzeltildi: {genel_toplam} → {calculated_total}")
+            genel_toplam = calculated_total
         
         project_name = site
         if not project_name or project_name == 'BELİRSİZ':
@@ -2586,7 +2637,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.6.5 \n"
+        "Versiyon: 4.7.0 \n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -3496,7 +3547,10 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.6.5:")
+    print("📝 Güncellenmiş Versiyon v4.7.0:")
+    print("   - DIŞ GÖREVLER genel toplama dahil edilmez - KRİTİK DEĞİŞİKLİK")
+    print("   - YEREL EKİPBAŞI staff kategorisine eklendi - KRİTİK DEĞİŞİKLİK")  
+    print("   - GPT matematik kontrolü eklendi - kullanıcının genel toplamını körü körüne kabul etmez")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
