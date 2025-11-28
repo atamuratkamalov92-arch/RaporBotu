@@ -968,7 +968,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Toplam mobilizasyon", "mobilizasyon", "Mobilizasyon" → "mobilizasyon"
    - "Toplam ambar", "ambar", "ambarcı", "Ambarcı" → "ambarci"
    - "İzinli", "izinli", "Hasta" → "izinli"
-   - "Dış görev", "Şantiye dışı görev", "dış görev" → "dis_gorev"
+   - "Dış görev", "Şantiye dışı görev", "dış görev", "Şantiye dışı görev:", "Şantiye dışı görev" → "dis_gorev"
 
 4. **ÇİFT SAYMA KORUMASI**:
    - Asla aynı mesajdan hem GENEL ÖZET hem detay sayma!
