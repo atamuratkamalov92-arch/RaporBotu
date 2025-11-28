@@ -12,6 +12,7 @@
 - TAŞERON personel tanımı eklendi
 - Özet-detay çakışma koruması güçlendirildi
 - BWC özel durumu için optimizasyon
+- HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi
 """
 
 import os
@@ -2289,6 +2290,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
+            # DAĞILIM YÜZDELERİNİ DÜZELT - TOPLAM PERSONEL ÜZERİNDEN HESAPLA
             mesaj += f"🎯 DAĞILIM:\n"
             if genel_staff > 0:
                 mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
@@ -2473,6 +2475,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
+            # DAĞILIM YÜZDELERİNİ DÜZELT - TOPLAM PERSONEL ÜZERİNDEN HESAPLA
             mesaj += f"🎯 DAĞILIM:\n"
             if genel_staff > 0:
                 mesaj += f"• Staff: {genel_staff} (%{genel_staff/genel_toplam*100:.1f})\n"
@@ -3430,9 +3433,9 @@ async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
     try:
         today = dt.datetime.now(TZ).date()
         
-        # SON 7 GÜN İÇİN RAPOR HAZIRLA (Bugünden 7 gün geriye)
-        end_date = today  # Bugün dahil
-        start_date = today - dt.timedelta(days=6)  # 6 gün geri (7 günlük periyot)
+        # DÜZELTİLDİ: ÖNCEKİ HAFTANIN RAPORUNU HAZIRLA (Bugünden 7 gün geriye)
+        end_date = today - dt.timedelta(days=1)  # Dün dahil
+        start_date = end_date - dt.timedelta(days=6)  # 6 gün geri (7 günlük periyot)
         
         mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
         
@@ -3624,5 +3627,6 @@ if __name__ == "__main__":
     print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
     print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
     print("   - Haftalık rapor job'ı aktif edildi")
+    print("   - HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi")
     
     main()
