@@ -1,5 +1,9 @@
 """
-📋 CHANGELOG - bot.py v4.7.0
+📋 CHANGELOG - bot.py v4.7.1
+
+✅ KRİTİK GÜNCELLEME: ŞANTİYE BAŞLIĞI vs GENEL TOPLAM AYRIMI
+- ŞANTİYE BAŞLIĞI: Sadece şantiye personeli (dış görevler HARİÇ)
+- GENEL TOPLAM: Tüm personel (şantiye + dış görevler DAHİL)
 
 ✅ GÜNCELLEMELER:
 - DIŞ GÖREVLER genel toplama dahil edilmez - KRİTİK DEĞİŞİKLİK
@@ -504,7 +508,6 @@ def normalize_site_name(site_name):
         'DMC ELLIPSE ELEKTRIK GRUBU': 'DMC',
         'DMC GARDEN ELEKTRIK GRUBU': 'DMC',
         'DMC ELEKTRIK GRUBU': 'DMC',
-        'DMC ELEKTRIK': 'DMC',
         'DMC ELLIPSE GARDEN ELEKTRİK': 'DMC',
         'DMC ELLIPSE ELEKTRİK': 'DMC',
         'DMC GARDEN ELEKTRİK': 'DMC',
@@ -1904,9 +1907,9 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
         except Exception as e:
             logging.error(f"Hata bildirimi {admin_id} adminine gönderilemedi: {e}")
 
-# Personel özeti fonksiyonu - ŞANTİYE BAZLI - TÜMÜ FİLTRELENDİ
+# Personel özeti fonksiyonu - ŞANTİYE BAZLI - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
 async def generate_gelismis_personel_ozeti(target_date):
-    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur"""
+    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur - KRİTİK GÜNCELLEME: Şantiye Başlığı vs Genel Toplam"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description, ai_analysis
@@ -1946,7 +1949,8 @@ async def generate_gelismis_personel_ozeti(target_date):
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
                     'toplam': 0,
-                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0
+                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0,
+                    'santiye_baslik': 0  # YENİ: Şantiye başlık sayısı (dış görevler HARİÇ)
                 }
             
             try:
@@ -1968,14 +1972,13 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 elif personel_dagilimi:
                     staff_count = personel_dagilimi.get('staff', 0)
@@ -1991,14 +1994,14 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['ambarci'] += ambarci_count
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
+                    
                 else:
                     yapilan_is_lower = (yapilan_is or '').lower()
                     
@@ -2013,7 +2016,9 @@ async def generate_gelismis_personel_ozeti(target_date):
                     else:
                         proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
                     
+                    # Eski mantık (fallback)
                     proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                    proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
                         
             except Exception as e:
                 logging.error(f"Personel analiz hatası: {e}")
@@ -2030,10 +2035,13 @@ async def generate_gelismis_personel_ozeti(target_date):
                 else:
                     proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
                 
+                # Eski mantık (fallback)
                 proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
             
             tum_projeler.add(proje_adi)
         
+        # KRİTİK GÜNCELLEME: Genel toplam hesaplaması (tüm şantiyelerin toplamı + kendi dış görevleri)
         for proje_adi, analiz in proje_analizleri.items():
             genel_staff += analiz['staff']
             genel_calisan += analiz['calisan']
@@ -2041,15 +2049,17 @@ async def generate_gelismis_personel_ozeti(target_date):
             genel_ambarci += analiz['ambarci']
             genel_izinli += analiz['izinli']
             genel_dis_gorev_toplam += analiz['dis_gorev_toplam']
-            genel_toplam += analiz['toplam']
+            genel_toplam += analiz['toplam']  # Bu artık şantiye başlık + dış görevler içeriyor
         
         mesaj = f"📊 {target_date.strftime('%d.%m.%Y')} GÜNLÜK PERSONEL ÖZETİ\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            proje_toplam = analiz['toplam']
-            if proje_toplam > 0:
+            # KRİTİK GÜNCELLEME: Şantiye başlık = santiye_baslik (dış görevler HARİÇ)
+            santiye_baslik = analiz['santiye_baslik']
+            
+            if santiye_baslik > 0:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {proje_toplam} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {santiye_baslik} kişi\n"
                 
                 durum_detay = []
                 if analiz['staff'] > 0: 
@@ -2068,6 +2078,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                 if durum_detay:
                     mesaj += f"   └─ {', '.join(durum_detay)}\n\n"
         
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2097,7 +2108,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
-# Haftalık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
+# Haftalık rapor fonksiyonu - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2140,7 +2151,8 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
-                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 'toplam': 0
+                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 
+                    'toplam': 0, 'santiye_baslik': 0  # YENİ: Şantiye başlık sayısı
                 }
             
             try:
@@ -2149,36 +2161,48 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
                 if yeni_format:
-                    proje_analizleri[proje_adi]['staff'] += yeni_format.get('staff', 0)
-                    proje_analizleri[proje_adi]['calisan'] += yeni_format.get('calisan', 0)
-                    proje_analizleri[proje_adi]['mobilizasyon'] += yeni_format.get('mobilizasyon', 0)
-                    proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
-                    proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
-                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    staff_count = yeni_format.get('staff', 0)
+                    calisan_count = yeni_format.get('calisan', 0)
+                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
+                    ambarci_count = yeni_format.get('ambarci', 0)
+                    izinli_count = yeni_format.get('izinli', 0)
+                    dis_gorev_toplam_count = yeni_format.get('dis_gorev_toplam', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['calisan'] += calisan_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['ambarci'] += ambarci_count
+                    proje_analizleri[proje_adi]['izinli'] += izinli_count
+                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 elif personel_dagilimi:
-                    proje_analizleri[proje_adi]['staff'] += personel_dagilimi.get('staff', 0)
-                    proje_analizleri[proje_adi]['calisan'] += personel_dagilimi.get('calisan', 0)
-                    proje_analizleri[proje_adi]['mobilizasyon'] += personel_dagilimi.get('mobilizasyon', 0)
-                    proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
-                    proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
-                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    staff_count = personel_dagilimi.get('staff', 0)
+                    calisan_count = personel_dagilimi.get('calisan', 0)
+                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
+                    ambarci_count = personel_dagilimi.get('ambarci', 0)
+                    izinli_count = personel_dagilimi.get('izinli', 0)
+                    dis_gorev_toplam_count = personel_dagilimi.get('dis_gorev_toplam', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['calisan'] += calisan_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['ambarci'] += ambarci_count
+                    proje_analizleri[proje_adi]['izinli'] += izinli_count
+                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
             except Exception as e:
                 logging.error(f"Proje analiz hatası: {e}")
@@ -2193,7 +2217,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         genel_dis_gorev_toplam = 0
         
         for proje in proje_analizleri.values():
-            genel_toplam += proje['toplam']
+            genel_toplam += proje['toplam']  # Bu artık şantiye başlık + dış görevler içeriyor
             genel_staff += proje['staff']
             genel_calisan += proje['calisan']
             genel_mobilizasyon += proje['mobilizasyon']
@@ -2220,14 +2244,14 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "STADYUM", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and analiz['toplam'] > 0:
-                mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
+            if proje_adi in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
+            if proje_adi not in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
                 
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
@@ -2240,6 +2264,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2266,7 +2291,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ
+# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2310,7 +2335,8 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
-                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 'toplam': 0
+                    'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0, 
+                    'toplam': 0, 'santiye_baslik': 0  # YENİ: Şantiye başlık sayısı
                 }
             
             try:
@@ -2319,36 +2345,48 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
                 
                 if yeni_format:
-                    proje_analizleri[proje_adi]['staff'] += yeni_format.get('staff', 0)
-                    proje_analizleri[proje_adi]['calisan'] += yeni_format.get('calisan', 0)
-                    proje_analizleri[proje_adi]['mobilizasyon'] += yeni_format.get('mobilizasyon', 0)
-                    proje_analizleri[proje_adi]['ambarci'] += yeni_format.get('ambarci', 0)
-                    proje_analizleri[proje_adi]['izinli'] += yeni_format.get('izinli', 0)
-                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += yeni_format.get('dis_gorev_toplam', 0)
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    staff_count = yeni_format.get('staff', 0)
+                    calisan_count = yeni_format.get('calisan', 0)
+                    mobilizasyon_count = yeni_format.get('mobilizasyon', 0)
+                    ambarci_count = yeni_format.get('ambarci', 0)
+                    izinli_count = yeni_format.get('izinli', 0)
+                    dis_gorev_toplam_count = yeni_format.get('dis_gorev_toplam', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['calisan'] += calisan_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['ambarci'] += ambarci_count
+                    proje_analizleri[proje_adi]['izinli'] += izinli_count
+                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 elif personel_dagilimi:
-                    proje_analizleri[proje_adi]['staff'] += personel_dagilimi.get('staff', 0)
-                    proje_analizleri[proje_adi]['calisan'] += personel_dagilimi.get('calisan', 0)
-                    proje_analizleri[proje_adi]['mobilizasyon'] += personel_dagilimi.get('mobilizasyon', 0)
-                    proje_analizleri[proje_adi]['ambarci'] += personel_dagilimi.get('ambarci', 0)
-                    proje_analizleri[proje_adi]['izinli'] += personel_dagilimi.get('izinli', 0)
-                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += personel_dagilimi.get('dis_gorev_toplam', 0)
-                    proje_analizleri[proje_adi]['toplam'] = (
-                        proje_analizleri[proje_adi]['staff'] + 
-                        proje_analizleri[proje_adi]['calisan'] + 
-                        proje_analizleri[proje_adi]['mobilizasyon'] + 
-                        proje_analizleri[proje_adi]['ambarci'] + 
-                        proje_analizleri[proje_adi]['izinli'] + 
-                        proje_analizleri[proje_adi]['dis_gorev_toplam']
-                    )
+                    staff_count = personel_dagilimi.get('staff', 0)
+                    calisan_count = personel_dagilimi.get('calisan', 0)
+                    mobilizasyon_count = personel_dagilimi.get('mobilizasyon', 0)
+                    ambarci_count = personel_dagilimi.get('ambarci', 0)
+                    izinli_count = personel_dagilimi.get('izinli', 0)
+                    dis_gorev_toplam_count = personel_dagilimi.get('dis_gorev_toplam', 0)
+                    
+                    proje_analizleri[proje_adi]['staff'] += staff_count
+                    proje_analizleri[proje_adi]['calisan'] += calisan_count
+                    proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
+                    proje_analizleri[proje_adi]['ambarci'] += ambarci_count
+                    proje_analizleri[proje_adi]['izinli'] += izinli_count
+                    proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
+                    
+                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
+                    santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
+                    proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
+                    
+                    # Toplam = Şantiye başlık + dış görevler
+                    proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
             except Exception as e:
                 logging.error(f"Proje analiz hatası: {e}")
@@ -2363,7 +2401,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         genel_dis_gorev_toplam = 0
         
         for proje in proje_analizleri.values():
-            genel_toplam += proje['toplam']
+            genel_toplam += proje['toplam']  # Bu artık şantiye başlık + dış görevler içeriyor
             genel_staff += proje['staff']
             genel_calisan += proje['calisan']
             genel_mobilizasyon += proje['mobilizasyon']
@@ -2390,14 +2428,14 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and analiz['toplam'] > 0:
-                mesaj += f"🏗️ {proje_adi}: {analiz['toplam']} kişi\n"
+            if proje_adi in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and analiz['toplam'] > 0:
+            if proje_adi not in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['toplam']} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
                 
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
@@ -2410,6 +2448,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2637,7 +2676,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.0 \n"
+        "Versiyon: 4.7.1 - KRİTİK ŞANTİYE BAŞLIK GÜNCELLEMESİ\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• Çoklu şantiye desteği\n"
@@ -2649,6 +2688,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Şantiye bazlı rapor sistemi\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
+        "• KRİTİK: Şantiye başlığı (dış görevler HARİÇ) vs Genel toplam (tüm personel DAHİL)\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3547,7 +3587,9 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.0:")
+    print("📝 Güncellenmiş Versiyon v4.7.1 - KRİTİK ŞANTİYE BAŞLIK GÜNCELLEMESİ:")
+    print("   - ŞANTİYE BAŞLIĞI: Sadece şantiye personeli (dış görevler HARİÇ)")
+    print("   - GENEL TOPLAM: Tüm personel (şantiye + dış görevler DAHİL)")
     print("   - DIŞ GÖREVLER genel toplama dahil edilmez - KRİTİK DEĞİŞİKLİK")
     print("   - YEREL EKİPBAŞI staff kategorisine eklendi - KRİTİK DEĞİŞİKLİK")  
     print("   - GPT matematik kontrolü eklendi - kullanıcının genel toplamını körü körüne kabul etmez")
