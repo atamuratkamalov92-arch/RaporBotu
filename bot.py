@@ -2133,7 +2133,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
-# Haftalık rapor fonksiyonu - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
+# HAFTALIK RAPOR FONKSİYONU - DÜZELTİLMİŞ
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2233,6 +2233,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
+        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2317,7 +2318,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# Aylık rapor fonksiyonu - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
+# AYLIK RAPOR FONKSİYONU - DÜZELTİLMİŞ
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2418,6 +2419,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
+        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
