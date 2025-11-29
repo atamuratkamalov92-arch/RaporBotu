@@ -1,15 +1,18 @@
 """
-📋 CHANGELOG - bot.py v4.7.3
+📋 CHANGELOG - bot.py v4.7.2
 
-✅ KRİTİK DÜZELTMELER: HAFTALIK VE AYLIK RAPOR TOPLAMLARI
-- HAFTALIK ve AYLIK raporlarda GENEL TOPLAM hesaplaması düzeltildi
-- YÜZDE DAĞILIMLARI düzeltildi (toplam personel üzerinden hesaplanıyor)
-- MOS şantiyesi eklendi ve OrhanCeylan'a atandı
+✅ KRİTİK DÜZELTMELER: GENEL ÖZET ÖNCELİĞİ VE TANIMLAR
+- ÖNCELİK KURALI: Her zaman "GENEL ÖZET" bölümü önceliklidir
+- YENİ TANIMLAR: "TAŞERON", "taşeron" → "calisan" olarak tanımlandı
+- YEREL EKİPBAŞI: "staff" kategorisine dahil edildi
+- GENEL ÖZET varyasyonları eklendi: tüm "GENEL ÖZET" formatları destekleniyor
 
-✅ DİĞER GÜNCELLEMELER:
-- GENEL TOPLAM = Σ(tüm şantiyelerin toplam personeli) şeklinde düzeltildi
-- Yüzde hesaplamaları genel toplam üzerinden yapılıyor
-- MOS şantiyesi sabit listelere eklendi
+✅ GÜNCELLEMELER:
+- GENEL ÖZET parsing algoritması geliştirildi
+- TAŞERON personel tanımı eklendi
+- Özet-detay çakışma koruması güçlendirildi
+- BWC özel durumu için optimizasyon
+- HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi
 """
 
 import os
@@ -2230,7 +2233,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # KRİTİK DÜZELTME: GENEL TOPLAM HESAPLAMASI - TÜM ŞANTİYELERİN TOPLAM PERSONELİ
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2287,7 +2289,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
-        # KRİTİK DÜZELTME: GENEL TOPLAM VE YÜZDE HESAPLAMALARI
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2416,7 +2418,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # KRİTİK DÜZELTME: GENEL TOPLAM HESAPLAMASI - TÜM ŞANTİYELERİN TOPLAM PERSONELİ
         genel_toplam = 0
         genel_staff = 0
         genel_calisan = 0
@@ -2473,7 +2474,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
-        # KRİTİK DÜZELTME: GENEL TOPLAM VE YÜZDE HESAPLAMALARI
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2702,7 +2703,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.3 - KRİTİK HAFTALIK/AYLIK RAPOR DÜZELTMELERİ\n"
+        "Versiyon: 4.7.2 - KRİTİK GENEL ÖZET GÜNCELLEMESİ\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• GENEL ÖZET öncelik sistemi: Tüm GENEL ÖZET varyasyonları desteklenir\n"
@@ -2716,8 +2717,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Şantiye bazlı rapor sistemi\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• KRİTİK DÜZELTME: Haftalık ve Aylık raporlarda genel toplam ve yüzde hesaplamaları düzeltildi\n"
-        "• YENİ ŞANTİYE: MOS şantiyesi eklendi ve OrhanCeylan'a atandı\n"
+        "• KRİTİK: Şantiye başlığı (dış görevler HARİÇ) vs Genel toplam (tüm personel DAHİL)\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3616,12 +3616,21 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.3 - KRİTİK HAFTALIK/AYLIK RAPOR DÜZELTMELERİ:")
-    print("   - HAFTALIK ve AYLIK raporlarda GENEL TOPLAM hesaplaması düzeltildi")
-    print("   - YÜZDE DAĞILIMLARI düzeltildi (toplam personel üzerinden hesaplanıyor)")
-    print("   - MOS şantiyesi eklendi ve OrhanCeylan'a atandı")
-    print("   - GENEL TOPLAM = Σ(tüm şantiyelerin toplam personeli) şeklinde düzeltildi")
-    print("   - Yüzde hesaplamaları genel toplam üzerinden yapılıyor")
-    print("   - MOS şantiyesi sabit listelere eklendi")
+    print("📝 Güncellenmiş Versiyon v4.7.2 - KRİTİK GENEL ÖZET GÜNCELLEMESİ:")
+    print("   - GENEL ÖZET öncelik sistemi: Tüm GENEL ÖZET varyasyonları desteklenir")
+    print("   - YENİ TANIMLAR: 'TAŞERON', 'taşeron' → 'calisan' olarak tanımlandı")
+    print("   - YEREL EKİPBAŞI: 'staff' kategorisine dahil edildi")
+    print("   - BWC raporundaki sorun çözüldü: 169 kişi doğru şekilde işlenecek")
+    print("   - Hata yönetimi güçlendirildi")
+    print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
+    print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
+    print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
+    print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
+    print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
+    print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
+    print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
+    print("   - Haftalık rapor job'ı aktif edildi")
+    print("   - HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi")
+    print("   - MOS şantiyesi eklendi - Sorumlu: @OrhanCeylan")
     
     main()
