@@ -6,12 +6,15 @@
 - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100
 - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan
 - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor
+- EKSİK RAPOR ANALİZİ eklendi: Excel ve detaylı raporlama
 
 ✅ GÜNCELLEMELER:
 - Toplama algoritması düzeltildi
 - Yüzde hesaplama formülü düzeltildi
 - Yeni MOS şantiyesi eklendi
 - Tüm raporlarda tutarlı genel toplam hesaplaması
+- Eksik rapor analizi için 3 yeni komut eklendi
+- Excel formatında eksik rapor takip sistemi
 """
 
 import os
@@ -33,6 +36,7 @@ import subprocess
 import shlex
 from unicodedata import normalize
 from dotenv import load_dotenv
+from typing import Dict, List, Tuple
 
 # Çevre değişkenlerini en başta yükle
 load_dotenv()
@@ -2624,6 +2628,282 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
+# EKSİK RAPOR ANALİZ FONKSİYONLARI - YENİ EKLENDİ
+def parse_tr_date(date_str: str) -> dt.date:
+    """GG.AA.YYYY formatındaki tarihi parse eder"""
+    try:
+        day, month, year = map(int, date_str.split('.'))
+        return dt.date(year, month, day)
+    except (ValueError, AttributeError):
+        raise ValueError("Geçersiz tarih formatı. GG.AA.YYYY şeklinde olmalı.")
+
+async def analyze_missing_reports(start_date: dt.date, end_date: dt.date) -> Tuple[Dict, List]:
+    """Belirtilen tarih aralığındaki eksik raporları analiz eder"""
+    try:
+        tum_santiyeler = set(SABIT_SANTIYELER).union(
+            set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
+        )
+        current_date = start_date
+        gunler = []
+        while current_date <= end_date:
+            if current_date.weekday() < 5:
+                gunler.append(current_date)
+            current_date += dt.timedelta(days=1)
+        santiye_analiz = {}
+        for santiye in tum_santiyeler:
+            santiye_analiz[santiye] = {
+                'toplam_gun': len(gunler),
+                'rapor_verilen_gunler': 0,
+                'eksik_gunler': [],
+                'rapor_verilen_tarihler': []
+            }
+            for gun in gunler:
+                rapor_var = await async_fetchone("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM reports 
+                        WHERE report_date = %s AND project_name = %s
+                    )
+                """, (gun, santiye))
+                if rapor_var and safe_get_tuple_value(rapor_var, 0, False):
+                    santiye_analiz[santiye]['rapor_verilen_gunler'] += 1
+                    santiye_analiz[santiye]['rapor_verilen_tarihler'].append(gun)
+                else:
+                    santiye_analiz[santiye]['eksik_gunler'].append(gun)
+        return santiye_analiz, gunler
+    except Exception as e:
+        logging.error(f"Eksik rapor analiz hatası: {e}")
+        return {}, []
+
+async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
+    """Eksik rapor analizini Excel formatında oluştur"""
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Eksik Rapor Analizi"
+        ws.merge_cells('A1:D1')
+        ws['A1'] = f"Eksik Rapor Analizi - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        headers = ['Şantiye', 'Toplam Gün', 'Eksik Gün', 'Eksik %'] + [gun.strftime('%d.%m') for gun in gunler]
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=header)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(horizontal='center')
+        row = 4
+        for santiye, a in sorted(analiz.items()):
+            ws.cell(row=row, column=1, value=santiye)
+            ws.cell(row=row, column=2, value=a['toplam_gun'])
+            ws.cell(row=row, column=3, value=len(a['eksik_gunler']))
+            eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
+            ws.cell(row=row, column=4, value=eksik_yuzde/100)
+            ws.cell(row=row, column=4).number_format = '0.00%'
+            for col, gun in enumerate(gunler, 5):
+                if gun in a['eksik_gunler']:
+                    ws.cell(row=row, column=col, value='✗')
+                    ws.cell(row=row, column=col).fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+                else:
+                    ws.cell(row=row, column=col, value='✓')
+                    ws.cell(row=row, column=col).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            row += 1
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 10
+        for i in range(len(gunler)):
+            col_letter = chr(69 + i)
+            ws.column_dimensions[col_letter].width = 8
+        ws_summary = wb.create_sheet("Özet")
+        toplam_santiye = len(analiz)
+        eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
+        eksik_santiye = toplam_santiye - eksiksiz_santiye
+        toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
+        summary_data = [
+            ['Başlangıç Tarihi', start_date.strftime('%d.%m.%Y')],
+            ['Bitiş Tarihi', end_date.strftime('%d.%m.%Y')],
+            ['Toplam Şantiye', toplam_santiye],
+            ['Eksiksiz Şantiye', eksiksiz_santiye],
+            ['Eksik Raporu Olan Şantiye', eksik_santiye],
+            ['Toplam Eksik Rapor', toplam_eksik_rapor],
+            ['İş Günü Sayısı', len(gunler)],
+            ['Oluşturulma Tarihi', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
+        ]
+        for i, (label, value) in enumerate(summary_data, 1):
+            ws_summary.cell(row=i, column=1, value=label).font = Font(bold=True)
+            ws_summary.cell(row=i, column=2, value=value)
+        ws_summary.column_dimensions['A'].width = 25
+        ws_summary.column_dimensions['B'].width = 20
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        wb.save(temp_file.name)
+        return temp_file.name
+    except Exception as e:
+        logging.error(f"Eksik rapor Excel oluşturma hatası: {e}")
+        raise e
+
+def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
+    mesaj = f"📋 EKSİK RAPOR DETAY ANALİZİ\n"
+    mesaj += f"📅 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n"
+    mesaj += "Not: 'Eksik günler:' olarak tarihler yazılmıştır.\n\n"
+    kritik = []
+    orta = []
+    az = []
+    for santiye, a in analiz.items():
+        eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
+        if eksik_yuzde >= 50:
+            kritik.append((santiye, a, eksik_yuzde))
+        elif eksik_yuzde >= 25:
+            orta.append((santiye, a, eksik_yuzde))
+        else:
+            az.append((santiye, a, eksik_yuzde))
+    if kritik:
+        mesaj += f"🔴 KRİTİK EKSİKLİK (%50'den fazla) ({len(kritik)} şantiye):\n"
+        for santiye, a, yuzde in sorted(kritik, key=lambda x: x[2], reverse=True):
+            mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
+            eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
+            mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    if orta:
+        mesaj += f"🟡 ORTA EKSİKLİK (%25-50) ({len(orta)} şantiye):\n"
+        for santiye, a, yuzde in sorted(orta, key=lambda x: x[2], reverse=True):
+            mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
+            eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
+            mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    if az:
+        mesaj += f"✅ AZ EKSİKLİK (%0-25) ({len(az)} şantiye):\n"
+        for santiye, a, yuzde in sorted(az, key=lambda x: x[2], reverse=True):
+            mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
+            if a['eksik_gunler']:
+                eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
+                mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n"
+            mesaj += "\n"
+    toplam_santiye = len(analiz)
+    eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
+    eksik_santiye = toplam_santiye - eksiksiz_santiye
+    toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
+    mesaj += f"📊 ÖZET:\n"
+    mesaj += f"• Toplam Şantiye: {toplam_santiye}\n"
+    mesaj += f"• Eksiksiz Şantiye: {eksiksiz_santiye} (%{eksiksiz_santiye/toplam_santiye*100:.1f})\n"
+    mesaj += f"• Eksik Raporu Olan: {eksik_santiye} (%{eksik_santiye/toplam_santiye*100:.1f})\n"
+    mesaj += f"• İş Günü: {len(gunler)} gün\n"
+    mesaj += f"• Toplam EKSİK RAPOR: {toplam_eksik_rapor}\n"
+    return mesaj
+
+async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_kontrol(update, context):
+        return
+
+    if not context.args or len(context.args) != 2:
+        await update.message.reply_text(
+            "📋 EKSİK RAPOR EXCEL RAPORU\n\n"
+            "Kullanım: `/eksik_rapor_excel 01.11.2024 30.11.2024`\n"
+            "Belirtilen tarih aralığı için eksik rapor analizi Excel'i oluşturur."
+        )
+        return
+
+    await update.message.reply_text("⌛ Eksik rapor analizi hazırlanıyor...")
+
+    try:
+        tarih1 = context.args[0].replace('/', '.').replace('-', '.')
+        tarih2 = context.args[1].replace('/', '.').replace('-', '.')
+        
+        start_date = parse_tr_date(tarih1)
+        end_date = parse_tr_date(tarih2)
+        
+        if start_date > end_date:
+            await update.message.reply_text("❌ Başlangıç tarihi bitiş tarihinden büyük olamaz.")
+            return
+
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            await update.message.reply_text("❌ Eksik rapor analizi oluşturulamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        with open(excel_dosyasi, 'rb') as file:
+            await update.message.reply_document(
+                document=file,
+                filename=f"Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                caption=f"📊 Eksik Rapor Analizi: {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+            )
+        
+        await update.message.reply_text(mesaj)
+        os.unlink(excel_dosyasi)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Eksik rapor analizi hatası: {e}")
+        logging.error(f"Eksik rapor analizi hatası: {e}")
+
+async def haftalik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_kontrol(update, context):
+        return
+
+    await update.message.reply_text("⌛ Haftalık eksik rapor analizi hazırlanıyor...")
+
+    try:
+        today = dt.datetime.now(TZ).date()
+        start_date = today - dt.timedelta(days=today.weekday())
+        end_date = start_date + dt.timedelta(days=6)
+
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            await update.message.reply_text("❌ Haftalık eksik rapor analizi oluşturulamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        with open(excel_dosyasi, 'rb') as file:
+            await update.message.reply_document(
+                document=file,
+                filename=f"Haftalik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                caption=f"📊 Haftalık Eksik Rapor Analizi: {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+            )
+        
+        await update.message.reply_text(mesaj)
+        os.unlink(excel_dosyasi)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Haftalık eksik rapor analizi hatası: {e}")
+        logging.error(f"Haftalık eksik rapor analizi hatası: {e}")
+
+async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_kontrol(update, context):
+        return
+
+    await update.message.reply_text("⌛ Aylık eksik rapor analizi hazırlanıyor...")
+
+    try:
+        today = dt.datetime.now(TZ).date()
+        start_date = today.replace(day=1)
+        end_date = today
+
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            await update.message.reply_text("❌ Aylık eksik rapor analizi oluşturulamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        with open(excel_dosyasi, 'rb') as file:
+            await update.message.reply_document(
+                document=file,
+                filename=f"Aylik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                caption=f"📊 Aylık Eksik Rapor Analizi: {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+            )
+        
+        await update.message.reply_text(mesaj)
+        os.unlink(excel_dosyasi)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Aylık eksik rapor analizi hatası: {e}")
+        logging.error(f"Aylık eksik rapor analizi hatası: {e}")
+
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Rapor Botu Aktif! \n\n"
@@ -2662,7 +2942,10 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"`/ai_rapor` - Detaylı AI raporu (Admin)\n"
             f"`/kullanicilar` - Tüm kullanıcı listesi (Admin)\n"
             f"`/santiyeler` - Şantiye listesi (Admin)\n"
-            f"`/santiye_durum` - Şantiye rapor durumu (Admin)\n\n"
+            f"`/santiye_durum` - Şantiye rapor durumu (Admin)\n"
+            f"`/eksik_rapor_excel` - Eksik rapor Excel analizi (Admin)\n"
+            f"`/haftalik_eksik_raporlar` - Haftalık eksik rapor analizi (Admin)\n"
+            f"`/aylik_eksik_raporlar` - Aylık eksik rapor analizi (Admin)\n\n"
             f"⚡ Super Admin Komutları:\n"
             f"`/reload` - Excel dosyasını yenile (Super Admin)\n"
             f"`/yedekle` - Manuel yedekleme (Super Admin)\n"
@@ -2690,12 +2973,13 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ\n"
+        "Versiyon: 4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• GENEL TOPLAM düzeltildi: Tüm kategorilerin toplamı alınır\n"
         "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
         "• MOS şantiyesi eklendi: Sorumlu @OrhanCeylan\n"
+        "• EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi\n"
         "• Çoklu şantiye desteği\n"
         "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
         "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
@@ -2706,6 +2990,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
         "• KRİTİK: Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor\n"
+        "• YENİ: Eksik rapor analizi için 3 yeni komut (/eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar)\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3516,6 +3801,9 @@ async def post_init(application: Application):
         BotCommand("kullanicilar", "Tüm kullanıcı listesi (Admin)"),
         BotCommand("santiyeler", "Şantiye listesi (Admin)"),
         BotCommand("santiye_durum", "Şantiye rapor durumu (Admin)"),
+        BotCommand("eksik_rapor_excel", "Eksik rapor Excel analizi (Admin)"),
+        BotCommand("haftalik_eksik_raporlar", "Haftalık eksik rapor analizi (Admin)"),
+        BotCommand("aylik_eksik_raporlar", "Aylık eksik rapor analizi (Admin)"),
         
         BotCommand("reload", "Excel yenile (Super Admin)"),
         BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
@@ -3558,6 +3846,11 @@ def main():
         app.add_handler(CommandHandler("kullanicilar", kullanicilar_cmd))
         app.add_handler(CommandHandler("santiyeler", santiyeler_cmd))
         app.add_handler(CommandHandler("santiye_durum", santiye_durum_cmd))
+        
+        # YENİ EKSİK RAPOR ANALİZ HANDLER'LARI
+        app.add_handler(CommandHandler("eksik_rapor_excel", eksik_rapor_excel_cmd))
+        app.add_handler(CommandHandler("haftalik_eksik_raporlar", haftalik_eksik_raporlar_cmd))
+        app.add_handler(CommandHandler("aylik_eksik_raporlar", aylik_eksik_raporlar_cmd))
         
         app.add_handler(CommandHandler("reload", reload_cmd))
         app.add_handler(CommandHandler("yedekle", yedekle_cmd))
@@ -3604,11 +3897,13 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ:")
+    print("📝 Güncellenmiş Versiyon v4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ:")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
     print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
     print("   - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor")
+    print("   - EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi eklendi")
+    print("   - 3 yeni komut: /eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
