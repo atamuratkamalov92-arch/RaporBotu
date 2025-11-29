@@ -2134,7 +2134,7 @@ async def generate_gelismis_personel_ozeti(target_date):
     except Exception as e:
         return f"❌ Rapor oluşturulurken hata oluştu: {e}"
 
-# HAFTALIK RAPOR FONKSİYONU - DÜZELTİLMİŞ
+# HAFTALIK RAPOR FONKSİYONU - VERİMLİLİK KALDIRILDI
 async def generate_haftalik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2150,8 +2150,10 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
-        beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
-        verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
+        
+        # VERİMLİLİK HESABI KALDIRILDI
+        # beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
+        # verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
@@ -2257,7 +2259,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
         mesaj += f"• Rapor Gönderen: {len(rows)} kişi\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
-        mesaj += f"• Verimlilik: %{verimlilik:.1f}\n"
+        # VERİMLİLİK SATIRI KALDIRILDI
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
@@ -2312,7 +2314,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
     except Exception as e:
         return f"❌ Haftalık rapor oluşturulurken hata: {e}"
 
-# AYLIK RAPOR FONKSİYONU - DÜZELTİLMİŞ
+# AYLIK RAPOR FONKSİYONU - VERİMLİLİK KALDIRILDI
 async def generate_aylik_rapor_mesaji(start_date, end_date):
     try:
         rows = await async_fetchall("""
@@ -2329,8 +2331,9 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
         
-        beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
-        eksik_rapor = max(0, beklenen_rapor - toplam_rapor)
+        # VERİMLİLİK HESABI KALDIRILDI
+        # beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
+        # eksik_rapor = max(0, beklenen_rapor - toplam_rapor)
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
@@ -2434,7 +2437,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"📈 PERFORMANS ANALİZİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
-        mesaj += f"• Toplam EKSIK Rapor: {eksik_rapor}\n"
+        # EKSİK RAPOR SATIRI KALDIRILDI (verimlilikle ilgili olduğu için)
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
