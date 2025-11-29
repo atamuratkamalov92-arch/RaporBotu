@@ -1,5 +1,11 @@
 """
-📋 CHANGELOG - bot.py v4.7.3
+📋 CHANGELOG - bot.py v4.7.4
+
+✅ 7/24 ÇALIŞMA SİSTEMİNE GEÇİŞ
+- Hafta sonları (Cumartesi-Pazar) artık tatil değil, çalışma günü
+- Tüm raporlarda hafta sonları dahil ediliyor
+- Eksik rapor analizinde hafta sonları da kontrol ediliyor
+- Haftalık ve aylık raporlarda tüm günler dahil
 
 ✅ KRİTİK DÜZELTMELER: TOPLAMA VE YÜZDE HESAPLAMA
 - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır
@@ -7,14 +13,6 @@
 - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan
 - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor
 - EKSİK RAPOR ANALİZİ eklendi: Excel ve detaylı raporlama
-
-✅ GÜNCELLEMELER:
-- Toplama algoritması düzeltildi
-- Yüzde hesaplama formülü düzeltildi
-- Yeni MOS şantiyesi eklendi
-- Tüm raporlarda tutarlı genel toplam hesaplaması
-- Eksik rapor analizi için 3 yeni komut eklendi
-- Excel formatında eksik rapor takip sistemi
 """
 
 import os
@@ -2646,8 +2644,8 @@ async def analyze_missing_reports(start_date: dt.date, end_date: dt.date) -> Tup
         current_date = start_date
         gunler = []
         while current_date <= end_date:
-            if current_date.weekday() < 5:
-                gunler.append(current_date)
+            # 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da dahil ediliyor
+            gunler.append(current_date)
             current_date += dt.timedelta(days=1)
         santiye_analiz = {}
         for santiye in tum_santiyeler:
@@ -2837,8 +2835,8 @@ async def haftalik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFA
 
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today - dt.timedelta(days=today.weekday())
-        end_date = start_date + dt.timedelta(days=6)
+        start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
+        end_date = today
 
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -2966,8 +2964,9 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ\n"
+        "Versiyon: 4.7.4 - 7/24 ÇALIŞMA SİSTEMİ + KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ\n"
         "Özellikler:\n"
+        "• 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
         "• GENEL TOPLAM düzeltildi: Tüm kategorilerin toplamı alınır\n"
         "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
@@ -3028,8 +3027,8 @@ async def haftalik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.chat.send_action(action="typing")
     
     today = dt.datetime.now(TZ).date()
-    start_date = today - dt.timedelta(days=today.weekday())
-    end_date = start_date + dt.timedelta(days=6)
+    start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
+    end_date = today
     
     mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj)
@@ -3054,8 +3053,8 @@ async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_
     await update.message.chat.send_action(action="typing")
     
     today = dt.datetime.now(TZ).date()
-    start_date = today - dt.timedelta(days=today.weekday())
-    end_date = start_date + dt.timedelta(days=6)
+    start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
+    end_date = today
     
     mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj)
@@ -3890,11 +3889,11 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ:")
+    print("📝 Güncellenmiş Versiyon v4.7.4 - 7/24 ÇALIŞMA SİSTEMİ + KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ:")
+    print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
     print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
-    print("   - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor")
     print("   - EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi eklendi")
     print("   - 3 yeni komut: /eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar")
     print("   - Hata yönetimi güçlendirildi")
