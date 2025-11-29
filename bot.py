@@ -1,18 +1,17 @@
 """
-📋 CHANGELOG - bot.py v4.7.2
+📋 CHANGELOG - bot.py v4.7.3
 
-✅ KRİTİK DÜZELTMELER: GENEL ÖZET ÖNCELİĞİ VE TANIMLAR
-- ÖNCELİK KURALI: Her zaman "GENEL ÖZET" bölümü önceliklidir
-- YENİ TANIMLAR: "TAŞERON", "taşeron" → "calisan" olarak tanımlandı
-- YEREL EKİPBAŞI: "staff" kategorisine dahil edildi
-- GENEL ÖZET varyasyonları eklendi: tüm "GENEL ÖZET" formatları destekleniyor
+✅ KRİTİK DÜZELTMELER: TOPLAMA VE YÜZDE HESAPLAMA
+- GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır
+- Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100
+- MOS şantiyesi eklendi: Sorumlu @OrhanCeylan
+- Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor
 
 ✅ GÜNCELLEMELER:
-- GENEL ÖZET parsing algoritması geliştirildi
-- TAŞERON personel tanımı eklendi
-- Özet-detay çakışma koruması güçlendirildi
-- BWC özel durumu için optimizasyon
-- HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi
+- Toplama algoritması düzeltildi
+- Yüzde hesaplama formülü düzeltildi
+- Yeni MOS şantiyesi eklendi
+- Tüm raporlarda tutarlı genel toplam hesaplaması
 """
 
 import os
@@ -1015,7 +1014,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 10. PERSONEL KATEGORİLERİ:
     - staff: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Staff
     - calisan: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, TAŞERON, taşeron, Toplam imalat, İmalat
-    - ambarci: ambarcı, depo sorumlusu, malzemeci, ambar, Toplam ambar, Ambarcı
+    - ambarci: ambarcı, depo sorumlusu, malzemeici, ambar, Toplam ambar, Ambarcı
     - mobilizasyon: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon, Mobilizasyon
     - izinli: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni, İzinli, Hasta
     - dis_gorev: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, Şantiye dışı, dış görev, Dış görev, Başka şantiye, Buxoro'ya gitti, Buxoro, Başka yere görev, yurt dışı görev, Dış görev, Şantiye dışı
@@ -2233,23 +2232,16 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla
-        genel_toplam = 0
-        genel_staff = 0
-        genel_calisan = 0
-        genel_mobilizasyon = 0
-        genel_ambarci = 0
-        genel_izinli = 0
-        genel_dis_gorev_toplam = 0
+        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla - TÜM KATEGORİLERİN TOPLAMI
+        genel_staff = sum(proje['staff'] for proje in proje_analizleri.values())
+        genel_calisan = sum(proje['calisan'] for proje in proje_analizleri.values())
+        genel_mobilizasyon = sum(proje['mobilizasyon'] for proje in proje_analizleri.values())
+        genel_ambarci = sum(proje['ambarci'] for proje in proje_analizleri.values())
+        genel_izinli = sum(proje['izinli'] for proje in proje_analizleri.values())
+        genel_dis_gorev_toplam = sum(proje['dis_gorev_toplam'] for proje in proje_analizleri.values())
         
-        for proje in proje_analizleri.values():
-            genel_toplam += proje['toplam']  # Bu artık şantiye başlık + dış görevler içeriyor
-            genel_staff += proje['staff']
-            genel_calisan += proje['calisan']
-            genel_mobilizasyon += proje['mobilizasyon']
-            genel_ambarci += proje['ambarci']
-            genel_izinli += proje['izinli']
-            genel_dis_gorev_toplam += proje['dis_gorev_toplam']
+        # GENEL TOPLAM = Tüm kategorilerin toplamı
+        genel_toplam = genel_staff + genel_calisan + genel_mobilizasyon + genel_ambarci + genel_izinli + genel_dis_gorev_toplam
         
         # TÜM SABİT ŞANTİYELERİ DAHİL ET
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
@@ -2290,7 +2282,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
-        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm kategorilerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2419,23 +2411,16 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 logging.error(f"Proje analiz hatası: {e}")
                 continue
         
-        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla
-        genel_toplam = 0
-        genel_staff = 0
-        genel_calisan = 0
-        genel_mobilizasyon = 0
-        genel_ambarci = 0
-        genel_izinli = 0
-        genel_dis_gorev_toplam = 0
+        # KRİTİK DÜZELTME: Genel toplamları doğru hesapla - TÜM KATEGORİLERİN TOPLAMI
+        genel_staff = sum(proje['staff'] for proje in proje_analizleri.values())
+        genel_calisan = sum(proje['calisan'] for proje in proje_analizleri.values())
+        genel_mobilizasyon = sum(proje['mobilizasyon'] for proje in proje_analizleri.values())
+        genel_ambarci = sum(proje['ambarci'] for proje in proje_analizleri.values())
+        genel_izinli = sum(proje['izinli'] for proje in proje_analizleri.values())
+        genel_dis_gorev_toplam = sum(proje['dis_gorev_toplam'] for proje in proje_analizleri.values())
         
-        for proje in proje_analizleri.values():
-            genel_toplam += proje['toplam']  # Bu artık şantiye başlık + dış görevler içeriyor
-            genel_staff += proje['staff']
-            genel_calisan += proje['calisan']
-            genel_mobilizasyon += proje['mobilizasyon']
-            genel_ambarci += proje['ambarci']
-            genel_izinli += proje['izinli']
-            genel_dis_gorev_toplam += proje['dis_gorev_toplam']
+        # GENEL TOPLAM = Tüm kategorilerin toplamı
+        genel_toplam = genel_staff + genel_calisan + genel_mobilizasyon + genel_ambarci + genel_izinli + genel_dis_gorev_toplam
         
         # TÜM SABİT ŞANTİYELERİ DAHİL ET
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
@@ -2476,7 +2461,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
         
-        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
+        # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm kategorilerin toplamı)
         mesaj += f"\n📈 GENEL TOPLAM: {genel_toplam} kişi\n"
         
         if genel_toplam > 0:
@@ -2705,11 +2690,12 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.2 - KRİTİK GENEL ÖZET GÜNCELLEMESİ\n"
+        "Versiyon: 4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ\n"
         "Özellikler:\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
-        "• GENEL ÖZET öncelik sistemi: Tüm GENEL ÖZET varyasyonları desteklenir\n"
-        "• Yeni tanımlar: TAŞERON, Yerel Ekipbaşı tanımlandı\n"
+        "• GENEL TOPLAM düzeltildi: Tüm kategorilerin toplamı alınır\n"
+        "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
+        "• MOS şantiyesi eklendi: Sorumlu @OrhanCeylan\n"
         "• Çoklu şantiye desteği\n"
         "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
         "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
@@ -2719,7 +2705,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Şantiye bazlı rapor sistemi\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• KRİTİK: Şantiye başlığı (dış görevler HARİÇ) vs Genel toplam (tüm personel DAHİL)\n"
+        "• KRİTİK: Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3618,11 +3604,11 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.2 - KRİTİK GENEL ÖZET GÜNCELLEMESİ:")
-    print("   - GENEL ÖZET öncelik sistemi: Tüm GENEL ÖZET varyasyonları desteklenir")
-    print("   - YENİ TANIMLAR: 'TAŞERON', 'taşeron' → 'calisan' olarak tanımlandı")
-    print("   - YEREL EKİPBAŞI: 'staff' kategorisine dahil edildi")
-    print("   - BWC raporundaki sorun çözüldü: 169 kişi doğru şekilde işlenecek")
+    print("📝 Güncellenmiş Versiyon v4.7.3 - KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ:")
+    print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
+    print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
+    print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
+    print("   - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
