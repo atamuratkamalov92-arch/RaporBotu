@@ -2676,63 +2676,155 @@ async def analyze_missing_reports(start_date: dt.date, end_date: dt.date) -> Tup
         return {}, []
 
 async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
-    """Eksik rapor analizini Excel formatında oluştur"""
+    """Eksik rapor analizini Excel formatında oluştur - GÜNCELLENMİŞ GÖRÜNÜM"""
     try:
-        from openpyxl.utils import get_column_letter  # ✅ EKLE
+        from openpyxl.utils import get_column_letter
         
         wb = Workbook()
         ws = wb.active
         ws.title = "Eksik Rapor Analizi"
-        ws.merge_cells('A1:D1')
+        
+        # BAŞLIK - Tüm sütunları birleştir (A:AH)
+        ws.merge_cells('A1:AH1')
         ws['A1'] = f"Eksik Rapor Analizi - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
         ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center')
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Başlıktan sonra bir boş satır
+        ws.row_dimensions[2].height = 15
         
         headers = ['Şantiye', 'Toplam Gün', 'Eksik Gün', 'Eksik %'] + [gun.strftime('%d.%m') for gun in gunler]
         
+        # Başlık satırı (3. satır)
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=3, column=col, value=header)
-            cell.font = Font(bold=True)
+            cell.font = Font(bold=True, size=11)
             cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-            cell.font = Font(color="FFFFFF", bold=True)
-            cell.alignment = Alignment(horizontal='center')
+            cell.font = Font(color="FFFFFF", bold=True, size=11)
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            
+            # İnce kenarlık
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            cell.border = thin_border
         
         row = 4
         for santiye, a in sorted(analiz.items()):
+            # Şantiye adı
             ws.cell(row=row, column=1, value=santiye)
+            
+            # Sayısal değerler
             ws.cell(row=row, column=2, value=a['toplam_gun'])
             ws.cell(row=row, column=3, value=len(a['eksik_gunler']))
+            
+            # Yüzde değeri
             eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
             ws.cell(row=row, column=4, value=eksik_yuzde/100)
             ws.cell(row=row, column=4).number_format = '0.00%'
             
-            for col_idx, gun in enumerate(gunler, 5):  # 5. sütundan başla
+            # Günlük durumlar (✓/✗)
+            for col_idx, gun in enumerate(gunler, 5):
+                cell = ws.cell(row=row, column=col_idx)
                 if gun in a['eksik_gunler']:
-                    ws.cell(row=row, column=col_idx, value='✗')
-                    ws.cell(row=row, column=col_idx).fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+                    cell.value = '✗'
+                    cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
                 else:
-                    ws.cell(row=row, column=col_idx, value='✓')
-                    ws.cell(row=row, column=col_idx).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                    cell.value = '✓'
+                    cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                
+                # Kenarlık ve hizalama
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.font = Font(size=11)
+            
+            # Tüm hücrelere kenarlık ekle
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=row, column=col).border = thin_border
+                ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center')
+                ws.cell(row=row, column=col).font = Font(size=11)
+            
             row += 1
         
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 10
+        # Sütun genişlikleri
+        ws.column_dimensions['A'].width = 20  # Şantiye
+        ws.column_dimensions['B'].width = 12  # Toplam Gün
+        ws.column_dimensions['C'].width = 12  # Eksik Gün
+        ws.column_dimensions['D'].width = 12  # Eksik %
         
-        # ✅ DÜZELTİLDİ: Doğru sütun harfi hesaplama
+        # Tarih sütunları için genişlik
         for i in range(len(gunler)):
-            col_letter = get_column_letter(5 + i)  # 5 = 'E' sütunundan başla
+            col_letter = get_column_letter(5 + i)
             ws.column_dimensions[col_letter].width = 8
         
-        # ... (özet sayfası kodu aynı kalacak)
+        # Satır yükseklikleri
+        for r in range(3, row + 1):
+            ws.row_dimensions[r].height = 25
         
+        # Özet sayfası oluştur
+        ws_summary = wb.create_sheet("Özet")
+        
+        # Özet başlığı
+        ws_summary.merge_cells('A1:B1')
+        ws_summary['A1'] = f"Eksik Rapor Özeti - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+        ws_summary['A1'].font = Font(bold=True, size=14, color="366092")
+        ws_summary['A1'].alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Özet bilgileri
+        toplam_santiye = len(analiz)
+        eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
+        eksik_santiye = toplam_santiye - eksiksiz_santiye
+        toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
+        toplam_gun = len(gunler)
+        
+        summary_data = [
+            ['📅 Analiz Periyodu', f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"],
+            ['🏗️ Toplam Şantiye', toplam_santiye],
+            ['✅ Eksiksiz Şantiye', f"{eksiksiz_santiye} (%{eksiksiz_santiye/toplam_santiye*100:.1f})"],
+            ['❌ Eksik Raporu Olan', f"{eksik_santiye} (%{eksik_santiye/toplam_santiye*100:.1f})"],
+            ['📅 Toplam Gün', toplam_gun],
+            ['📊 Toplam EKSİK RAPOR', toplam_eksik_rapor],
+            ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
+        ]
+        
+        for row_idx, (label, value) in enumerate(summary_data, 3):
+            cell_label = ws_summary[f'A{row_idx}']
+            cell_value = ws_summary[f'B{row_idx}']
+            
+            cell_label.value = label
+            cell_value.value = value
+            
+            # Kenarlık
+            for cell in [cell_label, cell_value]:
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical='center')
+            
+            # Kalın font
+            cell_label.font = Font(bold=True, size=11)
+            cell_value.font = Font(size=11)
+            
+            # Satır yüksekliği
+            ws_summary.row_dimensions[row_idx].height = 30
+        
+        ws_summary.column_dimensions['A'].width = 25
+        ws_summary.column_dimensions['B'].width = 30
+        
+        # İlk sayfayı aktif yap
+        wb.active = wb["Eksik Rapor Analizi"]
+        
+        # Dosyayı kaydet
+        timestamp = dt.datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
         wb.save(temp_file.name)
+        
+        logging.info(f"✅ Excel raporu oluşturuldu: {temp_file.name}")
         return temp_file.name
         
     except Exception as e:
-        logging.error(f"Eksik rapor Excel oluşturma hatası: {e}")
+        logging.error(f"❌ Eksik rapor Excel oluşturma hatası: {e}")
         raise e
 
 def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
@@ -3395,41 +3487,101 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 'User ID': user_id
             })
         
+        from openpyxl.utils import get_column_letter
+        
         wb = Workbook()
         ws = wb.active
         ws.title = "Raporlar"
+        
+        # PROFESYONEL GÖRÜNÜM İÇİN STİLLER
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        left_align = Alignment(horizontal='left', vertical='center')
+        
+        # BAŞLIK - Tüm sütunları birleştir
+        ws.merge_cells('A1:Q1')
+        ws['A1'] = f"Rapor Analizi - {rapor_baslik}"
+        ws['A1'].font = Font(bold=True, size=14, color="366092")
+        ws['A1'].alignment = center_align
+        
+        # Başlıktan sonra bir boş satır
+        ws.row_dimensions[2].height = 15
         
         headers = ['Tarih', 'Kullanıcı', 'Rapor Tipi', 'Kişi Sayısı', 'Proje', 'İş Kategorisi', 
                   'Personel Tipi', 'Yapılan İş', 'Gönderilme Tarihi', 'Düzenlendi mi?', 
                   'Staff', 'Çalışan', 'Mobilizasyon', 'Ambarcı', 'İzinli', 'Dış Görev Toplam', 'User ID']
         
-        header_font = Font(bold=True, color="FFFFFF", size=12)
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        center_align = Alignment(horizontal='center', vertical='center')
-        
+        # Başlık satırı (3. satır)
         for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
+            cell = ws.cell(row=3, column=col, value=header)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = center_align
-            cell.border = border
+            cell.border = thin_border
         
-        for row_idx, row_data in enumerate(excel_data, 2):
+        # Veri satırları
+        for row_idx, row_data in enumerate(excel_data, 4):
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ''))
-                cell.border = border
+                cell.border = thin_border
+                
+                # Hizalama: sayılar ve tarihler ortalanır, metinler sola dayalı
+                if header in ['Tarih', 'Kişi Sayısı', 'Staff', 'Çalışan', 'Mobilizasyon', 'Ambarcı', 'İzinli', 'Dış Görev Toplam', 'User ID']:
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+                
+                # Rapor Tipi'ne göre renklendirme
                 if header == 'Rapor Tipi':
                     if row_data['Rapor Tipi'] == 'RAPOR':
                         cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
                     else:
                         cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
         
-        column_widths = {'A': 12, 'B': 20, 'C': 12, 'D': 12, 'E': 20, 'F': 15, 'G': 15, 'H': 40, 'I': 15, 'J': 12, 'K': 8, 'L': 8, 'M': 12, 'N': 8, 'O': 8, 'P': 12, 'Q': 10}
+        # Sütun genişlikleri - PROFESYONEL GÖRÜNÜM
+        column_widths = {
+            'A': 12,  # Tarih
+            'B': 20,  # Kullanıcı
+            'C': 12,  # Rapor Tipi
+            'D': 12,  # Kişi Sayısı
+            'E': 20,  # Proje
+            'F': 15,  # İş Kategorisi
+            'G': 15,  # Personel Tipi
+            'H': 40,  # Yapılan İş
+            'I': 15,  # Gönderilme Tarihi
+            'J': 12,  # Düzenlendi mi?
+            'K': 8,   # Staff
+            'L': 8,   # Çalışan
+            'M': 12,  # Mobilizasyon
+            'N': 8,   # Ambarcı
+            'O': 8,   # İzinli
+            'P': 12,  # Dış Görev Toplam
+            'Q': 10   # User ID
+        }
+        
         for col, width in column_widths.items():
             ws.column_dimensions[col].width = width
         
+        # Satır yükseklikleri
+        for r in range(3, len(excel_data) + 4):
+            ws.row_dimensions[r].height = 25
+        
+        # Özet sayfası oluştur
         ws_summary = wb.create_sheet("Özet")
+        
+        # Özet başlığı
+        ws_summary.merge_cells('A1:B1')
+        ws_summary['A1'] = f"📊 RAPOR ÖZETİ - {rapor_baslik}"
+        ws_summary['A1'].font = Font(bold=True, size=14, color="366092")
+        ws_summary['A1'].alignment = center_align
+        
         toplam_rapor = len(excel_data)
         toplam_kullanici = len(set([x['User ID'] for x in excel_data]))
         
@@ -3443,11 +3595,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         toplam_izinli = sum([x['İzinli'] for x in excel_data])
         toplam_dis_gorev_toplam = sum([x['Dış Görev Toplam'] for x in excel_data])
         toplam_personel = toplam_staff + toplam_calisan + toplam_mobilizasyon + toplam_ambarci + toplam_izinli + toplam_dis_gorev_toplam
-        
-        ws_summary.merge_cells('A1:D1')
-        ws_summary['A1'] = f"📊 RAPOR ÖZETİ - {rapor_baslik}"
-        ws_summary['A1'].font = Font(bold=True, size=14, color="366092")
-        ws_summary['A1'].alignment = center_align
         
         summary_data = [
             ['📅 Rapor Periyodu', f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"],
@@ -3467,18 +3614,36 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ]
         
         for row_idx, (label, value) in enumerate(summary_data, 3):
-            ws_summary[f'A{row_idx}'] = label
-            if value != '':
-                ws_summary[f'B{row_idx}'] = value
-            ws_summary[f'A{row_idx}'].font = Font(bold=True)
-            if row_idx >= 9:
-                ws_summary[f'A{row_idx}'].font = Font(bold=False)
+            cell_label = ws_summary[f'A{row_idx}']
+            cell_value = ws_summary[f'B{row_idx}']
+            
+            cell_label.value = label
+            cell_value.value = value
+            
+            # Kenarlık
+            for cell in [cell_label, cell_value]:
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical='center')
+            
+            # Kalın font
+            cell_label.font = Font(bold=True, size=11)
+            cell_value.font = Font(size=11)
+            
+            # Satır yüksekliği
+            ws_summary.row_dimensions[row_idx].height = 30
         
         ws_summary.column_dimensions['A'].width = 25
-        ws_summary.column_dimensions['B'].width = 15
+        ws_summary.column_dimensions['B'].width = 30
         
+        # İlk sayfayı aktif yap
+        wb.active = wb["Raporlar"]
+        
+        # Dosyayı kaydet
+        timestamp = dt.datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
         wb.save(temp_file.name)
+        
+        logging.info(f"✅ Excel raporu oluşturuldu: {temp_file.name}")
         return temp_file.name
     except Exception as e:
         raise e
