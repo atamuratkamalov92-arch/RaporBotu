@@ -426,17 +426,17 @@ SANTIYE_USERNAME_MAPPING = {
     'BWC': ['YsF1434'],
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
-    'KÖKSARAY': ['Ymlhn', 'Erdoğan.Karamısır'],
-    'STADYUM': ['AdnanKeleş'],
-    'LOT13': ['AdnanKeleş'],
-    'LOT71': ['AdnanKeleş'],
+    'KÖKSARAY': ['Erdoğan_Karamısır'],
+    'STADYUM': ['Adnan_Keleş'],
+    'LOT13': ['Adnan_Keleş'],
+    'LOT71': ['Adnan_Keleş'],
     'OHP': ['Erdoğan.Karamısır'],
-    'YHP': ['OrhanCeylan'],
-    'MMP': ['OrhanCeylan'],
-    'RMC': ['OrhanCeylan'],
-    'TYM': ['OrhanCeylan'],
+    'YHP': ['Orhan_Ceylan'],
+    'MMP': ['Orhan_Ceylan'],
+    'RMC': ['Orhan_Ceylan'],
+    'TYM': ['Orhan_Ceylan'],
     'PİRAMİT': ['ON5428'],
-    'MOS': ['OrhanCeylan']
+    'MOS': ['Orhan_Ceylan']
 }
 
 # Giriş doğrulama fonksiyonları
