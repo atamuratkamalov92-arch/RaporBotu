@@ -969,7 +969,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Toplam imalat", "imalat", "İmalat", "çalışan", "Çalışan" → "calisan"
    - "Toplam mobilizasyon", "mobilizasyon", "Mobilizasyon" → "mobilizasyon"
    - "Toplam ambar", "ambar", "ambarcı", "Ambarcı" → "ambarci"
-   - "İzinli", "izinli", "Hasta" → "izinli"
+   - "İzinli", "izinli", "Hasta", "çalışma yok", "iş yok", "faaliyet yok", "günlük çalışma yok", "bugün çalışma yapılmadı", "aktivite yok", "işçilik yok", "raporlanacak çalışma yok", "çalışma gerçekleştirilmedi", "saha kapalı / faaliyet yapılmadı", "operasyon yok", "gün boş", "bugün iş yok", "çalışma mevcut değil", "planlanan çalışma yok", "saha çalışması yapılmadı", "işlem yapılmamıştır", "görev yok", "aktif iş yok", "rapor yok çalışma yok", "calisma yok", "calışma yok", "çalıșma yok", "çalısma yok", "çalıma yok", "calışma yok", "çalşma yok", "çalışma yoktur", "calişma yok", "çelışma yok", "çalışmayok", "calismayok", "çalşmy yok", "çalılşma yok", "çalışa yok", "çalişma yok", "calıma yok", "çalısma yk", "cal yok", "ç yok", "calyok", "çalışmyok", "çalışm yok", "iş yok", "is yok", "yok çalışma", "bugün yok", "çalışma yk", "çalış. yok", "ç. yok", "işlm yok", "aktif yok" → "izinli"
    - "Şantiye dışı görev", "Şantiye dışı", "dış görev", "Dış görev", "Başka şantiye", "Buxoro'ya gitti", "Buxoro", "Başka yere görev" → "dis_gorev"
 
 4. ÇİFT SAYMA KORUMASI:
@@ -1077,6 +1077,31 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
   }
 ]
 
+15. "ÇALIŞMA YOK" RAPORLARI:
+    - Eğer raporda "çalışma yok" veya benzeri ifadeler (yukarıda listelenen) geçiyorsa ve raporda hiç personel sayısı (staff, calisan, mobilizasyon, ambarci, izinli) belirtilmemişse:
+        - Tüm kategorileri 0 olarak ayarla: staff=0, calisan=0, mobilizasyon=0, ambarci=0
+        - izinli kategorisini 1 olarak ayarla
+        - dis_gorev_toplam = 0
+        - genel_toplam = 1 (izinli=1'den dolayı)
+    - Bu raporlar geçerlidir ve çalışma olmadığını belirtir.
+    - Örnek: "📍 ŞANTİYE: OHP 📅 TARİH: 4.12.2025 Calisma yok" → OHP şantiyesi için 4 Aralık 2025 tarihli, çalışma olmadığını belirten geçerli bir rapor
+
+16. ÖRNEK "ÇALIŞMA YOK" RAPORU:
+    [
+      {
+        "date": "2025-12-04",
+        "site": "OHP",
+        "staff": 0,
+        "calisan": 0,
+        "mobilizasyon": 0,
+        "ambarci": 0,
+        "izinli": 1,
+        "dis_gorev": [],
+        "dis_gorev_toplam": 0,
+        "genel_toplam": 1
+      }
+    ]
+
 DİKKAT: 
 - Sadece JSON döndür, açıklama yapma!
 - Tüm sayıları integer olarak döndür
@@ -1088,6 +1113,7 @@ DİKKAT:
 - Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
 - TAŞERON her zaman calisan kategorisine dahil edilir!
 - Kullanıcının genel toplamını KÖRÜ KÖRÜNE KABUL ETME, matematik kontrolü yap!
+- "Çalışma yok" raporlarında tüm personel kategorileri 0, izinli=1 olmalı!
 """
 
 # Gelişmiş tarih parser fonksiyonları
