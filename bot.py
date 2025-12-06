@@ -372,7 +372,7 @@ try:
     logging.info(f"✅ GROUP_ID başarıyla ayarlandı: {GROUP_ID}")
 except (ValueError, TypeError) as e:
     GROUP_ID = None
-logging.error(f"❌ GROUP_ID ayarlanamadı: {e}")
+    logging.error(f"❌ GROUP_ID ayarlanamadı: {e}")
 TZ = ZoneInfo("Asia/Tashkent")
 
 SUPER_ADMIN_ID = 1000157326
@@ -969,7 +969,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Toplam imalat", "imalat", "İmalat", "çalışan", "Çalışan" → "calisan"
    - "Toplam mobilizasyon", "mobilizasyon", "Mobilizasyon" → "mobilizasyon"
    - "Toplam ambar", "ambar", "ambarcı", "Ambarcı" → "ambarci"
-   - "İzinli", "izinli", "Hasta", "çalışma yok", "iş yok", "faaliyet yok", "günlük çalışma yok", "bugün çalışma yapılmadı", "aktivite yok", "işçilik yok", "raporlanacak çalışma yok", "çalışma gerçekleştirilmedi", "saha kapalı / faaliyet yapılmadı", "operasyon yok", "gün boş", "bugün iş yok", "çalışma mevcut değil", "planlanan çalışma yok", "saha çalışması yapılmadı", "işlem yapılmamıştır", "görev yok", "aktif iş yok", "rapor yok çalışma yok", "calisma yok", "calışma yok", "çalıșma yok", "çalısma yok", "çalıma yok", "calışma yok", "çalşma yok", "çalışma yoktur", "calişma yok", "çelışma yok", "çalışmayok", "calismayok", "çalşmy yok", "çalılşma yok", "çalışa yok", "çalişma yok", "calıma yok", "çalısma yk", "cal yok", "ç yok", "calyok", "çalışmyok", "çalışm yok", "iş yok", "is yok", "yok çalışma", "bugün yok", "çalışma yk", "çalış. yok", "ç. yok", "işlm yok", "aktif yok" → "izinli"
+   - "İzinli", "izinli", "Hasta" → "izinli"
    - "Şantiye dışı görev", "Şantiye dışı", "dış görev", "Dış görev", "Başka şantiye", "Buxoro'ya gitti", "Buxoro", "Başka yere görev" → "dis_gorev"
 
 4. ÇİFT SAYMA KORUMASI:
@@ -1077,31 +1077,6 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
   }
 ]
 
-15. "ÇALIŞMA YOK" RAPORLARI:
-    - Eğer raporda "çalışma yok" veya benzeri ifadeler (yukarıda listelenen) geçiyorsa ve raporda hiç personel sayısı (staff, calisan, mobilizasyon, ambarci, izinli) belirtilmemişse:
-        - Tüm kategorileri 0 olarak ayarla: staff=0, calisan=0, mobilizasyon=0, ambarci=0
-        - izinli kategorisini 0 olarak ayarla (çalışma olmadığı için izinli sayılır)
-        - dis_gorev_toplam = 0
-        - genel_toplam = 0 (izinli=0'den dolayı)
-    - Bu raporlar geçerlidir ve çalışma olmadığını belirtir.
-    - Örnek: "📍 ŞANTİYE: OHP 📅 TARİH: 4.12.2025 Calisma yok" → OHP şantiyesi için 4 Aralık 2025 tarihli, çalışma olmadığını belirten geçerli bir rapor
-
-16. ÖRNEK "ÇALIŞMA YOK" RAPORU:
-    [
-      {
-        "date": "2025-12-04",
-        "site": "OHP",
-        "staff": 0,
-        "calisan": 0,
-        "mobilizasyon": 0,
-        "ambarci": 0,
-        "izinli": 0,
-        "dis_gorev": [],
-        "dis_gorev_toplam": 0,
-        "genel_toplam": 0
-      }
-    ]
-
 DİKKAT: 
 - Sadece JSON döndür, açıklama yapma!
 - Tüm sayıları integer olarak döndür
@@ -1113,7 +1088,6 @@ DİKKAT:
 - Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
 - TAŞERON her zaman calisan kategorisine dahil edilir!
 - Kullanıcının genel toplamını KÖRÜ KÖRÜNE KABUL ETME, matematik kontrolü yap!
-- "Çalışma yok" raporlarında tüm personel kategorileri 0, izinli=0 olmalı!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -1296,50 +1270,44 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         except (ValueError, TypeError):
                             report[key] = 0
                 
-                try:  # BU TRY-EXCEPT BLOĞU EKLENDİ
-                    # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez + Tanımlanmamış kategori kontrolü
-                    calculated_total = (
-                        report.get('staff', 0) + 
-                        report.get('calisan', 0) + 
-                        report.get('mobilizasyon', 0) + 
-                        report.get('ambarci', 0) + 
-                        report.get('izinli', 0)
-                    )
-                    
-                    # TANIMSIZ KATEGORİ KONTROLÜ - YENİ EKLENDİ
-                    tanimli_kategoriler_toplami = calculated_total
-                    tanimsiz_kategori_var = False
-                    
-                    # GPT'nin ekstra kategoriler ekleyip eklemediğini kontrol et
-                    tum_anahtarlar = set(report.keys())
-                    tanimli_anahtarlar = {'date', 'site', 'staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev', 'dis_gorev_toplam', 'genel_toplam'}
-                    ekstra_anahtarlar = tum_anahtarlar - tanimli_anahtarlar
-                    
-                    # Ekstra sayısal anahtarları kontrol et (operatör, usta başı vb.)
-                    for ekstra_anahtar in ekstra_anahtarlar:
-                        deger = report.get(ekstra_anahtar, 0)
-                        if isinstance(deger, (int, float)) and deger > 0:
-                            tanimsiz_kategori_var = True
-                            logging.warning(f"⚠️ Tanımlanmamış kategori tespit edildi: {ekstra_anahtar} = {deger}")
-                            # Ekstra kategoriyi "calisan"a ekle (varsayılan)
-                            report['calisan'] = report.get('calisan', 0) + int(deger)
-                            calculated_total += int(deger)
-                            logging.info(f"✅ Tanımlanmamış kategori '{ekstra_anahtar}' çalışanlara eklendi: +{deger}")
-                    
-                    # Eğer kullanıcının genel toplamı yanlışsa, doğru olanı kullan
-                    if report.get('genel_toplam', 0) != calculated_total:
-                        logging.info(f"🔢 Genel toplam düzeltildi: {report.get('genel_toplam', 0)} → {calculated_total}")
-                        if tanimsiz_kategori_var:
-                            logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
-                        report['genel_toplam'] = calculated_total
-                        
-                except Exception as e:  # BU EXCEPT BLOĞU EKLENDİ
-                    logging.error(f"❌ Genel toplam doğrulama hatası: {e}")
-                    # Hata durumunda orijinal değeri koru
-                    if 'calculated_total' in locals():
-                        report['genel_toplam'] = calculated_total
+                # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez + Tanımlanmamış kategori kontrolü
+                calculated_total = (
+                    report.get('staff', 0) + 
+                    report.get('calisan', 0) + 
+                    report.get('mobilizasyon', 0) + 
+                    report.get('ambarci', 0) + 
+                    report.get('izinli', 0)
+                )
                 
-                filtered_reports.append(report)  # BU SATIR DÜZGÜN KONUMDA OLMALI
+                # TANIMSIZ KATEGORİ KONTROLÜ - YENİ EKLENDİ
+                tanimli_kategoriler_toplami = calculated_total
+                tanimsiz_kategori_var = False
+                
+                # GPT'nin ekstra kategoriler ekleyip eklemediğini kontrol et
+                tum_anahtarlar = set(report.keys())
+                tanimli_anahtarlar = {'date', 'site', 'staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev', 'dis_gorev_toplam', 'genel_toplam'}
+                ekstra_anahtarlar = tum_anahtarlar - tanimli_anahtarlar
+                
+                # Ekstra sayısal anahtarları kontrol et (operatör, usta başı vb.)
+                for ekstra_anahtar in ekstra_anahtarlar:
+                    deger = report.get(ekstra_anahtar, 0)
+                    if isinstance(deger, (int, float)) and deger > 0:
+                        tanimsiz_kategori_var = True
+                        logging.warning(f"⚠️ Tanımlanmamış kategori tespit edildi: {ekstra_anahtar} = {deger}")
+                        # Ekstra kategoriyi "calisan"a ekle (varsayılan)
+                        report['calisan'] = report.get('calisan', 0) + int(deger)
+                        calculated_total += int(deger)
+                        logging.info(f"✅ Tanımlanmamış kategori '{ekstra_anahtar}' çalışanlara eklendi: +{deger}")
+                
+                # Eğer kullanıcının genel toplamı yanlışsa, doğru olanı kullan
+                if report.get('genel_toplam', 0) != calculated_total:
+                    logging.info(f"🔢 Genel toplam düzeltildi: {report.get('genel_toplam', 0)} → {calculated_total}")
+                    if tanimsiz_kategori_var:
+                        logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
+                    report['genel_toplam'] = calculated_total
+                
+                if report['genel_toplam'] > 0 or report['staff'] > 0:
+                    filtered_reports.append(report)
             
             return filtered_reports
                 
@@ -1415,7 +1383,7 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderilmiş: {project_name}")
         
-        if izinli > 0 or (staff == 0 and calisan == 0 and mobilizasyon == 0 and ambarci == 0 and izinli == 0 and genel_toplam == 0):
+        if izinli > 0:
             rapor_tipi = "IZIN/ISYOK"
         else:
             rapor_tipi = "RAPOR"
@@ -1824,7 +1792,7 @@ class MaliyetAnaliz:
             rapor += f"📈 Genel İstatistikler:\n"
             rapor += f"• Toplam İşlem: {toplam}\n"
             rapor += f"• Başarılı: {basarili} (%{(basarili/toplam*100):.1f})\n"
-            rapor += f"• Başarısız: {basarilisiz}\n"
+            rapor += f"• Başarısız: {basarilis}\n"
             rapor += f"• İlk Kullanım: {ilk_tarih[:10] if ilk_tarih else 'Yok'}\n"
             rapor += f"• Son Kullanım: {son_tarih[:10] if son_tarih else 'Yok'}\n\n"
             
@@ -3093,15 +3061,23 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Geliştirici: Atamurat Kamalov\n"
         "Versiyon: 4.7.4 - 7/24 ÇALIŞMA SİSTEMİ + KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ\n"
         "Özellikler:\n"
-        "• Her sabah 09:00'da önceki günün personel icmalini Eren Boz’a gönderir\n"
+        "• 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
+        "• GENEL TOPLAM düzeltildi: Tüm kategorilerin toplamı alınır\n"
+        "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
+        "• MOS şantiyesi eklendi: Sorumlu @OrhanCeylan\n"
+        "• EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi\n"
+        "• Çoklu şantiye desteği\n"
         "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
-        "• Eksik raporları tespit eder, listeler ve Excel çıktısı üretir\n"
-        "• Günlük / Haftalık / Aylık icmal raporları oluşturur\n"
-        "• Gün içinde gruba otomatik hatırlatma mesajları gönderir (12:30 / 15:00 / 17:30)\n"
+        "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
+        "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
+        "• Gün içinde gruba otomatik hatırlatma mesajları gönderir\n"
+        "• Çift sayma koruması ile doğru toplamlar\n"
+        "• Şantiye bazlı rapor sistemi\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• Yeni kullanıcıları algılar, karşılama ve yöneticilere bildirim fonksiyonu vardır\n"
+        "• KRİTİK: Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor\n"
+        "• YENİ: Eksik rapor analizi için 3 yeni komut (/eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar)\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3783,8 +3759,8 @@ def schedule_jobs(app):
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35 (6 = Cumartesi)
-    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 35, tzinfo=TZ), days=(6,))  # 6 = Cumartesi
+    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35
+    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
     
     # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
     jq.run_daily(aylik_grup_raporu_kontrol, time=dt.time(9, 30, tzinfo=TZ))
@@ -3919,7 +3895,7 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         if durum['eksik_santiyeler']:
             mesaj += f"❌ Rapor iletilmeyen şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
             for santiye in sorted(durum['eksik_santiyeler']):
-                if santiye in ["Belli değil", "TÜMÜ"]:
+                if santiye in ["Belli değil", "Tümü"]:
                     continue
                 mesaj += f"• {santiye}\n"
         else:
@@ -4191,6 +4167,5 @@ if __name__ == "__main__":
     print("   - Haftalık rapor job'ı aktif edildi")
     print("   - HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi")
     print("   - MOS şantiyesi eklendi - Sorumlu: @OrhanCeylan")
-    print("   - DÜZELTME: Haftalık rapor artık Cumartesi 17:35'te gönderilecek (days=(6,))")
     
     main()
