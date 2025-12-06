@@ -1538,7 +1538,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
             await msg.reply_text(
                 "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
                 "Lütfen şantiye, tarih ve iş bilgilerini içeren bir rapor gönderin.\n"
-                "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
+                "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\""
             )
             return
         
@@ -1553,7 +1553,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                     "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
                     "• Yapılan işler\n"
                     "• Personel bilgisi\n\n"
-                    "Örnek: \"01.11.2024 LOT13 2.kat kablo çekimi 5 kişi\""
+                    "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\""
                 )
             return
 
@@ -2949,7 +2949,7 @@ async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TY
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📋 EKSİK RAPOR EXCEL RAPORU\n\n"
-            "Kullanım: `/eksik_rapor_excel 01.11.2024 30.11.2024`\n"
+            "Kullanım: `/eksik_rapor_excel 01.11.2025 30.11.2025`\n"
             "Belirtilen tarih aralığı için eksik rapor analizi Excel'i oluşturur."
         )
         return
@@ -3057,6 +3057,94 @@ async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         await update.message.reply_text(f"❌ Aylık eksik rapor analizi hatası: {e}")
         logging.error(f"Aylık eksik rapor analizi hatası: {e}")
+
+# YENİ: HAFTALIK EKSİK RAPOR JOB FONKSİYONU
+async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her Pazar 10:00'da haftalık eksik raporu gruba gönder"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        
+        # Haftalık eksik rapor tarih aralığı: Pazartesi 00:00'dan Pazar 23:59'a kadar (tam 7 gün)
+        # Bugün Pazar ise, geçen haftanın Pazartesi'sinden Cumartesi'sine kadar
+        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
+        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
+        
+        logging.info(f"📊 Haftalık eksik rapor tetiklendi: {start_date} - {end_date}")
+        
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            logging.info("📊 Haftalık eksik rapor analizi: analiz yapılamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        if GROUP_ID:
+            try:
+                with open(excel_dosyasi, 'rb') as file:
+                    await context.bot.send_document(
+                        chat_id=GROUP_ID,
+                        document=file,
+                        filename=f"Haftalik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                    )
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"📊 Haftalık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"📊 Gruba haftalık eksik rapor gönderilemedi: {e}")
+        else:
+            logging.error("📊 GROUP_ID ayarlanmamış, haftalık eksik rapor analizi gönderilemedi")
+
+        os.unlink(excel_dosyasi)
+    except Exception as e:
+        logging.error(f"📊 Haftalık eksik rapor job hatası: {e}")
+
+# YENİ: AYLIK EKSİK RAPOR JOB FONKSİYONU
+async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her ayın 1'inde 12:00'da aylık eksik raporu gruba gönder"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        
+        # Ayın 1'inde değilse çık
+        if today.day != 1:
+            return
+        
+        # Aylık eksik rapor tarih aralığı: Önceki ayın 1'inden son gününe kadar
+        # Bugün 01.12.2025 ise, 01.11.2025 - 30.11.2025 arası
+        end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
+        start_date = end_date.replace(day=1)  # Önceki ayın 1'i
+        
+        logging.info(f"🗓️ Aylık eksik rapor tetiklendi: {start_date} - {end_date}")
+        
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            logging.info("🗓️ Aylık eksik rapor analizi: analiz yapılamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        if GROUP_ID:
+            try:
+                with open(excel_dosyasi, 'rb') as file:
+                    await context.bot.send_document(
+                        chat_id=GROUP_ID,
+                        document=file,
+                        filename=f"Aylik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                    )
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🗓️ Aylık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"🗓️ Gruba aylık eksik rapor gönderilemedi: {e}")
+        else:
+            logging.error("🗓️ GROUP_ID ayarlanmamış, aylık eksik rapor analizi gönderilemedi")
+
+        os.unlink(excel_dosyasi)
+    except Exception as e:
+        logging.error(f"🗓️ Aylık eksik rapor job hatası: {e}")
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -3233,7 +3321,7 @@ async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📅 Tarih Aralığı Kullanımı:\n\n"
-            "`/tariharaligi 01.11.2024 15.11.2024`\n"
+            "`/tariharaligi 01.11.2025 15.11.2025`\n"
             "Belirtilen tarih aralığı için detaylı rapor oluşturur."
         )
         return
@@ -3262,7 +3350,7 @@ async def excel_tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_T
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📅 Excel Tarih Aralığı Raporu\n\n"
-            "Kullanım: `/excel_tariharaligi 01.11.2024 15.11.2024`\n"
+            "Kullanım: `/excel_tariharaligi 01.11.2025 15.11.2025`\n"
             "Belirtilen tarih aralığı için Excel raporu oluşturur."
         )
         return
@@ -3824,10 +3912,18 @@ def schedule_jobs(app):
     # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
     jq.run_daily(aylik_grup_raporu_kontrol, time=dt.time(9, 30, tzinfo=TZ))
     
+    # YENİ: HAFTALIK EKSİK RAPOR - HER PAZAR 10:00
+    jq.run_daily(haftalik_eksik_rapor_job, time=dt.time(10, 0, tzinfo=TZ), days=(6,))  # 6 = Pazar
+    
+    # YENİ: AYLIK EKSİK RAPOR - HER AYIN 1'İ 12:00
+    jq.run_daily(aylik_eksik_rapor_job, time=dt.time(12, 0, tzinfo=TZ))
+    
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
     logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
+    logging.info("   - Haftalık eksik rapor: Pazar 10:00")
+    logging.info("   - Aylık eksik rapor: Ayın 1'i 12:00")
 
 # YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU
 async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
@@ -4260,7 +4356,8 @@ if __name__ == "__main__":
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
     print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
     print("   - EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi eklendi")
-    print("   - 3 yeni komut: /eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar")
+    print("   - YENİ: Haftalık eksik rapor analizi: Her Pazar 10:00'da")
+    print("   - YENİ: Aylık eksik rapor analizi: Her ayın 1'inde 12:00'da")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
