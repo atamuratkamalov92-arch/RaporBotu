@@ -3215,7 +3215,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.5 - HAFTALIK RAPOR TARİH DÜZELTMESİ + ÇALIŞMA YOK RAPORU DÜZELTMESİ\n"
+        "Versiyon: 4.7.5\n"
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
