@@ -1,5 +1,10 @@
 """
-📋 CHANGELOG - bot.py v4.7.4
+📋 CHANGELOG - bot.py v4.7.5
+
+✅ HAFTALIK RAPOR TARİH DÜZELTMESİ
+- Haftalık rapor artık Cumartesi 17:35'te doğru tarih aralığı ile gönderiliyor
+- Haftalık rapor: Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir
+- "Çalışma yok" raporu düzeltildi: Personel sayısı 0 olarak kaydedilir
 
 ✅ 7/24 ÇALIŞMA SİSTEMİNE GEÇİŞ
 - Hafta sonları (Cumartesi-Pazar) artık tatil değil, çalışma günü
@@ -932,7 +937,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - DIŞ GÖREV TANIMLARI GÜNCELLENDİ (DÜZ METİN)
+# YENİ SİSTEM_PROMPT - "ÇALIŞMA YOK" DÜZELTMESİ EKLENDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -969,51 +974,58 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Toplam imalat", "imalat", "İmalat", "çalışan", "Çalışan" → "calisan"
    - "Toplam mobilizasyon", "mobilizasyon", "Mobilizasyon" → "mobilizasyon"
    - "Toplam ambar", "ambar", "ambarcı", "Ambarcı" → "ambarci"
-   - "İzinli", "izinli", "Hasta" → "izinli"
+   - "İzinli", "izinli", "Hasta", "çalışma yok", "iş yok", "faaliyet yok", "günlük çalışma yok", "bugün çalışma yapılmadı", "aktivite yok", "işçilik yok", "raporlanacak çalışma yok", "çalışma gerçekleştirilmedi", "saha kapalı / faaliyet yapılmadı", "operasyon yok", "gün boş", "bugün iş yok", "çalışma mevcut değil", "planlanan çalışma yok", "saha çalışması yapılmadı", "işlem yapılmamıştır", "görev yok", "aktif iş yok", "rapor yok çalışma yok", "calisma yok", "calışma yok", "çalıșma yok", "çalısma yok", "çalıma yok", "calışma yok", "çalşma yok", "çalışma yoktur", "calişma yok", "çelışma yok", "çalışmayok", "calismayok", "çalşmy yok", "çalılşma yok", "çalışa yok", "çalişma yok", "calıma yok", "çalısma yk", "cal yok", "ç yok", "calyok", "çalışmyok", "çalışm yok", "iş yok", "is yok", "yok çalışma", "bugün yok", "çalışma yk", "çalış. yok", "ç. yok", "işlm yok", "aktif yok" → "izinli"
    - "Şantiye dışı görev", "Şantiye dışı", "dış görev", "Dış görev", "Başka şantiye", "Buxoro'ya gitti", "Buxoro", "Başka yere görev" → "dis_gorev"
 
-4. ÇİFT SAYMA KORUMASI:
+4. ÇALIŞMA YOK/İŞ YOK RAPORLARI - YENİ KURAL:
+   - Mesajda "çalışma yok", "iş yok", "hiç çalışan yok", "personel yok", "0 kişi", "sıfır personel" gibi ifadeler varsa:
+   - TÜM personel kategorilerini (staff, calisan, mobilizasyon, ambarci, izinli) 0 olarak ayarla!
+   - genel_toplam = 0 olarak ayarla!
+   - "izinli" kategorisini de 0 olarak ayarla!
+   - Çalışma yok raporu, personelsiz şantiye durumu için kullanılır.
+
+5. ÇİFT SAYMA KORUMASI:
    - Asla aynı mesajdan hem GENEL ÖZET hem detay sayma!
    - GENEL ÖZET bulduğunda detayları GÖRMEZDEN GEL!
    - ÖRNEK: Mesajda hem detaylı işler hem de "GENEL ÖZET" varsa, SADECE GENEL ÖZET kullan!
 
-5. YEREL EKİPBAŞI KURALI:
+6. YEREL EKİPBAŞI KURALI:
    - "Yerel Ekipbaşı" personel DAİMA "staff" kategorisine DAHİLDİR
    - Raporda "Yerel Ekipbaşı: 5 kişi" görürsen → "staff"a EKLE!
    - ÖRNEK: "Staff: 8, Yerel Ekipbaşı: 5" → staff = 13
    - Yerel Ekipbaşı'yı asla ayrı bir kategori olarak sayma!
 
-6. DIŞ GÖREV KURALI:
+7. DIŞ GÖREV KURALI:
    - "dis_gorev_toplam" asla "genel_toplam"a DAHİL EDİLMEZ!
    - Genel toplam = staff + calisan + mobilizasyon + ambarci + izinli
    - Dış görevler sadece bilgi amaçlı "dis_gorev" listesinde gösterilir
    - ÖRNEK: Staff:2 + Çalışan:3 = 5, Dış görev:5 → genel_toplam = 5 (10 değil!)
 
-7. GENEL TOPLAM DOĞRULAMA:
+8. GENEL TOPLAM DOĞRULAMA:
    - Kullanıcı "Genel toplam: X" yazsa bile SEN MATEMATİK KONTROLÜ YAP!
    - Eğer staff+calisan+mobilizasyon+ambarci+izinli ≠ genel_toplam ise
    - O ZAMAN kendi hesapladığın doğru toplamı kullan!
    - ÖRNEK: "Genel toplam: 10" ama staff:2 + çalışan:3 = 5 ise → genel_toplam = 5 kullan!
 
-8. TARİH ALGILAMA:
+9. TARİH ALGILAMA:
    - Format: YYYY-AA-GG
    - Örnek: "13.11.2025" → "2025-11-13"
    - Tarih yoksa bugünün tarihini kullan
 
-9. ŞANTİYE NORMALİZASYONU:
-   - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS
-   - "Lot 13", "lot13", "LOT-13" → "LOT13"
-   - "SKP Daho" → "SKP"
-   - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
-   - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
-   - "YHP" → "YHP"
-   - "TYM" → "TYM"
-   - "MMP" → "MMP"
-   - "RMC" → "RMC"
-   - "KOK SARAY" → "KÖKSARAY"
-   - "MOS" → "MOS"
+10. ŞANTİYE NORMALİZASYONU:
+    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS
+    - "Lot 13", "lot13", "LOT-13" → "LOT13"
+    - "SKP Daho" → "SKP"
+    - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
+    - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
+    - "YHP" → "YHP"
+    - "TYM" → "TYM"
+    - "MMP" → "MMP"
+    - "RMC" → "RMC"
+    - "KOK SARAY" → "KÖKSARAY"
+    - "MOS" → "MOS"
 
-10. PERSONEL KATEGORİLERİ:
+11. PERSONEL KATEGORİLERİ:
     - staff: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Staff
     - calisan: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, TAŞERON, taşeron, Toplam imalat, İmalat
     - ambarci: ambarcı, depo sorumlusu, malzemeici, ambar, Toplam ambar, Ambarcı
@@ -1021,11 +1033,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - izinli: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni, İzinli, Hasta
     - dis_gorev: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, Şantiye dışı, dış görev, Dış görev, Başka şantiye, Buxoro'ya gitti, Buxoro, Başka yere görev, yurt dışı görev, Dış görev, Şantiye dışı
 
-11. HESAPLAMALAR:
+12. HESAPLAMALAR:
     genel_toplam = staff + calisan + mobilizasyon + ambarci + izinli
     dis_gorev_toplam = tüm dış görevlerin toplamı (genel_toplam'a EKLENMEZ!)
 
-12. DİKKAT EDİLECEK NOKTALAR:
+13. DİKKAT EDİLECEK NOKTALAR:
     - "Çalışan: 10" → calisan: 10
     - "İzinli: 1" → izinli: 1
     - "Ambarcı: 2" → ambarci: 2
@@ -1037,8 +1049,9 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - "Buxoro'ya gitti: 2 kişi" → dis_gorev: [{"gorev_yeri": "BUXORO", "sayi": 2}], dis_gorev_toplam: 2
     - "Lot 71 dış görev 8" → dis_gorev: [{"gorev_yeri": "LOT71", "sayi": 8}], dis_gorev_toplam: 8
     - "Genel toplam: 10 kişi" → genel_toplam: 10 (ama MATEMATİK KONTROLÜ yap!)
+    - "Çalışma yok", "İş yok", "Hiç personel yok" → staff:0, calisan:0, mobilizasyon:0, ambarci:0, izinli:0, genel_toplam:0
 
-13. ÖZEL DURUM - DMC ÖRNEĞİ:
+14. ÖZEL DURUM - DMC ÖRNEĞİ:
     Aşağıdaki DMC raporunu analiz ederken:
     • Yerel ekipbaşı: 1 kişi
     • Buxoro'ya gitti: 2 kişi
@@ -1058,7 +1071,17 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - dis_gorev_toplam: 2
     - genel_toplam: 23 (1 + 20 + 2 = 23, kullanıcının 25'i yanlış!)
 
-14. ÖRNEK ÇIKTI FORMATI:
+15. ÖZEL DURUM - ÇALIŞMA YOK RAPORU:
+    "06.12.2025 LOT13 çalışma yok" veya "LOT13 bugün iş yok, personel yok"
+    ÇÖZÜM:
+    - staff: 0
+    - calisan: 0
+    - mobilizasyon: 0
+    - ambarci: 0
+    - izinli: 0
+    - genel_toplam: 0
+
+16. ÖRNEK ÇIKTI FORMATI:
 [
   {
     "date": "2025-11-13",
@@ -1088,6 +1111,7 @@ DİKKAT:
 - Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
 - TAŞERON her zaman calisan kategorisine dahil edilir!
 - Kullanıcının genel toplamını KÖRÜ KÖRÜNE KABUL ETME, matematik kontrolü yap!
+- ÇALIŞMA YOK raporlarında tüm personel kategorilerini 0 yap!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -1204,6 +1228,25 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
         logging.error(f"GPT analiz hatası: {e}")
         return ""
 
+# ÇALIŞMA YOK kontrolü için yardımcı fonksiyon
+def is_calisma_yok_raporu(text):
+    """Metnin "çalışma yok" raporu olup olmadığını kontrol et"""
+    if not text:
+        return False
+    
+    calisma_yok_kelimeler = [
+        'çalışma yok', 'iş yok', 'hiç çalışan yok', 'personel yok',
+        'sıfır personel', '0 kişi', 'çalışan yok', 'işçi yok',
+        'çalışma yapılmadı', 'iş yapılmadı', 'faaliyet yok'
+    ]
+    
+    text_lower = text.lower()
+    for kelime in calisma_yok_kelimeler:
+        if kelime in text_lower:
+            return True
+    
+    return False
+
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
     """Kapsamlı doğrulama ile gelen mesajı işle - GÜNCELLENDİ: Tanımlanmamış kategori kontrolü"""
@@ -1262,6 +1305,19 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 # GPT'DEN GELEN ŞANTİYE İSMİNİ NORMALİZE ET - EKLENDİ
                 report['site'] = normalize_site_name(site)
                 
+                # ÇALIŞMA YOK KONTROLÜ - YENİ EKLENDİ
+                if is_calisma_yok_raporu(cleaned_text):
+                    logging.info("📝 'Çalışma yok' raporu tespit edildi - tüm personel kategorileri 0 olarak ayarlanıyor")
+                    report['staff'] = 0
+                    report['calisan'] = 0
+                    report['mobilizasyon'] = 0
+                    report['ambarci'] = 0
+                    report['izinli'] = 0
+                    report['genel_toplam'] = 0
+                    # Dış görevler de olmamalı çünkü hiç personel yok
+                    report['dis_gorev'] = []
+                    report['dis_gorev_toplam'] = 0
+                
                 for key in ['staff', 'calisan', 'mobilizasyon', 'ambarci', 'izinli', 'dis_gorev_toplam', 'genel_toplam']:
                     value = report.get(key, 0)
                     if not isinstance(value, int):
@@ -1306,7 +1362,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
                     report['genel_toplam'] = calculated_total
                 
-                if report['genel_toplam'] > 0 or report['staff'] > 0:
+                if report['genel_toplam'] > 0 or report['staff'] > 0 or is_calisma_yok_raporu(cleaned_text):
                     filtered_reports.append(report)
             
             return filtered_reports
@@ -1350,6 +1406,17 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
         dis_gorev_toplam = gpt_rapor.get('dis_gorev_toplam', 0)
         genel_toplam = gpt_rapor.get('genel_toplam', 0)
         
+        # YENİ: ÇALIŞMA YOK raporları için kontrol
+        if is_calisma_yok_raporu(orijinal_metin):
+            logging.info(f"📝 'Çalışma yok' raporu kaydediliyor - Personel: 0")
+            # Çalışma yok raporunda tüm personel 0 olmalı
+            staff = 0
+            calisan = 0
+            mobilizasyon = 0
+            ambarci = 0
+            izinli = 0
+            genel_toplam = 0
+        
         # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez
         calculated_total = staff + calisan + mobilizasyon + ambarci + izinli
         if genel_toplam != calculated_total:
@@ -1383,7 +1450,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderilmiş: {project_name}")
         
-        if izinli > 0:
+        # ÇALIŞMA YOK raporlarında rapor tipi "IZIN/ISYOK" olarak kaydedilir
+        if izinli > 0 or is_calisma_yok_raporu(orijinal_metin):
             rapor_tipi = "IZIN/ISYOK"
         else:
             rapor_tipi = "RAPOR"
@@ -3059,25 +3127,17 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.4 - 7/24 ÇALIŞMA SİSTEMİ + KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ\n"
-        "Özellikler:\n"
-        "• 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir\n"
+        "Versiyon: 4.7.5 - HAFTALIK RAPOR TARİH DÜZELTMESİ + ÇALIŞMA YOK RAPORU DÜZELTMESİ\n"
+        "Özellikler:\n\n"
+        "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
-        "• GENEL TOPLAM düzeltildi: Tüm kategorilerin toplamı alınır\n"
         "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
-        "• MOS şantiyesi eklendi: Sorumlu @OrhanCeylan\n"
-        "• EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi\n"
-        "• Çoklu şantiye desteği\n"
+        "• Eksik raporları tespit eder, listeler ve Excel çıktısı üretir\n"
         "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
         "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
-        "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
-        "• Gün içinde gruba otomatik hatırlatma mesajları gönderir\n"
-        "• Çift sayma koruması ile doğru toplamlar\n"
-        "• Şantiye bazlı rapor sistemi\n"
+        "• Gün içinde gruba otomatik hatırlatma mesajları gönderir (12:30 / 15:00 / 17:30)\n"
         "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
         "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• KRİTİK: Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor\n"
-        "• YENİ: Eksik rapor analizi için 3 yeni komut (/eksik_rapor_excel, /haftalik_eksik_raporlar, /aylik_eksik_raporlar)\n"
         "• ve daha birçok özelliğe sahiptir\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
@@ -3738,7 +3798,7 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
         logging.error(f"Eksik rapor Excel oluşturma hatası: {e}")
         raise e
 
-# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ
+# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ - HAFTALIK RAPOR DÜZELTMESİ
 def schedule_jobs(app):
     jq = app.job_queue
     
@@ -3759,8 +3819,8 @@ def schedule_jobs(app):
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35
-    jq.run_daily(haftalik_grup_raporu, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
+    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35 (DOĞRU TARİH ARALIĞI)
+    jq.run_daily(haftalik_grup_raporu_duzeltilmis, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
     
     # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
     jq.run_daily(aylik_grup_raporu_kontrol, time=dt.time(9, 30, tzinfo=TZ))
@@ -3769,6 +3829,49 @@ def schedule_jobs(app):
     jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
     logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
+
+# YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU
+async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
+    """DÜZELTİLDİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        now_time = dt.datetime.now(TZ).time()
+        
+        logging.info(f"📅 Haftalık rapor tetiklendi: Bugün = {today}, Saat = {now_time}")
+        
+        # Haftalık rapor tarih aralığını hesapla
+        # Pazartesi 00:00'dan bugün (Cumartesi) 17:35'e kadar
+        start_date = today - dt.timedelta(days=today.weekday())  # Pazartesi
+        end_date = today  # Bugün (Cumartesi)
+        
+        logging.info(f"📊 Haftalık rapor tarih aralığı: {start_date} - {end_date}")
+        
+        # Haftalık rapor oluştur
+        mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
+        
+        # Grup ID kontrolü
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"📊 Haftalık grup raporu gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"📊 Haftalık grup raporu gönderilemedi: {e}")
+        else:
+            logging.error("📊 GROUP_ID ayarlanmamış, haftalık rapor gönderilemedi")
+        
+        # Adminlere de gönder
+        for admin_id in ADMINS:
+            try:
+                await context.bot.send_message(chat_id=admin_id, text=mesaj)
+                logging.info(f"📊 Haftalık rapor {admin_id} adminine gönderildi")
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                if "Chat not found" not in str(e):
+                    logging.error(f"📊 {admin_id} adminine haftalık rapor gönderilemedi: {e}")
+        
+    except Exception as e:
+        logging.error(f"📊 Haftalık grup raporu hatası: {e}")
+        await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
 
 # YENİ: ASYNC POSTGRES YEDEKLEME
 async def async_yedekle_postgres():
@@ -3958,6 +4061,7 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         await hata_bildirimi(context, f"Şantiye son rapor kontrol hatası: {e}")
 
 async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
+    """Eski haftalık rapor fonksiyonu - geriye uyumluluk için (artık kullanılmayacak)"""
     try:
         today = dt.datetime.now(TZ).date()
         
@@ -4149,7 +4253,9 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.4 - 7/24 ÇALIŞMA SİSTEMİ + KRİTİK TOPLAMA VE YÜZDE DÜZELTMESİ + EKSİK RAPOR ANALİZİ:")
+    print("📝 Güncellenmiş Versiyon v4.7.5 - HAFTALIK RAPOR TARİH DÜZELTMESİ + ÇALIŞMA YOK RAPORU DÜZELTMESİ:")
+    print("   - HAFTALIK RAPOR DÜZELTMESİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir")
+    print("   - ÇALIŞMA YOK RAPORU DÜZELTMESİ: 'Çalışma yok' raporlarında personel sayısı 0 olarak kaydedilir")
     print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
