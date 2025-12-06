@@ -1080,9 +1080,9 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 15. "ÇALIŞMA YOK" RAPORLARI:
     - Eğer raporda "çalışma yok" veya benzeri ifadeler (yukarıda listelenen) geçiyorsa ve raporda hiç personel sayısı (staff, calisan, mobilizasyon, ambarci, izinli) belirtilmemişse:
         - Tüm kategorileri 0 olarak ayarla: staff=0, calisan=0, mobilizasyon=0, ambarci=0
-        - izinli kategorisini 1 olarak ayarla
+        - izinli kategorisini 0 olarak ayarla (çalışma olmadığı için izinli sayılır)
         - dis_gorev_toplam = 0
-        - genel_toplam = 1 (izinli=1'den dolayı)
+        - genel_toplam = 0 (izinli=0'den dolayı)
     - Bu raporlar geçerlidir ve çalışma olmadığını belirtir.
     - Örnek: "📍 ŞANTİYE: OHP 📅 TARİH: 4.12.2025 Calisma yok" → OHP şantiyesi için 4 Aralık 2025 tarihli, çalışma olmadığını belirten geçerli bir rapor
 
@@ -1095,10 +1095,10 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
         "calisan": 0,
         "mobilizasyon": 0,
         "ambarci": 0,
-        "izinli": 1,
+        "izinli": 0,
         "dis_gorev": [],
         "dis_gorev_toplam": 0,
-        "genel_toplam": 1
+        "genel_toplam": 0
       }
     ]
 
@@ -1113,7 +1113,7 @@ DİKKAT:
 - Yerel Ekipbaşı her zaman staff kategorisine dahil edilir!
 - TAŞERON her zaman calisan kategorisine dahil edilir!
 - Kullanıcının genel toplamını KÖRÜ KÖRÜNE KABUL ETME, matematik kontrolü yap!
-- "Çalışma yok" raporlarında tüm personel kategorileri 0, izinli=1 olmalı!
+- "Çalışma yok" raporlarında tüm personel kategorileri 0, izinli=0 olmalı!
 """
 
 # Gelişmiş tarih parser fonksiyonları
@@ -1332,8 +1332,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
                     report['genel_toplam'] = calculated_total
                 
-                if report['genel_toplam'] > 0 or report['staff'] > 0:
-                    filtered_reports.append(report)
+                if report['genel_toplam'] > 0 or report['staff'] > 0 or report['calisan'] > 0 or report['mobilizasyon'] > 0 or report['ambarci'] > 0 or report['izinli'] > 0:
+    filtered_reports.append(report)
             
             return filtered_reports
                 
@@ -1409,10 +1409,10 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             logging.warning(f"⚠️ Zaten rapor var: {project_name} - {rapor_tarihi}")
             raise Exception(f"Bu şantiye için bugün zaten rapor gönderilmiş: {project_name}")
         
-        if izinli > 0:
-            rapor_tipi = "IZIN/ISYOK"
-        else:
-            rapor_tipi = "RAPOR"
+        if izinli > 0 or (staff == 0 and calisan == 0 and mobilizasyon == 0 and ambarci == 0 and izinli == 0 and genel_toplam == 0):
+    rapor_tipi = "IZIN/ISYOK"
+else:
+    rapor_tipi = "RAPOR"
         
         work_description = f"Staff:{staff} Çalışan:{calisan} Mobilizasyon:{mobilizasyon} Ambarcı:{ambarci} İzinli:{izinli}"
         if dis_gorev_toplam > 0:
