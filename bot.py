@@ -1339,7 +1339,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                     if 'calculated_total' in locals():
                         report['genel_toplam'] = calculated_total
                 
-                filtered_reports.append(report)
+                filtered_reports.append(report)  # BU SATIR DÜZGÜN KONUMDA OLMALI
             
             return filtered_reports
                 
