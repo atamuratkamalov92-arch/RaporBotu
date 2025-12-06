@@ -1,10 +1,15 @@
 """
-📋 CHANGELOG - bot.py v4.7.5
+📋 CHANGELOG - bot.py v4.7.6
+
+✅ ÇALIŞMA YOK RAPORLARI DÜZELTMESİ
+- "Çalışma yok", "iş yok", "faaliyet yok" gibi raporlar artık doğru şekilde işleniyor
+- Tüm personel kategorileri 0 olarak kaydediliyor
+- GENEL TOPLAM: 0 olarak hesaplanıyor
+- Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor
 
 ✅ HAFTALIK RAPOR TARİH DÜZELTMESİ
 - Haftalık rapor artık Cumartesi 17:35'te doğru tarih aralığı ile gönderiliyor
 - Haftalık rapor: Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir
-- "Çalışma yok" raporu düzeltildi: Personel sayısı 0 olarak kaydedilir
 
 ✅ 7/24 ÇALIŞMA SİSTEMİNE GEÇİŞ
 - Hafta sonları (Cumartesi-Pazar) artık tatil değil, çalışma günü
@@ -937,7 +942,7 @@ def is_media_message(message) -> bool:
 
     return False
 
-# YENİ SİSTEM_PROMPT - "ÇALIŞMA YOK" DÜZELTMESİ EKLENDİ
+# YENİ SİSTEM_PROMPT - "ÇALIŞMA YOK" DÜZELTMESİ GELİŞTİRİLDİ
 SYSTEM_PROMPT = """
 Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzerinden gönderdiği serbest formatlı günlük personel raporlarını SABİT BİR JSON formatına dönüştürmektir.
 
@@ -974,11 +979,11 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Toplam imalat", "imalat", "İmalat", "çalışan", "Çalışan" → "calisan"
    - "Toplam mobilizasyon", "mobilizasyon", "Mobilizasyon" → "mobilizasyon"
    - "Toplam ambar", "ambar", "ambarcı", "Ambarcı" → "ambarci"
-   - "İzinli", "izinli", "Hasta", "çalışma yok", "iş yok", "faaliyet yok", "günlük çalışma yok", "bugün çalışma yapılmadı", "aktivite yok", "işçilik yok", "raporlanacak çalışma yok", "çalışma gerçekleştirilmedi", "saha kapalı / faaliyet yapılmadı", "operasyon yok", "gün boş", "bugün iş yok", "çalışma mevcut değil", "planlanan çalışma yok", "saha çalışması yapılmadı", "işlem yapılmamıştır", "görev yok", "aktif iş yok", "rapor yok çalışma yok", "calisma yok", "calışma yok", "çalıșma yok", "çalısma yok", "çalıma yok", "calışma yok", "çalşma yok", "çalışma yoktur", "calişma yok", "çelışma yok", "çalışmayok", "calismayok", "çalşmy yok", "çalılşma yok", "çalışa yok", "çalişma yok", "calıma yok", "çalısma yk", "cal yok", "ç yok", "calyok", "çalışmyok", "çalışm yok", "iş yok", "is yok", "yok çalışma", "bugün yok", "çalışma yk", "çalış. yok", "ç. yok", "işlm yok", "aktif yok" → "izinli"
+   - "İzinli", "izinli", "Hasta" → "izinli"
    - "Şantiye dışı görev", "Şantiye dışı", "dış görev", "Dış görev", "Başka şantiye", "Buxoro'ya gitti", "Buxoro", "Başka yere görev" → "dis_gorev"
 
 4. ÇALIŞMA YOK/İŞ YOK RAPORLARI - YENİ KURAL:
-   - Mesajda "çalışma yok", "iş yok", "hiç çalışan yok", "personel yok", "0 kişi", "sıfır personel" gibi ifadeler varsa:
+   - Mesajda "çalışma yok", "iş yok", "faaliyet yok", "günlük çalışma yok", "bugün çalışma yapılmadı", "aktivite yok", "işçilik yok", "raporlanacak çalışma yok", "çalışma gerçekleştirilmedi", "saha kapalı / faaliyet yapılmadı", "operasyon yok", "gün boş", "bugün iş yok", "çalışma mevcut değil", "planlanan çalışma yok", "saha çalışması yapılmadı", "işlem yapılmamıştır", "görev yok", "aktif iş yok", "rapor yok çalışma yok", "calisma yok", "calışma yok", "çalıșma yok", "çalısma yok", "çalıma yok", "calışma yok", "çalşma yok", "çalışma yoktur", "calişma yok", "çelışma yok", "çalışmayok", "calismayok", "çalşmy yok", "çalılşma yok", "çalışa yok", "çalişma yok", "calıma yok", "çalısma yk", "cal yok", "ç yok", "calyok", "çalışmyok", "çalışm yok", "iş yok", "is yok", "yok çalışma", "bugün yok", "çalışma yk", "çalış. yok", "ç. yok", "işlm yok", "aktif yok" gibi ifadeler varsa:
    - TÜM personel kategorilerini (staff, calisan, mobilizasyon, ambarci, izinli) 0 olarak ayarla!
    - genel_toplam = 0 olarak ayarla!
    - "izinli" kategorisini de 0 olarak ayarla!
@@ -1029,7 +1034,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - staff: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Staff
     - calisan: usta, işçi, yardımcı, operatör, imalat, çalışan, worker, TAŞERON, taşeron, Toplam imalat, İmalat
     - ambarci: ambarcı, depo sorumlusu, malzemeici, ambar, Toplam ambar, Ambarcı
-    - mobilizasyon: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takibi, Toplam mobilizasyon, Mobilizasyon
+    - mobilizasyon: genel mobilizasyon, saha kontrol, nöbetçi, mobilizasyon takimi, Toplam mobilizasyon, Mobilizasyon
     - izinli: izinli, iş yok, gelmedi, izindeyim, hasta, raporlu, hastalık izni, sıhhat izni, İzinli, Hasta
     - dis_gorev: başka şantiye görev, dış görev, Lot 71 dış görev, Fap dış görev, Şantiye dışı görev, Şantiye dışı, dış görev, Dış görev, Başka şantiye, Buxoro'ya gitti, Buxoro, Başka yere görev, yurt dışı görev, Dış görev, Şantiye dışı
 
@@ -1228,28 +1233,62 @@ def gpt_analyze_enhanced(system_prompt, user_prompt):
         logging.error(f"GPT analiz hatası: {e}")
         return ""
 
-# ÇALIŞMA YOK kontrolü için yardımcı fonksiyon
+# ÇALIŞMA YOK kontrolü için geliştirilmiş fonksiyon
 def is_calisma_yok_raporu(text):
     """Metnin "çalışma yok" raporu olup olmadığını kontrol et"""
     if not text:
         return False
     
+    # Geliştirilmiş çalışma yok kelimeleri listesi
     calisma_yok_kelimeler = [
-        'çalışma yok', 'iş yok', 'hiç çalışan yok', 'personel yok',
-        'sıfır personel', '0 kişi', 'çalışan yok', 'işçi yok',
-        'çalışma yapılmadı', 'iş yapılmadı', 'faaliyet yok'
+        'çalışma yok', 'iş yok', 'faaliyet yok', 'günlük çalışma yok', 
+        'bugün çalışma yapılmadı', 'aktivite yok', 'işçilik yok', 
+        'raporlanacak çalışma yok', 'çalışma gerçekleştirilmedi', 
+        'saha kapalı / faaliyet yapılmadı', 'operasyon yok', 'gün boş', 
+        'bugün iş yok', 'çalışma mevcut değil', 'planlanan çalışma yok', 
+        'saha çalışması yapılmadı', 'işlem yapılmamıştır', 'görev yok', 
+        'aktif iş yok', 'rapor yok çalışma yok', 'calisma yok', 
+        'calışma yok', 'çalıșma yok', 'çalısma yok', 'çalıma yok', 
+        'calışma yok', 'çalşma yok', 'çalışma yoktur', 'calişma yok', 
+        'çelışma yok', 'çalışmayok', 'calismayok', 'çalşmy yok', 
+        'çalılşma yok', 'çalışa yok', 'çalişma yok', 'calıma yok', 
+        'çalısma yk', 'cal yok', 'ç yok', 'calyok', 'çalışmyok', 
+        'çalışm yok', 'iş yok', 'is yok', 'yok çalışma', 'bugün yok', 
+        'çalışma yk', 'çalış. yok', 'ç. yok', 'işlm yok', 'aktif yok',
+        'hiç çalışan yok', 'personel yok', 'sıfır personel', '0 kişi',
+        'çalışan yok', 'işçi yok', 'çalışma yapılmadı', 'iş yapılmadı',
+        'faaliyet yok', 'hiç personel', 'sıfır kişi', '0 personel',
+        'yok iş', 'iş yoktur', 'çalışma yoktur', 'personel bulunmuyor'
     ]
     
     text_lower = text.lower()
+    
+    # Tüm kelimeleri kontrol et
     for kelime in calisma_yok_kelimeler:
         if kelime in text_lower:
+            logging.info(f"📝 'Çalışma yok' raporu tespit edildi: '{kelime}'")
+            return True
+    
+    # Regex ile daha geniş bir kontrol
+    calisma_yok_patterns = [
+        r'(çalışma|iş|faaliyet|aktivite|operasyon)\s*yok',
+        r'yok\s*(çalışma|iş|faaliyet)',
+        r'0\s*(kişi|personel|çalışan|işçi)',
+        r'sıfır\s*(kişi|personel|çalışan|işçi)',
+        r'hiç\s*(yok|çalışan|personel|işçi)',
+        r'bugün\s*(yok|çalışma\s*yok|iş\s*yok)'
+    ]
+    
+    for pattern in calisma_yok_patterns:
+        if re.search(pattern, text_lower):
+            logging.info(f"📝 'Çalışma yok' pattern tespit edildi: '{pattern}'")
             return True
     
     return False
 
 # Doğrulama ile gelişmiş process_incoming_message
 def process_incoming_message(raw_text: str, is_group: bool = False):
-    """Kapsamlı doğrulama ile gelen mesajı işle - GÜNCELLENDİ: Tanımlanmamış kategori kontrolü"""
+    """Kapsamlı doğrulama ile gelen mesajı işle - GÜNCELLENDİ: Çalışma yok raporları için geliştirildi"""
     is_valid, cleaned_text = validate_user_input(raw_text)
     if not is_valid:
         return [] if is_group else {"error": "geçersiz_giriş"}
@@ -1257,6 +1296,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     today = dt.date.today()
     max_retries = 2
     retry_delay = 1
+    
+    # ÖNCE "ÇALIŞMA YOK" KONTROLÜ - YENİ EKLENDİ
+    is_calisma_yok = is_calisma_yok_raporu(cleaned_text)
     
     for attempt in range(max_retries):
         try:
@@ -1305,8 +1347,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 # GPT'DEN GELEN ŞANTİYE İSMİNİ NORMALİZE ET - EKLENDİ
                 report['site'] = normalize_site_name(site)
                 
-                # ÇALIŞMA YOK KONTROLÜ - YENİ EKLENDİ
-                if is_calisma_yok_raporu(cleaned_text):
+                # ÇALIŞMA YOK KONTROLÜ - GELİŞTİRİLDİ
+                if is_calisma_yok or is_calisma_yok_raporu(cleaned_text):
                     logging.info("📝 'Çalışma yok' raporu tespit edildi - tüm personel kategorileri 0 olarak ayarlanıyor")
                     report['staff'] = 0
                     report['calisan'] = 0
@@ -1362,7 +1404,8 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
                     report['genel_toplam'] = calculated_total
                 
-                if report['genel_toplam'] > 0 or report['staff'] > 0 or is_calisma_yok_raporu(cleaned_text):
+                # ÇALIŞMA YOK raporları da kaydedilmeli
+                if report['genel_toplam'] > 0 or report['staff'] > 0 or is_calisma_yok:
                     filtered_reports.append(report)
             
             return filtered_reports
@@ -1416,6 +1459,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             ambarci = 0
             izinli = 0
             genel_toplam = 0
+            # Dış görevler de 0 olmalı
+            dis_gorev_toplam = 0
         
         # YENİ: GENEL TOPLAM DOĞRULAMA - Dış görevler dahil edilmez
         calculated_total = staff + calisan + mobilizasyon + ambarci + izinli
@@ -1482,7 +1527,8 @@ async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, g
             "santiye_sorumlusu": {
                 "user_id": santiye_sorumlusu_id,
                 "kullanici_adi": id_to_name.get(santiye_sorumlusu_id, "Belirsiz") if santiye_sorumlusu_id else "Belirsiz"
-            } if santiye_sorumlusu_id else None
+            } if santiye_sorumlusu_id else None,
+            "is_calisma_yok": is_calisma_yok_raporu(orijinal_metin)  # YENİ: Çalışma yok bayrağı
         }
         
         await async_execute("""
@@ -1532,30 +1578,106 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     try:
+        # ÖNCE "ÇALIŞMA YOK" KONTROLÜ
+        is_calisma_yok = is_calisma_yok_raporu(metin)
+        
         raporlar = process_incoming_message(metin, is_group)
         
         if is_dm and isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
-            await msg.reply_text(
-                "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
-                "Lütfen şantiye, tarih ve iş bilgilerini içeren bir rapor gönderin.\n"
-                "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\""
-            )
-            return
+            # Eğer çalışma yok raporuysa, bunu kabul et
+            if is_calisma_yok:
+                # Çalışma yok raporu için basit bir JSON oluştur
+                today = dt.datetime.now(TZ).date()
+                
+                # Şantiye adını çıkarmaya çalış
+                site = "BELİRSİZ"
+                patterns = [
+                    r'(LOT13|LOT71|SKP|BWC|STADYUM|DMC|OHP|YHP|TYM|MMP|RMC|PİRAMİT|MOS|KÖKSARAY)',
+                    r'ŞANTİYE:\s*(\w+)',
+                    r'📍\s*ŞANTİYE:\s*(\w+)'
+                ]
+                
+                for pattern in patterns:
+                    match = re.search(pattern, metin, re.IGNORECASE)
+                    if match:
+                        site = normalize_site_name(match.group(1))
+                        break
+                
+                # Çalışma yok raporu için basit bir rapor oluştur
+                calisma_yok_rapor = {
+                    "date": today.strftime('%Y-%m-%d'),
+                    "site": site,
+                    "staff": 0,
+                    "calisan": 0,
+                    "mobilizasyon": 0,
+                    "ambarci": 0,
+                    "izinli": 0,
+                    "dis_gorev": [],
+                    "dis_gorev_toplam": 0,
+                    "genel_toplam": 0
+                }
+                
+                raporlar = [calisma_yok_rapor]
+                logging.info(f"📝 DM'de 'Çalışma yok' raporu tespit edildi: {site}")
+            else:
+                await msg.reply_text(
+                    "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
+                    "Lütfen şantiye, tarih ve iş bilgilerini içeren bir rapor gönderin.\n"
+                    "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
+                    "Not: 'Çalışma yok' raporları da kabul edilir: \"OHP bugün çalışma yok\""
+                )
+                return
         
         if not raporlar or (isinstance(raporlar, list) and len(raporlar) == 0):
-            logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
-            
-            if is_dm:
-                await msg.reply_text(
-                    "❌ Rapor bulunamadı.\n\n"
-                    "Lütfen şantiye raporunuzu aşağıdaki formatta gönderin:\n"
-                    "• Tarih (01.01.2025)\n" 
-                    "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
-                    "• Yapılan işler\n"
-                    "• Personel bilgisi\n\n"
-                    "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\""
-                )
-            return
+            # Çalışma yok raporuysa kabul et
+            if is_calisma_yok:
+                today = dt.datetime.now(TZ).date()
+                
+                # Şantiye adını çıkarmaya çalış
+                site = "BELİRSİZ"
+                patterns = [
+                    r'(LOT13|LOT71|SKP|BWC|STADYUM|DMC|OHP|YHP|TYM|MMP|RMC|PİRAMİT|MOS|KÖKSARAY)',
+                    r'ŞANTİYE:\s*(\w+)',
+                    r'📍\s*ŞANTİYE:\s*(\w+)'
+                ]
+                
+                for pattern in patterns:
+                    match = re.search(pattern, metin, re.IGNORECASE)
+                    if match:
+                        site = normalize_site_name(match.group(1))
+                        break
+                
+                # Çalışma yok raporu için basit bir rapor oluştur
+                calisma_yok_rapor = {
+                    "date": today.strftime('%Y-%m-%d'),
+                    "site": site,
+                    "staff": 0,
+                    "calisan": 0,
+                    "mobilizasyon": 0,
+                    "ambarci": 0,
+                    "izinli": 0,
+                    "dis_gorev": [],
+                    "dis_gorev_toplam": 0,
+                    "genel_toplam": 0
+                }
+                
+                raporlar = [calisma_yok_rapor]
+                logging.info(f"📝 'Çalışma yok' raporu tespit edildi (boş raporlar): {site}")
+            else:
+                logging.info(f"🤖 GPT: Rapor bulunamadı - {user_id} (Chat Type: {chat_type})")
+                
+                if is_dm:
+                    await msg.reply_text(
+                        "❌ Rapor bulunamadı.\n\n"
+                        "Lütfen şantiye raporunuzu aşağıdaki formatta gönderin:\n"
+                        "• Tarih (01.01.2025)\n" 
+                        "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
+                        "• Yapılan işler\n"
+                        "• Personel bilgisi\n\n"
+                        "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
+                        "Not: 'Çalışma yok' raporları da kabul edilir: \"OHP bugün çalışma yok\""
+                    )
+                return
 
         logging.info(f"🤖 GPT: {len(raporlar)} rapor çıkarıldı - {user_id} (Chat Type: {chat_type})")
         
@@ -2051,6 +2173,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                 ai_data = safe_json_loads(ai_analysis)
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                is_calisma_yok = ai_data.get('is_calisma_yok', False)  # YENİ: Çalışma yok kontrolü
                 
                 if yeni_format:
                     staff_count = yeni_format.get('staff', 0)
@@ -2151,9 +2274,12 @@ async def generate_gelismis_personel_ozeti(target_date):
             # KRİTİK GÜNCELLEME: Şantiye başlık = santiye_baslik (dış görevler HARİÇ)
             santiye_baslik = analiz['santiye_baslik']
             
-            if santiye_baslik > 0:
+            if santiye_baslik > 0 or analiz['dis_gorev_toplam'] > 0:
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {santiye_baslik} kişi\n"
+                mesaj += f"{emoji} {proje_adi}: {santiye_baslik} kişi"
+                if analiz['dis_gorev_toplam'] > 0:
+                    mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
+                mesaj += "\n"
                 
                 durum_detay = []
                 if analiz['staff'] > 0: 
@@ -2166,8 +2292,6 @@ async def generate_gelismis_personel_ozeti(target_date):
                     durum_detay.append(f"Ambarcı:{analiz['ambarci']}")
                 if analiz['izinli'] > 0: 
                     durum_detay.append(f"İzinli:{analiz['izinli']}")
-                if analiz['dis_gorev_toplam'] > 0:
-                    durum_detay.append(f"DışGörev:{analiz['dis_gorev_toplam']}")
                 
                 if durum_detay:
                     mesaj += f"   └─ {', '.join(durum_detay)}\n\n"
@@ -2196,7 +2320,7 @@ async def generate_gelismis_personel_ozeti(target_date):
         eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
         
         if eksik_projeler:
-            mesaj += f"❌ EKSİK ŞANTİYELER: {', '.join(sorted(eksik_projeler))}"
+            mesaj += f"\n❌ EKSİK ŞANTİYELER: {', '.join(sorted(eksik_projeler))}"
         
         return mesaj
     except Exception as e:
@@ -2218,10 +2342,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
-        
-        # VERİMLİLİK HESABI KALDIRILDI
-        # beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
-        # verimlilik = (toplam_rapor / beklenen_rapor * 100) if beklenen_rapor > 0 else 0
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
@@ -2327,21 +2447,26 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
         mesaj += f"• Rapor Gönderen: {len(rows)} kişi\n"
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
-        # VERİMLİLİK SATIRI KALDIRILDI
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
         
         mesaj += f"🏗️ PROJE BAZLI PERSONEL:\n\n"
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "STADYUM", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT", "MOS"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
-                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
-                mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
+            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                if analiz['dis_gorev_toplam'] > 0:
+                    mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
+                mesaj += "\n"
+                mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                if analiz['dis_gorev_toplam'] > 0:
+                    mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
+                mesaj += "\n"
                 
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
@@ -2349,7 +2474,6 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
                 if analiz['mobilizasyon'] > 0: detay.append(f"Mobilizasyon:{analiz['mobilizasyon']}")
                 if analiz['ambarci'] > 0: detay.append(f"Ambarcı:{analiz['ambarci']}")
                 if analiz['izinli'] > 0: detay.append(f"İzinli:{analiz['izinli']}")
-                if analiz['dis_gorev_toplam'] > 0: detay.append(f"DışGörev:{analiz['dis_gorev_toplam']}")
                 
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
@@ -2398,10 +2522,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         toplam_rapor = sum([safe_get_tuple_value(x, 1, 0) for x in rows])
         gun_sayisi = (end_date - start_date).days + 1
-        
-        # VERİMLİLİK HESABI KALDIRILDI
-        # beklenen_rapor = len(rapor_sorumlulari) * gun_sayisi
-        # eksik_rapor = max(0, beklenen_rapor - toplam_rapor)
         
         proje_detay_rows = await async_fetchall("""
             SELECT project_name, ai_analysis
@@ -2505,7 +2625,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         mesaj += f"📈 PERFORMANS ANALİZİ:\n"
         mesaj += f"• Toplam Rapor: {toplam_rapor}\n"
-        # EKSİK RAPOR SATIRI KALDIRILDI (verimlilikle ilgili olduğu için)
         mesaj += f"• İş Günü: {gun_sayisi} gün\n"
         mesaj += f"• Günlük Ort.: {toplam_rapor/gun_sayisi:.1f} rapor\n"
         mesaj += f"• Toplam Personel: {genel_toplam} kişi\n\n"
@@ -2514,14 +2633,20 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT", "MOS"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
-                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
-                mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}, DışGörev:{analiz['dis_gorev_toplam']}\n\n"
+            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                if analiz['dis_gorev_toplam'] > 0:
+                    mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
+                mesaj += "\n"
+                mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and analiz['santiye_baslik'] > 0:  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi\n"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                if analiz['dis_gorev_toplam'] > 0:
+                    mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
+                mesaj += "\n"
                 
                 detay = []
                 if analiz['staff'] > 0: detay.append(f"Staff:{analiz['staff']}")
@@ -2529,7 +2654,6 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
                 if analiz['mobilizasyon'] > 0: detay.append(f"Mobilizasyon:{analiz['mobilizasyon']}")
                 if analiz['ambarci'] > 0: detay.append(f"Ambarcı:{analiz['ambarci']}")
                 if analiz['izinli'] > 0: detay.append(f"İzinli:{analiz['izinli']}")
-                if analiz['dis_gorev_toplam'] > 0: detay.append(f"DışGörev:{analiz['dis_gorev_toplam']}")
                 
                 if detay:
                     mesaj += f"   └─ {', '.join(detay)}\n"
@@ -2697,7 +2821,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
-# EKSİK RAPOR ANALİZ FONKSİYONLARI - YENİ EKLENDİ
+# EKSİK RAPOR ANALİZ FONKSİYONLARI
 def parse_tr_date(date_str: str) -> dt.date:
     """GG.AA.YYYY formatındaki tarihi parse eder"""
     try:
@@ -3215,7 +3339,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.5\n"
+        "Versiyon: 4.7.6\n"
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
@@ -3795,96 +3919,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
-    """Eksik rapor analizini Excel formatında oluştur"""
-    try:
-        from openpyxl.utils import get_column_letter
-        
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Eksik Rapor Analizi"
-        ws.merge_cells('A1:D1')
-        ws['A1'] = f"Eksik Rapor Analizi - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
-        ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center')
-        
-        headers = ['Şantiye', 'Toplam Gün', 'Eksik Gün', 'Eksik %'] + [gun.strftime('%d.%m') for gun in gunler]
-        
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=3, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-            cell.font = Font(color="FFFFFF", bold=True)
-            cell.alignment = Alignment(horizontal='center')
-        
-        row = 4
-        for santiye, a in sorted(analiz.items()):
-            ws.cell(row=row, column=1, value=santiye)
-            ws.cell(row=row, column=2, value=a['toplam_gun'])
-            ws.cell(row=row, column=3, value=len(a['eksik_gunler']))
-            eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
-            ws.cell(row=row, column=4, value=eksik_yuzde/100)
-            ws.cell(row=row, column=4).number_format = '0.00%'
-            
-            for col_idx, gun in enumerate(gunler, 5):  # 5. sütundan başla
-                if gun in a['eksik_gunler']:
-                    ws.cell(row=row, column=col_idx, value='✗')
-                    ws.cell(row=row, column=col_idx).fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-                else:
-                    ws.cell(row=row, column=col_idx, value='✓')
-                    ws.cell(row=row, column=col_idx).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-            row += 1
-        
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 10
-        
-        for i in range(len(gunler)):
-            col_letter = get_column_letter(5 + i)  # 5 = 'E' sütunundan başla
-            ws.column_dimensions[col_letter].width = 8
-        
-        # Özet sayfası oluştur
-        ws_summary = wb.create_sheet("Özet")
-        ws_summary.merge_cells('A1:D1')
-        ws_summary['A1'] = f"Eksik Rapor Özeti - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
-        ws_summary['A1'].font = Font(bold=True, size=14)
-        ws_summary['A1'].alignment = Alignment(horizontal='center')
-        
-        toplam_santiye = len(analiz)
-        eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
-        eksik_santiye = toplam_santiye - eksiksiz_santiye
-        toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
-        
-        # 7/24 ÇALIŞMA SİSTEMİ: Tüm günler dahil
-        toplam_gun = len(gunler)
-        
-        summary_data = [
-            ['📅 Analiz Periyodu', f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"],
-            ['🏗️ Toplam Şantiye', toplam_santiye],
-            ['✅ Eksiksiz Şantiye', f"{eksiksiz_santiye} (%{eksiksiz_santiye/toplam_santiye*100:.1f})"],
-            ['❌ Eksik Raporu Olan', f"{eksik_santiye} (%{eksik_santiye/toplam_santiye*100:.1f})"],
-            ['📅 Toplam Gün', toplam_gun],  # "İş Günü" yerine "Toplam Gün"
-            ['📊 Toplam EKSİK RAPOR', toplam_eksik_rapor],
-            ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')]
-        ]
-        
-        for row_idx, (label, value) in enumerate(summary_data, 3):
-            ws_summary[f'A{row_idx}'] = label
-            ws_summary[f'B{row_idx}'] = value
-            ws_summary[f'A{row_idx}'].font = Font(bold=True)
-        
-        ws_summary.column_dimensions['A'].width = 25
-        ws_summary.column_dimensions['B'].width = 20
-        
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-        wb.save(temp_file.name)
-        return temp_file.name
-        
-    except Exception as e:
-        logging.error(f"Eksik rapor Excel oluşturma hatası: {e}")
-        raise e
-
 # YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ - HAFTALIK RAPOR DÜZELTMESİ
 def schedule_jobs(app):
     jq = app.job_queue
@@ -3924,6 +3958,8 @@ def schedule_jobs(app):
     logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
     logging.info("   - Haftalık eksik rapor: Pazar 10:00")
     logging.info("   - Aylık eksik rapor: Ayın 1'i 12:00")
+    logging.info("   - Haftalık rapor: Cumartesi 17:35")
+    logging.info("   - Aylık rapor: Ayın 1'i 09:30")
 
 # YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU
 async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
@@ -4348,9 +4384,12 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.5 - HAFTALIK RAPOR TARİH DÜZELTMESİ + ÇALIŞMA YOK RAPORU DÜZELTMESİ:")
+    print("📝 Güncellenmiş Versiyon v4.7.6 - ÇALIŞMA YOK RAPORU DÜZELTMESİ + HAFTALIK RAPOR KONTROLÜ:")
+    print("   - ÇALIŞMA YOK RAPORU DÜZELTMESİ: Tüm 'çalışma yok', 'iş yok', 'faaliyet yok' vb. raporlar artık doğru işleniyor")
+    print("   - Personel kategorileri 0 olarak kaydediliyor")
+    print("   - GENEL TOPLAM: 0 olarak hesaplanıyor")
+    print("   - Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor")
     print("   - HAFTALIK RAPOR DÜZELTMESİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir")
-    print("   - ÇALIŞMA YOK RAPORU DÜZELTMESİ: 'Çalışma yok' raporlarında personel sayısı 0 olarak kaydedilir")
     print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
