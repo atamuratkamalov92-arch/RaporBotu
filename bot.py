@@ -3131,7 +3131,6 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
-        "• Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100\n"
         "• Eksik raporları tespit eder, listeler ve Excel çıktısı üretir\n"
         "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
         "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
