@@ -3023,10 +3023,16 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     mesaj = f"📋 EKSİK RAPOR DETAY ANALİZİ\n"
     mesaj += f"📅 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n"
     mesaj += "Not: 'Eksik günler:' olarak tarihler yazılmıştır.\n\n"
+    
     kritik = []
     orta = []
     az = []
+    
+    # Sadece eksik raporu olan şantiyeleri listeye ekle
     for santiye, a in analiz.items():
+        if len(a['eksik_gunler']) == 0:  # Eksik raporu yoksa atla
+            continue
+            
         eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
         if eksik_yuzde >= 50:
             kritik.append((santiye, a, eksik_yuzde))
@@ -3034,18 +3040,21 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
             orta.append((santiye, a, eksik_yuzde))
         else:
             az.append((santiye, a, eksik_yuzde))
+    
     if kritik:
         mesaj += f"🔴 KRİTİK EKSİKLİK (%50'den fazla) ({len(kritik)} şantiye):\n"
         for santiye, a, yuzde in sorted(kritik, key=lambda x: x[2], reverse=True):
             mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
             eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
             mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    
     if orta:
         mesaj += f"🟡 ORTA EKSİKLİK (%25-50) ({len(orta)} şantiye):\n"
         for santiye, a, yuzde in sorted(orta, key=lambda x: x[2], reverse=True):
             mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
             eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
             mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    
     if az:
         mesaj += f"✅ AZ EKSİKLİK (%0-25) ({len(az)} şantiye):\n"
         for santiye, a, yuzde in sorted(az, key=lambda x: x[2], reverse=True):
@@ -3054,16 +3063,19 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
                 eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
                 mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n"
             mesaj += "\n"
+    
     toplam_santiye = len(analiz)
     eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
     eksik_santiye = toplam_santiye - eksiksiz_santiye
     toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
+    
     mesaj += f"📊 ÖZET:\n"
     mesaj += f"• Toplam Şantiye: {toplam_santiye}\n"
     mesaj += f"• Eksiksiz Şantiye: {eksiksiz_santiye} (%{eksiksiz_santiye/toplam_santiye*100:.1f})\n"
     mesaj += f"• Eksik Raporu Olan: {eksik_santiye} (%{eksik_santiye/toplam_santiye*100:.1f})\n"
     mesaj += f"• İş Günü: {len(gunler)} gün\n"
     mesaj += f"• Toplam EKSİK RAPOR: {toplam_eksik_rapor}\n"
+    
     return mesaj
 
 async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
