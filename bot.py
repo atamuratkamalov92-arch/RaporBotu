@@ -1326,16 +1326,17 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                         logging.info(f"✅ Tanımlanmamış kategori '{ekstra_anahtar}' çalışanlara eklendi: +{deger}")
                 
                 # Eğer kullanıcının genel toplamı yanlışsa, doğru olanı kullan
-                if report.get('genel_toplam', 0) != calculated_total:
-                    logging.info(f"🔢 Genel toplam düzeltildi: {report.get('genel_toplam', 0)} → {calculated_total}")
-                    if tanimsiz_kategori_var:
-                        logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
-                    report['genel_toplam'] = calculated_total
-                
-                if report['genel_toplam'] > 0 or report['staff'] > 0 or report['calisan'] > 0 or report['mobilizasyon'] > 0 or report['ambarci'] > 0 or report['izinli'] > 0:
+if report.get('genel_toplam', 0) != calculated_total:
+    logging.info(f"🔢 Genel toplam düzeltildi: {report.get('genel_toplam', 0)} → {calculated_total}")
+    if tanimsiz_kategori_var:
+        logging.info(f"📝 Sebep: Tanımlanmamış kategoriler çalışanlara eklendi")
+    report['genel_toplam'] = calculated_total
+
+# Raporu filtrele
+if report['genel_toplam'] > 0 or report['staff'] > 0 or report['calisan'] > 0 or report['mobilizasyon'] > 0 or report['ambarci'] > 0 or report['izinli'] > 0:
     filtered_reports.append(report)
-            
-            return filtered_reports
+
+return filtered_reports
                 
         except Exception as e:
             logging.error(f"Mesaj işleme hatası (deneme {attempt + 1}): {e}")
