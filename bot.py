@@ -2125,7 +2125,7 @@ async def hata_bildirimi(context: ContextTypes.DEFAULT_TYPE, hata_mesaji: str):
 
 # Personel özeti fonksiyonu - ŞANTİYE BAZLI - TÜMÜ FİLTRELENDİ - KRİTİK GÜNCELLEME!
 async def generate_gelismis_personel_ozeti(target_date):
-    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur - KRİTİK GÜNCELLEME: Şantiye Başlığı vs Genel Toplam"""
+    """Güvenli tuple işleme ile gelişmiş personel özeti oluştur"""
     try:
         rows = await async_fetchall("""
             SELECT user_id, report_type, project_name, person_count, work_description, ai_analysis
@@ -2134,6 +2134,9 @@ async def generate_gelismis_personel_ozeti(target_date):
         
         if not rows:
             return f"📭 {target_date.strftime('%d.%m.%Y')} tarihinde rapor bulunamadı."
+        
+        # DEBUG: Tüm raporları logla
+        logging.info(f"📊 {target_date.strftime('%d.%m.%Y')} için {len(rows)} rapor bulundu")
         
         proje_analizleri = {}
         tum_projeler = set()
@@ -2156,8 +2159,15 @@ async def generate_gelismis_personel_ozeti(target_date):
             yapilan_is = safe_get_tuple_value(row, 4, '')
             ai_analysis = safe_get_tuple_value(row, 5, '{}')
             
-            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            # PROJE ADINI NORMALİZE ET - GELİŞTİRİLDİ
+            orijinal_proje_adi = proje_adi
             proje_adi = normalize_site_name(proje_adi)
+            
+            # DEBUG: KÖKSARAY için detaylı log
+            if "KÖKSARAY" in proje_adi or "KOK" in proje_adi.upper() or "SARAY" in proje_adi.upper():
+                logging.info(f"🔍 KÖKSARAY TESPİT: Orijinal: '{orijinal_proje_adi}' -> Normalize: '{proje_adi}'")
+                logging.info(f"   user_id: {user_id}, kisi_sayisi: {kisi_sayisi}, yapilan_is: {yapilan_is[:100]}")
+                logging.info(f"   ai_analysis: {ai_analysis[:200] if ai_analysis else 'BOŞ'}")
             
             if not proje_adi or proje_adi == "TÜMÜ":
                 continue
@@ -2166,14 +2176,21 @@ async def generate_gelismis_personel_ozeti(target_date):
                 proje_analizleri[proje_adi] = {
                     'toplam': 0,
                     'staff': 0, 'calisan': 0, 'mobilizasyon': 0, 'ambarci': 0, 'izinli': 0, 'dis_gorev_toplam': 0,
-                    'santiye_baslik': 0  # YENİ: Şantiye başlık sayısı (dış görevler HARİÇ)
+                    'santiye_baslik': 0
                 }
             
             try:
                 ai_data = safe_json_loads(ai_analysis)
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
-                is_calisma_yok = ai_data.get('is_calisma_yok', False)  # YENİ: Çalışma yok kontrolü
+                
+                # DEBUG: KÖKSARAY için AI analizini logla
+                if proje_adi == "KÖKSARAY":
+                    logging.info(f"🔍 KÖKSARAY AI Analizi: yeni_format={bool(yeni_format)}, personel_dagilimi={bool(personel_dagilimi)}")
+                    if yeni_format:
+                        logging.info(f"   yeni_format içeriği: {yeni_format}")
+                    if personel_dagilimi:
+                        logging.info(f"   personel_dagilimi içeriği: {personel_dagilimi}")
                 
                 if yeni_format:
                     staff_count = yeni_format.get('staff', 0)
@@ -2183,6 +2200,10 @@ async def generate_gelismis_personel_ozeti(target_date):
                     izinli_count = yeni_format.get('izinli', 0)
                     dis_gorev_toplam_count = yeni_format.get('dis_gorev_toplam', 0)
                     
+                    # DEBUG: KÖKSARAY sayıları
+                    if proje_adi == "KÖKSARAY":
+                        logging.info(f"🔍 KÖKSARAY Sayıları: staff={staff_count}, calisan={calisan_count}, mobilizasyon={mobilizasyon_count}")
+                    
                     proje_analizleri[proje_adi]['staff'] += staff_count
                     proje_analizleri[proje_adi]['calisan'] += calisan_count
                     proje_analizleri[proje_adi]['mobilizasyon'] += mobilizasyon_count
@@ -2190,11 +2211,9 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
                     
-                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
                     santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
                     proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
                     
-                    # Toplam = Şantiye başlık + dış görevler
                     proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 elif personel_dagilimi:
@@ -2212,15 +2231,18 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['izinli'] += izinli_count
                     proje_analizleri[proje_adi]['dis_gorev_toplam'] += dis_gorev_toplam_count
                     
-                    # KRİTİK GÜNCELLEME: Şantiye başlık hesaplaması (dış görevler HARİÇ)
                     santiye_baslik = staff_count + calisan_count + mobilizasyon_count + ambarci_count + izinli_count
                     proje_analizleri[proje_adi]['santiye_baslik'] += santiye_baslik
                     
-                    # Toplam = Şantiye başlık + dış görevler
                     proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 else:
+                    # Eski format - work_description'dan analiz et
                     yapilan_is_lower = (yapilan_is or '').lower()
+                    
+                    # DEBUG: Eski format için
+                    if proje_adi == "KÖKSARAY":
+                        logging.info(f"🔍 KÖKSARAY Eski Format: yapilan_is_lower={yapilan_is_lower}")
                     
                     if 'staff' in yapilan_is_lower:
                         proje_analizleri[proje_adi]['staff'] += kisi_sayisi
@@ -2252,13 +2274,17 @@ async def generate_gelismis_personel_ozeti(target_date):
                 else:
                     proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
                 
-                # Eski mantık (fallback)
                 proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
                 proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
             
             tum_projeler.add(proje_adi)
         
-        # KRİTİK GÜNCELLEME: Genel toplam hesaplaması (tüm şantiyelerin toplamı + kendi dış görevleri)
+        # DEBUG: Tüm proje analizlerini logla
+        logging.info(f"📊 {target_date.strftime('%d.%m.%Y')} Proje Analizleri:")
+        for proje_adi, analiz in proje_analizleri.items():
+            logging.info(f"   {proje_adi}: staff={analiz['staff']}, calisan={analiz['calisan']}, toplam={analiz['toplam']}")
+        
+            # KRİTİK GÜNCELLEME: Genel toplam hesaplaması (tüm şantiyelerin toplamı + kendi dış görevleri)
         for proje_adi, analiz in proje_analizleri.items():
             genel_staff += analiz['staff']
             genel_calisan += analiz['calisan']
