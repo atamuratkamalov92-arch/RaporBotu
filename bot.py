@@ -3134,8 +3134,10 @@ async def haftalik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFA
 
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
-        end_date = today
+        # DÜZELTİLDİ: Haftalık eksik rapor için doğru tarih aralığı (Pazartesi-Cumartesi)
+        # Bugün Pazar ise, geçen haftanın Pazartesi'den Cumartesi'sine kadar
+        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
+        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
 
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3194,18 +3196,23 @@ async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(f"❌ Aylık eksik rapor analizi hatası: {e}")
         logging.error(f"Aylık eksik rapor analizi hatası: {e}")
 
-# YENİ: HAFTALIK EKSİK RAPOR JOB FONKSİYONU
+# HAFTALIK EKSİK RAPOR JOB FONKSİYONU - DÜZELTİLMİŞ
 async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her Pazar 10:00'da haftalık eksik raporu gruba gönder"""
+    """Her Pazar 10:00'da haftalık eksik raporu gruba gönder - DÜZELTİLDİ"""
     try:
         today = dt.datetime.now(TZ).date()
         
-        # Haftalık eksik rapor tarih aralığı: Pazartesi 00:00'dan Pazar 23:59'a kadar (tam 7 gün)
-        # Bugün Pazar ise, geçen haftanın Pazartesi'sinden Cumartesi'sine kadar
-        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
-        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
+        # SADECE Pazar günü çalış (0=Pazartesi, 6=Pazar)
+        if today.weekday() != 6:
+            logging.info(f"📊 Haftalık eksik rapor: Bugün Pazar değil ({today.weekday()}), çıkılıyor")
+            return
         
-        logging.info(f"📊 Haftalık eksik rapor tetiklendi: {start_date} - {end_date}")
+        # DÜZELTME: Önceki Pazar 00:00'dan Cumartesi 23:59'a kadar (7 gün)
+        # Bugün Pazar, önceki Pazar'ı bul (7 gün önce)
+        start_date = today - dt.timedelta(days=7)  # Önceki Pazar
+        end_date = today - dt.timedelta(days=1)    # Cumartesi
+        
+        logging.info(f"📊 Haftalık eksik rapor tetiklendi: {start_date} 00:00 - {end_date} 23:59")
         
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3223,7 +3230,7 @@ async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
                         chat_id=GROUP_ID,
                         document=file,
                         filename=f"Haftalik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
-                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} 00:00 - {end_date.strftime('%d.%m.%Y')} 23:59"
                     )
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
                 logging.info(f"📊 Haftalık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
@@ -3236,22 +3243,35 @@ async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"📊 Haftalık eksik rapor job hatası: {e}")
 
-# YENİ: AYLIK EKSİK RAPOR JOB FONKSİYONU
+# AYLIK EKSİK RAPOR JOB FONKSİYONU - DÜZELTİLMİŞ
 async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her ayın 1'inde 12:00'da aylık eksik raporu gruba gönder"""
+    """Her ayın 1'inde 12:00'da aylık eksik raporu gruba gönder - DÜZELTİLDİ"""
     try:
         today = dt.datetime.now(TZ).date()
         
-        # Ayın 1'inde değilse çık
+        # SADECE ayın 1'inde çalış
         if today.day != 1:
+            logging.info(f"🗓️ Aylık eksik rapor: Bugün ayın 1'i değil ({today.day}), çıkılıyor")
             return
         
-        # Aylık eksik rapor tarih aralığı: Önceki ayın 1'inden son gününe kadar
-        # Bugün 01.12.2025 ise, 01.11.2025 - 30.11.2025 arası
-        end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
-        start_date = end_date.replace(day=1)  # Önceki ayın 1'i
+        # DÜZELTME: Önceki ayın 1'i 00:00'dan önceki ayın son günü 23:59'a kadar
+        # Bugün ayın 1'i (örnek: 01.12.2025)
+        if today.month == 1:
+            # Ocak ayı ise önceki ay Aralık, yıl bir azalır
+            previous_year = today.year - 1
+            previous_month = 12
+        else:
+            previous_year = today.year
+            previous_month = today.month - 1
         
-        logging.info(f"🗓️ Aylık eksik rapor tetiklendi: {start_date} - {end_date}")
+        # Önceki ayın 1'i
+        start_date = dt.date(previous_year, previous_month, 1)
+        
+        # Önceki ayın son gününü bul
+        # Bugünün ayının 1'inden 1 gün çıkar
+        end_date = today - dt.timedelta(days=1)
+        
+        logging.info(f"🗓️ Aylık eksik rapor tetiklendi: {start_date} 00:00 - {end_date} 23:59")
         
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3269,7 +3289,7 @@ async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
                         chat_id=GROUP_ID,
                         document=file,
                         filename=f"Aylik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
-                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} 00:00 - {end_date.strftime('%d.%m.%Y')} 23:59"
                     )
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
                 logging.info(f"🗓️ Aylık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
@@ -3982,6 +4002,14 @@ async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
         
         logging.info(f"📅 Haftalık rapor tetiklendi: Bugün = {today}, Saat = {now_time}")
         
+        # Eğer bugün Cumartesi değilse, o zaman bir önceki Cumartesi'yi bul
+        if today.weekday() != 5:  # 5 = Cumartesi
+            # Bir önceki Cumartesi'yi bul
+            days_since_saturday = (today.weekday() - 5) % 7
+            last_saturday = today - dt.timedelta(days=days_since_saturday)
+            logging.info(f"📅 Bugün Cumartesi değil, en son Cumartesi: {last_saturday}")
+            today = last_saturday
+        
         # Haftalık rapor tarih aralığını hesapla
         # Pazartesi 00:00'dan bugün (Cumartesi) 17:35'e kadar
         start_date = today - dt.timedelta(days=today.weekday())  # Pazartesi
@@ -4402,6 +4430,7 @@ if __name__ == "__main__":
     print("   - GENEL TOPLAM: 0 olarak hesaplanıyor")
     print("   - Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor")
     print("   - HAFTALIK RAPOR DÜZELTMESİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir")
+    print("   - HAFTALIK EKSİK RAPOR DÜZELTMESİ: Pazar 10:00'da Pazartesi-Cumartesi arası eksik rapor analizi gönderilir")
     print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
