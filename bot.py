@@ -2044,28 +2044,6 @@ def parse_rapor_tarihi(metin):
     except Exception:
         return None
 
-def extract_person_count_from_description(work_description):
-    """İş açıklamasından personel sayısını çıkar"""
-    if not work_description:
-        return 0
-    # "4 kişi" gibi ifadeleri ara
-    import re
-    patterns = [
-        r'(\d+)\s*kişi',
-        r'(\d+)\s*personel',
-        r'(\d+)\s*çalışan',
-        r'(\d+)\s*staff',
-        r'(\d+)\s*worker'
-    ]
-    for pattern in patterns:
-        matches = re.findall(pattern, work_description, re.IGNORECASE)
-        if matches:
-            try:
-                return sum(int(match) for match in matches)
-            except:
-                pass
-    return 0
-
 def izin_mi(metin):
     metin_lower = metin.lower()
     izin_kelimeler = ['izin', 'rapor yok', 'iş yok', 'çalışma yok', 'tatil', 'hasta', 'izindeyim']
@@ -2183,15 +2161,6 @@ async def generate_gelismis_personel_ozeti(target_date):
             
             if not proje_adi or proje_adi == "TÜMÜ":
                 continue
-            
-            # Çalışma yok raporlarını atla
-            try:
-                ai_data = safe_json_loads(ai_analysis)
-                is_calisma_yok = ai_data.get('is_calisma_yok', False)
-                if is_calisma_yok:
-                    continue
-            except:
-                pass
                 
             if proje_adi not in proje_analizleri:
                 proje_analizleri[proje_adi] = {
@@ -2204,6 +2173,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                 ai_data = safe_json_loads(ai_analysis)
                 yeni_format = ai_data.get('yeni_sabit_format', {})
                 personel_dagilimi = ai_data.get('personel_dagilimi', {})
+                is_calisma_yok = ai_data.get('is_calisma_yok', False)  # YENİ: Çalışma yok kontrolü
                 
                 if yeni_format:
                     staff_count = yeni_format.get('staff', 0)
@@ -2250,32 +2220,41 @@ async def generate_gelismis_personel_ozeti(target_date):
                     proje_analizleri[proje_adi]['toplam'] = santiye_baslik + dis_gorev_toplam_count
                     
                 else:
-                    # AI analizinde personel dağılımı yok, sadece person_count'u kullan
-                    # Eğer person_count 0 ise, work_description'dan sayı çıkar
-                    if kisi_sayisi > 0:
-                        proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
-                        proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
-                        proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                    yapilan_is_lower = (yapilan_is or '').lower()
+                    
+                    if 'staff' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['staff'] += kisi_sayisi
+                    elif 'mobilizasyon' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                    elif 'ambarci' in yapilan_is_lower or 'ambarcı' in yapilan_is_lower:
+                        proje_analizleri[proje_adi]['ambarci'] += kisi_sayisi
+                    elif rapor_tipi == "IZIN/ISYOK":
+                        proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
                     else:
-                        extracted_count = extract_person_count_from_description(yapilan_is)
-                        if extracted_count > 0:
-                            proje_analizleri[proje_adi]['calisan'] += extracted_count
-                            proje_analizleri[proje_adi]['santiye_baslik'] += extracted_count
-                            proje_analizleri[proje_adi]['toplam'] += extracted_count
+                        proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                    
+                    # Eski mantık (fallback)
+                    proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                    proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
                         
             except Exception as e:
                 logging.error(f"Personel analiz hatası: {e}")
-                # Hata durumunda, person_count'u kullan
-                if kisi_sayisi > 0:
-                    proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
-                    proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
-                    proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                yapilan_is_lower = (yapilan_is or '').lower()
+                
+                if 'staff' in yapilan_is_lower:
+                    proje_analizleri[proje_adi]['staff'] += kisi_sayisi
+                elif 'mobilizasyon' in yapilan_is_lower:
+                    proje_analizleri[proje_adi]['mobilizasyon'] += kisi_sayisi
+                elif 'ambarci' in yapilan_is_lower or 'ambarcı' in yapilan_is_lower:
+                    proje_analizleri[proje_adi]['ambarci'] += kisi_sayisi
+                elif rapor_tipi == "IZIN/ISYOK":
+                    proje_analizleri[proje_adi]['izinli'] += kisi_sayisi
                 else:
-                    extracted_count = extract_person_count_from_description(yapilan_is)
-                    if extracted_count > 0:
-                        proje_analizleri[proje_adi]['calisan'] += extracted_count
-                        proje_analizleri[proje_adi]['santiye_baslik'] += extracted_count
-                        proje_analizleri[proje_adi]['toplam'] += extracted_count
+                    proje_analizleri[proje_adi]['calisan'] += kisi_sayisi
+                
+                # Eski mantık (fallback)
+                proje_analizleri[proje_adi]['toplam'] += kisi_sayisi
+                proje_analizleri[proje_adi]['santiye_baslik'] += kisi_sayisi
             
             tum_projeler.add(proje_adi)
         
@@ -2291,7 +2270,6 @@ async def generate_gelismis_personel_ozeti(target_date):
         
         mesaj = f"📊 {target_date.strftime('%d.%m.%Y')} GÜNLÜK PERSONEL ÖZETİ\n\n"
         
-        # TÜM PROJELERİ TEK BİR LİSTEDE SIRALA (önemli/önemsiz ayrımı yapmadan)
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
             # KRİTİK GÜNCELLEME: Şantiye başlık = santiye_baslik (dış görevler HARİÇ)
             santiye_baslik = analiz['santiye_baslik']
@@ -2316,9 +2294,7 @@ async def generate_gelismis_personel_ozeti(target_date):
                     durum_detay.append(f"İzinli:{analiz['izinli']}")
                 
                 if durum_detay:
-                    mesaj += f"   └─ {', '.join(durum_detay)}\n"
-                # HER ŞANTİYE BLOĞUNDAN SONRA SATIR ATLA
-                mesaj += "\n"
+                    mesaj += f"   └─ {', '.join(durum_detay)}\n\n"
         
         # KRİTİK GÜNCELLEME: Genel toplam = Σ(tüm şantiyelerin toplamı)
         mesaj += f"📈 GENEL TOPLAM: {genel_toplam} kişi\n"
@@ -2341,7 +2317,7 @@ async def generate_gelismis_personel_ozeti(target_date):
         # TÜM SABİT ŞANTİYELERİ DAHİL ET
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
         aktif_projeler = set(proje_analizleri.keys())
-        eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "TÜMÜ"]]
+        eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
         
         if eksik_projeler:
             mesaj += f"\n❌ EKSİK ŞANTİYELER: {', '.join(sorted(eksik_projeler))}"
