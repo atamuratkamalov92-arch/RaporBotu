@@ -2166,8 +2166,13 @@ async def generate_gelismis_personel_ozeti(target_date):
             # DEBUG: KÖKSARAY için detaylı log
             if "KÖKSARAY" in proje_adi or "KOK" in proje_adi.upper() or "SARAY" in proje_adi.upper():
                 logging.info(f"🔍 KÖKSARAY TESPİT: Orijinal: '{orijinal_proje_adi}' -> Normalize: '{proje_adi}'")
-                logging.info(f"   user_id: {user_id}, kisi_sayisi: {kisi_sayisi}, yapilan_is: {yapilan_is[:100]}")
-                logging.info(f"   ai_analysis: {ai_analysis[:200] if ai_analysis else 'BOŞ'}")
+                logging.info(f"   user_id: {user_id}, kisi_sayisi: {kisi_sayisi}, yapilan_is: {yapilan_is[:100] if yapilan_is else 'BOŞ'}")
+                
+                # ai_analysis güvenli loglama
+                if ai_analysis and isinstance(ai_analysis, str):
+                    logging.info(f"   ai_analysis: {ai_analysis[:200]}")
+                else:
+                    logging.info(f"   ai_analysis: {ai_analysis}")
             
             if not proje_adi or proje_adi == "TÜMÜ":
                 continue
