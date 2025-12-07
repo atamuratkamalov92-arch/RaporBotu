@@ -2101,7 +2101,7 @@ def is_izleyici(user_id):
 async def admin_kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if not is_admin(user_id):
-        await update.message.reply_text("❌ Bu komut sadece yöneticiler içindir.")
+        await update.message.reply_text("❌ Bu komut sadece BOT yöneticileri içindir.")
         return False
     return True
 
