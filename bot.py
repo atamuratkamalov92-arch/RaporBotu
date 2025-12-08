@@ -2869,7 +2869,6 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
     """Eksik rapor analizini Excel formatında oluştur - GÜNCELLENMİŞ GÖRÜNÜM VE SIRALAMA"""
     try:
         from openpyxl.utils import get_column_letter
-        from openpyxl.formatting.rule import ColorScaleRule, CellIsRule, FormulaRule
         
         wb = Workbook()
         ws = wb.active
@@ -2975,15 +2974,14 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.font = Font(size=11)
             
-            # Tüm hücrelere kenarlık ekle
+            # Tüm hücrelere kenarlık ve hizalama ekle (hata düzeltildi)
             for col in range(1, len(headers) + 1):
                 cell = ws.cell(row=row, column=col)
-                if not cell.border or cell.border.border_style is None:
-                    cell.border = thin_border
-                if not cell.alignment or cell.alignment.horizontal is None:
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
-                if not cell.font or cell.font.size is None:
-                    cell.font = Font(size=11)
+                # Kenarlığı kontrol et - Border nesnesi border_style özelliğine sahip değil
+                # Bunun yerine kenarlığı her zaman uygula
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.font = Font(size=11)
             
             row += 1
         
