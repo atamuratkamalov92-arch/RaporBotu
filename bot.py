@@ -978,7 +978,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - "Şantiye dışı görev", "Şantiye dışı", "dış görev", "Dış görev", "Başka şantiye", "Buxoro'ya gitti", "Buxoro", "Başka yere görev" → "dis_gorev"
 
 4. ÇALIŞMA YOK/İŞ YOK RAPORLARI - YENİ KURAL:
-   - Mesajda "çalışma yok", "iş yok", "hiç çalışan yok", "personel yok", "0 kişi", "sıfır personel" gibi ifadeler varsa:
+   - Mesajda "çalışma yok", "iş yok", "hiç çalışan yok", "personel yok", "0 kişi", "sıfır personel", gibi ifadeler varsa:
    - TÜM personel kategorilerini (staff, calisan, mobilizasyon, ambarci, izinli) 0 olarak ayarla!
    - genel_toplam = 0 olarak ayarla!
    - "izinli" kategorisini de 0 olarak ayarla!
@@ -2697,7 +2697,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
 
-# EKSİK RAPOR ANALİZ FONKSİYONLARI - YENİ EKLENDİ
+# EKSİK RAPOR ANALİZ FONKSİYONLARI
 def parse_tr_date(date_str: str) -> dt.date:
     """GG.AA.YYYY formatındaki tarihi parse eder"""
     try:
@@ -2899,10 +2899,16 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     mesaj = f"📋 EKSİK RAPOR DETAY ANALİZİ\n"
     mesaj += f"📅 {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}\n"
     mesaj += "Not: 'Eksik günler:' olarak tarihler yazılmıştır.\n\n"
+    
     kritik = []
     orta = []
     az = []
+    
+    # Sadece eksik raporu olan şantiyeleri listeye ekle
     for santiye, a in analiz.items():
+        if len(a['eksik_gunler']) == 0:  # Eksik raporu yoksa atla
+            continue
+            
         eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 0
         if eksik_yuzde >= 50:
             kritik.append((santiye, a, eksik_yuzde))
@@ -2910,18 +2916,21 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
             orta.append((santiye, a, eksik_yuzde))
         else:
             az.append((santiye, a, eksik_yuzde))
+    
     if kritik:
         mesaj += f"🔴 KRİTİK EKSİKLİK (%50'den fazla) ({len(kritik)} şantiye):\n"
         for santiye, a, yuzde in sorted(kritik, key=lambda x: x[2], reverse=True):
             mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
             eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
             mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    
     if orta:
         mesaj += f"🟡 ORTA EKSİKLİK (%25-50) ({len(orta)} şantiye):\n"
         for santiye, a, yuzde in sorted(orta, key=lambda x: x[2], reverse=True):
             mesaj += f"• {santiye}: {len(a['eksik_gunler'])}/{a['toplam_gun']} gün (%{yuzde:.1f})\n"
             eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
             mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n\n"
+    
     if az:
         mesaj += f"✅ AZ EKSİKLİK (%0-25) ({len(az)} şantiye):\n"
         for santiye, a, yuzde in sorted(az, key=lambda x: x[2], reverse=True):
@@ -2930,16 +2939,19 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
                 eksik_gunler_str = ", ".join([gun.strftime('%d') for gun in a['eksik_gunler']])
                 mesaj += f"  └─ Eksik günler: {eksik_gunler_str}\n"
             mesaj += "\n"
+    
     toplam_santiye = len(analiz)
     eksiksiz_santiye = sum(1 for a in analiz.values() if len(a['eksik_gunler']) == 0)
     eksik_santiye = toplam_santiye - eksiksiz_santiye
     toplam_eksik_rapor = sum(len(a['eksik_gunler']) for a in analiz.values())
+    
     mesaj += f"📊 ÖZET:\n"
     mesaj += f"• Toplam Şantiye: {toplam_santiye}\n"
     mesaj += f"• Eksiksiz Şantiye: {eksiksiz_santiye} (%{eksiksiz_santiye/toplam_santiye*100:.1f})\n"
     mesaj += f"• Eksik Raporu Olan: {eksik_santiye} (%{eksik_santiye/toplam_santiye*100:.1f})\n"
     mesaj += f"• İş Günü: {len(gunler)} gün\n"
     mesaj += f"• Toplam EKSİK RAPOR: {toplam_eksik_rapor}\n"
+    
     return mesaj
 
 async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2998,8 +3010,10 @@ async def haftalik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFA
 
     try:
         today = dt.datetime.now(TZ).date()
-        start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
-        end_date = today
+        # DÜZELTİLDİ: Haftalık eksik rapor için doğru tarih aralığı (Pazartesi-Cumartesi)
+        # Bugün Pazar ise, geçen haftanın Pazartesi'den Cumartesi'sine kadar
+        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
+        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
 
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3057,6 +3071,112 @@ async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         await update.message.reply_text(f"❌ Aylık eksik rapor analizi hatası: {e}")
         logging.error(f"Aylık eksik rapor analizi hatası: {e}")
+
+# HAFTALIK EKSİK RAPOR JOB FONKSİYONU - DÜZELTİLMİŞ
+async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her Pazar 10:00'da haftalık eksik raporu gruba gönder - DÜZELTİLDİ"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        
+        # SADECE Pazar günü çalış (0=Pazartesi, 6=Pazar)
+        if today.weekday() != 6:
+            logging.info(f"📊 Haftalık eksik rapor: Bugün Pazar değil ({today.weekday()}), çıkılıyor")
+            return
+        
+        # DÜZELTME: Önceki Pazar 00:00'dan Cumartesi 23:59'a kadar (7 gün)
+        # Bugün Pazar, önceki Pazar'ı bul (7 gün önce)
+        start_date = today - dt.timedelta(days=7)  # Önceki Pazar
+        end_date = today - dt.timedelta(days=1)    # Cumartesi
+        
+        logging.info(f"📊 Haftalık eksik rapor tetiklendi: {start_date} 00:00 - {end_date} 23:59")
+        
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            logging.info("📊 Haftalık eksik rapor analizi: analiz yapılamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        if GROUP_ID:
+            try:
+                with open(excel_dosyasi, 'rb') as file:
+                    await context.bot.send_document(
+                        chat_id=GROUP_ID,
+                        document=file,
+                        filename=f"Haftalik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} 00:00 - {end_date.strftime('%d.%m.%Y')} 23:59"
+                    )
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"📊 Haftalık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"📊 Gruba haftalık eksik rapor gönderilemedi: {e}")
+        else:
+            logging.error("📊 GROUP_ID ayarlanmamış, haftalık eksik rapor analizi gönderilemedi")
+
+        os.unlink(excel_dosyasi)
+    except Exception as e:
+        logging.error(f"📊 Haftalık eksik rapor job hatası: {e}")
+
+# AYLIK EKSİK RAPOR JOB FONKSİYONU - DÜZELTİLMİŞ
+async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her ayın 1'inde 12:00'da aylık eksik raporu gruba gönder - DÜZELTİLDİ"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        
+        # SADECE ayın 1'inde çalış
+        if today.day != 1:
+            logging.info(f"🗓️ Aylık eksik rapor: Bugün ayın 1'i değil ({today.day}), çıkılıyor")
+            return
+        
+        # DÜZELTME: Önceki ayın 1'i 00:00'dan önceki ayın son günü 23:59'a kadar
+        # Bugün ayın 1'i (örnek: 01.12.2025)
+        if today.month == 1:
+            # Ocak ayı ise önceki ay Aralık, yıl bir azalır
+            previous_year = today.year - 1
+            previous_month = 12
+        else:
+            previous_year = today.year
+            previous_month = today.month - 1
+        
+        # Önceki ayın 1'i
+        start_date = dt.date(previous_year, previous_month, 1)
+        
+        # Önceki ayın son gününü bul
+        # Bugünün ayının 1'inden 1 gün çıkar
+        end_date = today - dt.timedelta(days=1)
+        
+        logging.info(f"🗓️ Aylık eksik rapor tetiklendi: {start_date} 00:00 - {end_date} 23:59")
+        
+        analiz, gunler = await analyze_missing_reports(start_date, end_date)
+        
+        if not analiz:
+            logging.info("🗓️ Aylık eksik rapor analizi: analiz yapılamadı.")
+            return
+
+        excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
+        mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+
+        if GROUP_ID:
+            try:
+                with open(excel_dosyasi, 'rb') as file:
+                    await context.bot.send_document(
+                        chat_id=GROUP_ID,
+                        document=file,
+                        filename=f"Aylik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} 00:00 - {end_date.strftime('%d.%m.%Y')} 23:59"
+                    )
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🗓️ Aylık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"🗓️ Gruba aylık eksik rapor gönderilemedi: {e}")
+        else:
+            logging.error("🗓️ GROUP_ID ayarlanmamış, aylık eksik rapor analizi gönderilemedi")
+
+        os.unlink(excel_dosyasi)
+    except Exception as e:
+        logging.error(f"🗓️ Aylık eksik rapor job hatası: {e}")
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
