@@ -8,8 +8,10 @@
 - Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor
 
 ✅ HAFTALIK RAPOR TARİH DÜZELTMESİ
-- Haftalık rapor artık Cumartesi 17:35'te doğru tarih aralığı ile gönderiliyor
-- Haftalık rapor: Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir
+- Haftalık rapor artık Pazar 09:00'da doğru tarih aralığı ile gönderiliyor
+- Haftalık eksik rapor artık Pazar 10:00'da doğru tarih aralığı ile gönderiliyor
+- Aylık rapor artık ayın 1'i 08:30'da doğru tarih aralığı ile gönderiliyor
+- Aylık eksik rapor artık ayın 1'i 08:45'de doğru tarih aralığı ile gönderiliyor
 
 ✅ 7/24 ÇALIŞMA SİSTEMİNE GEÇİŞ
 - Hafta sonları (Cumartesi-Pazar) artık tatil değil, çalışma günü
@@ -23,6 +25,12 @@
 - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan
 - Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor
 - EKSİK RAPOR ANALİZİ eklendi: Excel ve detaylı raporlama
+
+✅ ZAMANLAMA DÜZELTMELERİ
+- HAFTALIK NORMAL RAPOR: Her Pazar 09:00 (7 günlük periyot: Pazartesi 00:00 - Pazar 00:00)
+- HAFTALIK EKSİK RAPOR: Her Pazar 10:00 (Haftalık normal raporla aynı tarih aralığı)
+- AYLIK NORMAL RAPOR: Her ayın 1'i 08:30 (Bir önceki ayın tamamı)
+- AYLIK EKSİK RAPOR: Her ayın 1'i 08:45 (Aylık normal raporla aynı tarih aralığı)
 """
 
 import os
@@ -688,7 +696,7 @@ def load_excel_intelligent():
     
     # "TÜMÜ" şantiyesi olup olmadığını kontrol et
     tumu_sayisi = sum(1 for projects in temp_id_to_projects.values() if "TÜMÜ" in projects)
-    logging.info(f"✅ SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILAR)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye, {tumu_sayisi} kullanıcıda 'TÜMÜ' şantiyesi (filtrelendi)")
+    logging.info(f"✅ SİSTEM YÜKLENDİ: {len(rapor_sorumlulari)} aktif kullanıcı, {len(ADMINS)} admin, {len(IZLEYICILER)} izleyici, {len(TUM_KULLANICILar)} toplam kullanıcı, {len(santiye_sorumlulari)} şantiye, {tumu_sayisi} kullanıcıda 'TÜMÜ' şantiyesi (filtrelendi)")
 
 # Excel yüklemeyi başlat
 load_excel_intelligent()
@@ -2091,7 +2099,7 @@ def is_izleyici(user_id):
 async def admin_kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if not is_admin(user_id):
-        await update.message.reply_text("❌ Bu komut sadece yöneticiler içindir.")
+        await update.message.reply_text("❌ Bu komut sadece BOT yöneticileri içindir.")
         return False
     return True
 
@@ -3167,14 +3175,53 @@ async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(f"❌ Aylık eksik rapor analizi hatası: {e}")
         logging.error(f"Aylık eksik rapor analizi hatası: {e}")
 
-# YENİ: HAFTALIK EKSİK RAPOR JOB FONKSİYONU
+# YENİ: HAFTALIK NORMAL RAPOR JOB FONKSİYONU
+async def haftalik_normal_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her Pazar 09:00'da haftalık normal raporu gruba gönder"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        now_time = dt.datetime.now(TZ).time()
+        
+        # Sadece Pazar günü ve saat 09:00'da çalıştır
+        if today.weekday() != 6:  # 0=Pazartesi, 6=Pazar
+            return
+        if not (8 <= now_time.hour <= 9):  # Saat 09:00 civarında
+            return
+            
+        # Haftalık rapor tarih aralığı: Geçmiş 7 gün (bugün dahil değil)
+        # Örnek: Pazar 09:00 gönderimi için Pazartesi 00:00 - Pazar 00:00 (7 gün)
+        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
+        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
+        
+        logging.info(f"📊 Haftalık normal rapor tetiklendi: {start_date} - {end_date}")
+        
+        mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
+        
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"📊 Haftalık normal rapor gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"📊 Gruba haftalık normal rapor gönderilemedi: {e}")
+        else:
+            logging.error("📊 GROUP_ID ayarlanmamış, haftalık normal rapor gönderilemedi")
+    except Exception as e:
+        logging.error(f"📊 Haftalık normal rapor job hatası: {e}")
+
+# YENİ: GÜNCELLENMİŞ HAFTALIK EKSİK RAPOR JOB FONKSİYONU
 async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
     """Her Pazar 10:00'da haftalık eksik raporu gruba gönder"""
     try:
         today = dt.datetime.now(TZ).date()
+        now_time = dt.datetime.now(TZ).time()
         
-        # Haftalık eksik rapor tarih aralığı: Pazartesi 00:00'dan Pazar 23:59'a kadar (tam 7 gün)
-        # Bugün Pazar ise, geçen haftanın Pazartesi'sinden Cumartesi'sine kadar
+        # Sadece Pazar günü ve saat 10:00'da çalıştır
+        if today.weekday() != 6:  # 0=Pazartesi, 6=Pazar
+            return
+        if not (9 <= now_time.hour <= 10):  # Saat 10:00 civarında
+            return
+        
+        # Haftalık eksik rapor tarih aralığı: Haftalık normal raporla BİREBİR AYNI
         end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
         start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
         
@@ -3209,18 +3256,53 @@ async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"📊 Haftalık eksik rapor job hatası: {e}")
 
-# YENİ: AYLIK EKSİK RAPOR JOB FONKSİYONU
-async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her ayın 1'inde 12:00'da aylık eksik raporu gruba gönder"""
+# YENİ: AYLIK NORMAL RAPOR JOB FONKSİYONU
+async def aylik_normal_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her ayın 1'inde 08:30'da aylık normal raporu gruba gönder"""
     try:
         today = dt.datetime.now(TZ).date()
+        now_time = dt.datetime.now(TZ).time()
         
-        # Ayın 1'inde değilse çık
+        # Sadece ayın 1'inde ve saat 08:30'da çalıştır
         if today.day != 1:
             return
+        if not (8 <= now_time.hour <= 9):  # Saat 08:30 civarında
+            return
         
-        # Aylık eksik rapor tarih aralığı: Önceki ayın 1'inden son gününe kadar
-        # Bugün 01.12.2025 ise, 01.11.2025 - 30.11.2025 arası
+        # Aylık rapor tarih aralığı: Bir önceki takvim ayının TAMAMI
+        # Örnek: 01.12.2025 08:30 gönderimi için 01.11.2025 - 30.11.2025
+        end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
+        start_date = end_date.replace(day=1)  # Önceki ayın 1'i
+        
+        logging.info(f"🗓️ Aylık normal rapor tetiklendi: {start_date} - {end_date}")
+        
+        mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
+        
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
+                logging.info(f"🗓️ Aylık normal rapor gruba gönderildi: {start_date} - {end_date}")
+            except Exception as e:
+                logging.error(f"🗓️ Gruba aylık normal rapor gönderilemedi: {e}")
+        else:
+            logging.error("🗓️ GROUP_ID ayarlanmamış, aylık normal rapor gönderilemedi")
+    except Exception as e:
+        logging.error(f"🗓️ Aylık normal rapor job hatası: {e}")
+
+# YENİ: GÜNCELLENMİŞ AYLIK EKSİK RAPOR JOB FONKSİYONU
+async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
+    """Her ayın 1'inde 08:45'de aylık eksik raporu gruba gönder"""
+    try:
+        today = dt.datetime.now(TZ).date()
+        now_time = dt.datetime.now(TZ).time()
+        
+        # Sadece ayın 1'inde ve saat 08:45'de çalıştır
+        if today.day != 1:
+            return
+        if not (8 <= now_time.hour <= 9):  # Saat 08:45 civarında
+            return
+        
+        # Aylık eksik rapor tarih aralığı: Aylık normal raporla BİREBİR AYNI
         end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
         start_date = end_date.replace(day=1)  # Önceki ayın 1'i
         
@@ -3327,14 +3409,16 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Versiyon: 4.7.6\n"
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
-        "• Akıllı Rapor Analizi: GPT-4 ile otomatik rapor parsing ve analiz\n"
-        "• Eksik raporları tespit eder, listeler ve Excel çıktısı üretir\n"
-        "• Gerçek Zamanlı İşleme: Anında rapor işleme ve kaydetme\n"
-        "• Günlük / Haftalık / Aylık icmal rapor ve istatistik oluşturur\n"
-        "• Gün içinde gruba otomatik hatırlatma mesajları gönderir (12:30 / 15:00 / 17:30)\n"
-        "• Haftalık rapor Cumartesi 17:35'te gönderilir\n"
-        "• Aylık rapor her ayın 1'inde 09:30'da gönderilir\n"
-        "• ve daha birçok özelliğe sahiptir\n\n"
+        "• GPT-4 ile akıllı rapor analizi: otomatik parsing ve personel dağılımı\n"
+        "• Şantiye bazlı sistem: 14+ şantiye takibi\n"
+        "• Otomatik hatırlatmalar: 12:30, 15:00, 17:30'da grup bildirimleri\n"
+        "• Eksik rapor analizi: Excel ve detaylı raporlama\n"
+        "• Haftalık rapor: Pazar 09:00 (Pazar 00:00 - Cumartesi 23:59)\n"
+        "• Haftalık eksik rapor: Pazar 10:00 (aynı periyot)\n"
+        "• Aylık rapor: Ayın 1'i 08:30 (önceki ayın tamamı)\n"
+        "• Aylık eksik rapor: Ayın 1'i 08:45 (aynı periyot)\n"
+        "• Google Cloud Storage yedekleme: Otomatik günlük yedekler\n"
+        "• Gerçek zamanlı Excel takibi: Kullanıcı/şantiye güncellemeleri\n\n"
         "Daha detaylı bilgi için /info yazın."
     )
     await update.message.reply_text(hakkinda_text)
@@ -3565,7 +3649,7 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(eksik_santiyeler_with_sabit)}):\n"
     for santiye in sorted(eksik_santiyeler_with_sabit):
-        if santiye in ["Belli değil", "Tümü"]:
+        if santiye in ["Belli değil", "TÜMÜ"]:
             continue
         mesaj += f"• {santiye}\n"
     
@@ -3904,7 +3988,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ - HAFTALIK RAPOR DÜZELTMESİ
+# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ - TALİMATA GÖRE DÜZELTİLDİ
 def schedule_jobs(app):
     jq = app.job_queue
     
@@ -3925,28 +4009,28 @@ def schedule_jobs(app):
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # DÜZELTİLDİ: HAFTALIK RAPOR - CUMARTESİ 17:35 (DOĞRU TARİH ARALIĞI)
-    jq.run_daily(haftalik_grup_raporu_duzeltilmis, time=dt.time(17, 35, tzinfo=TZ), days=(5,))  # 5 = Cumartesi
-    
-    # YENİ: AYLIK RAPOR - HER AYIN 1'İ 09:30
-    jq.run_daily(aylik_grup_raporu_kontrol, time=dt.time(9, 30, tzinfo=TZ))
+    # YENİ: HAFTALIK NORMAL RAPOR - HER PAZAR 09:00
+    jq.run_daily(haftalik_normal_rapor_job, time=dt.time(9, 0, tzinfo=TZ), days=(6,))  # 6 = Pazar
     
     # YENİ: HAFTALIK EKSİK RAPOR - HER PAZAR 10:00
     jq.run_daily(haftalik_eksik_rapor_job, time=dt.time(10, 0, tzinfo=TZ), days=(6,))  # 6 = Pazar
     
-    # YENİ: AYLIK EKSİK RAPOR - HER AYIN 1'İ 12:00
-    jq.run_daily(aylik_eksik_rapor_job, time=dt.time(12, 0, tzinfo=TZ))
+    # YENİ: AYLIK NORMAL RAPOR - HER AYIN 1'İ 08:30
+    jq.run_daily(aylik_normal_rapor_job, time=dt.time(8, 30, tzinfo=TZ))
+    
+    # YENİ: AYLIK EKSİK RAPOR - HER AYIN 1'İ 08:45
+    jq.run_daily(aylik_eksik_rapor_job, time=dt.time(8, 45, tzinfo=TZ))
     
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
     logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
+    logging.info("   - Haftalık normal rapor: Pazar 09:00")
     logging.info("   - Haftalık eksik rapor: Pazar 10:00")
-    logging.info("   - Aylık eksik rapor: Ayın 1'i 12:00")
-    logging.info("   - Haftalık rapor: Cumartesi 17:35")
-    logging.info("   - Aylık rapor: Ayın 1'i 09:30")
+    logging.info("   - Aylık normal rapor: Ayın 1'i 08:30")
+    logging.info("   - Aylık eksik rapor: Ayın 1'i 08:45")
 
-# YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU
+# YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU (geriye uyumluluk için)
 async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
     """DÜZELTİLDİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir"""
     try:
@@ -3995,7 +4079,7 @@ async def async_yedekle_postgres():
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, yedekle_postgres)
 
-# YENİ: AYLIK RAPOR KONTROL FONKSİYONU
+# YENİ: AYLIK RAPOR KONTROL FONKSİYONU (geriye uyumluluk için)
 async def aylik_grup_raporu_kontrol(context: ContextTypes.DEFAULT_TYPE):
     """Ayın 1'inde aylık rapor gönder"""
     try:
@@ -4010,7 +4094,7 @@ async def aylik_grup_raporu_kontrol(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"🗓️ Aylık rapor kontrol hatası: {e}")
 
-# YENİ: TARİHLİ AYLIK RAPOR
+# YENİ: TARİHLİ AYLIK RAPOR (geriye uyumluluk için)
 async def aylik_grup_raporu_tarihli(context: ContextTypes.DEFAULT_TYPE, start_date, end_date):
     """Belirli tarih aralığı için aylık rapor gönder"""
     try:
@@ -4369,19 +4453,20 @@ def main():
 
 if __name__ == "__main__":
     print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 Güncellenmiş Versiyon v4.7.6 - ÇALIŞMA YOK RAPORU DÜZELTMESİ + HAFTALIK RAPOR KONTROLÜ:")
+    print("📝 GÜNCELLENMİŞ Versiyon v4.7.6 - ZAMANLAMA DÜZELTMESİ:")
     print("   - ÇALIŞMA YOK RAPORU DÜZELTMESİ: Tüm 'çalışma yok', 'iş yok', 'faaliyet yok' vb. raporlar artık doğru işleniyor")
     print("   - Personel kategorileri 0 olarak kaydediliyor")
     print("   - GENEL TOPLAM: 0 olarak hesaplanıyor")
     print("   - Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor")
-    print("   - HAFTALIK RAPOR DÜZELTMESİ: Cumartesi 17:35'te Pazartesi 00:00'dan Cumartesi 17:35'e kadar olan raporları içerir")
+    print("   - HAFTALIK NORMAL RAPOR: Her Pazar 09:00 (7 günlük periyot: Pazartesi 00:00 - Pazar 00:00)")
+    print("   - HAFTALIK EKSİK RAPOR: Her Pazar 10:00 (Haftalık normal raporla aynı tarih aralığı)")
+    print("   - AYLIK NORMAL RAPOR: Her ayın 1'i 08:30 (Bir önceki ayın tamamı)")
+    print("   - AYLIK EKSİK RAPOR: Her ayın 1'i 08:45 (Aylık normal raporla aynı tarih aralığı)")
     print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
     print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
     print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
     print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
     print("   - EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi eklendi")
-    print("   - YENİ: Haftalık eksik rapor analizi: Her Pazar 10:00'da")
-    print("   - YENİ: Aylık eksik rapor analizi: Her ayın 1'inde 12:00'da")
     print("   - Hata yönetimi güçlendirildi")
     print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
     print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
@@ -4390,7 +4475,7 @@ if __name__ == "__main__":
     print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
     print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
     print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
-    print("   - Haftalık rapor job'ı aktif edildi")
+    print("   - Haftalık ve aylık rapor job'ları aktif edildi")
     print("   - HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi")
     print("   - MOS şantiyesi eklendi - Sorumlu: @OrhanCeylan")
     
