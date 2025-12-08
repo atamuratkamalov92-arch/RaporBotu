@@ -2866,24 +2866,26 @@ async def analyze_missing_reports(start_date: dt.date, end_date: dt.date) -> Tup
         return {}, []
 
 async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List) -> str:
-    """Eksik rapor analizini Excel formatında oluştur - GÜNCELLENMİŞ GÖRÜNÜM"""
+    """Eksik rapor analizini Excel formatında oluştur - GÜNCELLENMİŞ GÖRÜNÜM VE SIRALAMA"""
     try:
         from openpyxl.utils import get_column_letter
+        from openpyxl.formatting.rule import ColorScaleRule, CellIsRule, FormulaRule
         
         wb = Workbook()
         ws = wb.active
         ws.title = "Eksik Rapor Analizi"
         
-        # BAŞLIK - Tüm sütunları birleştir (A:AH)
-        ws.merge_cells('A1:AH1')
+        headers = ['Şantiye', 'Toplam Gün', 'Eksik Gün', 'Eksik %'] + [gun.strftime('%d.%m') for gun in gunler]
+        
+        # DİNAMİK BAŞLIK BİRLEŞTİRME - sütun sayısına göre
+        last_column_letter = get_column_letter(len(headers))
+        ws.merge_cells(f'A1:{last_column_letter}1')
         ws['A1'] = f"Eksik Rapor Analizi - {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
         ws['A1'].font = Font(bold=True, size=14)
         ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
         
         # Başlıktan sonra bir boş satır
         ws.row_dimensions[2].height = 15
-        
-        headers = ['Şantiye', 'Toplam Gün', 'Eksik Gün', 'Eksik %'] + [gun.strftime('%d.%m') for gun in gunler]
         
         # Başlık satırı (3. satır)
         for col, header in enumerate(headers, 1):
@@ -2902,8 +2904,24 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
             )
             cell.border = thin_border
         
+        # YENİ: ŞANTİYELERİ SORUMLUYA GÖRE SIRALA
+        santiye_sirali_liste = []
+        
+        for santiye, a in analiz.items():
+            # Şantiye için sorumlu bilgisini al
+            sorumlu_adi = ""
+            if santiye in santiye_sorumlulari and santiye_sorumlulari[santiye]:
+                # İlk sorumluyu al
+                sorumlu_id = santiye_sorumlulari[santiye][0]
+                sorumlu_adi = id_to_name.get(sorumlu_id, "")
+            
+            santiye_sirali_liste.append((sorumlu_adi, santiye, a))
+        
+        # Önce sorumlu adına göre, sonra şantiye adına göre sırala
+        santiye_sirali_liste.sort(key=lambda x: (x[0].lower() if x[0] else "", x[1].lower()))
+        
         row = 4
-        for santiye, a in sorted(analiz.items()):
+        for sorumlu_adi, santiye, a in santiye_sirali_liste:
             # Şantiye adı
             ws.cell(row=row, column=1, value=santiye)
             
@@ -2916,14 +2934,40 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
             ws.cell(row=row, column=4, value=eksik_yuzde/100)
             ws.cell(row=row, column=4).number_format = '0.00%'
             
+            # YENİ: RENKLENDİRME MANTIĞI
+            # "Eksik %" değerine göre renk belirle
+            eksik_yuzde_hucresi = ws.cell(row=row, column=4)
+            
+            if eksik_yuzde <= 10:
+                # %0-10: SADECE "Eksik %" sütunu yeşil
+                eksik_yuzde_hucresi.fill = PatternFill(start_color="63BE7B", end_color="63BE7B", fill_type="solid")
+                # "Şantiye", "Toplam Gün", "Eksik Gün" sütunları BEYAZ kalacak (renk yok)
+                
+            elif eksik_yuzde <= 40:
+                # %11-40: Sarı renk TÜM 4 sütuna uygulanacak
+                renk_kodu = "FFEB84"
+                sütunlar = [1, 2, 3, 4]  # Şantiye, Toplam Gün, Eksik Gün, Eksik %
+                for sütun in sütunlar:
+                    cell = ws.cell(row=row, column=sütun)
+                    cell.fill = PatternFill(start_color=renk_kodu, end_color=renk_kodu, fill_type="solid")
+            else:
+                # %41-100: Kırmızı renk TÜM 4 sütuna uygulanacak
+                renk_kodu = "F8696B"
+                sütunlar = [1, 2, 3, 4]  # Şantiye, Toplam Gün, Eksik Gün, Eksik %
+                for sütun in sütunlar:
+                    cell = ws.cell(row=row, column=sütun)
+                    cell.fill = PatternFill(start_color=renk_kodu, end_color=renk_kodu, fill_type="solid")
+            
             # Günlük durumlar (✓/✗)
             for col_idx, gun in enumerate(gunler, 5):
                 cell = ws.cell(row=row, column=col_idx)
                 if gun in a['eksik_gunler']:
                     cell.value = '✗'
+                    # Eksik günler kırmızı arka plan
                     cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
                 else:
                     cell.value = '✓'
+                    # Rapor verilen günler yeşil arka plan
                     cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
                 
                 # Kenarlık ve hizalama
@@ -2933,9 +2977,13 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
             
             # Tüm hücrelere kenarlık ekle
             for col in range(1, len(headers) + 1):
-                ws.cell(row=row, column=col).border = thin_border
-                ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center')
-                ws.cell(row=row, column=col).font = Font(size=11)
+                cell = ws.cell(row=row, column=col)
+                if not cell.border or cell.border.border_style is None:
+                    cell.border = thin_border
+                if not cell.alignment or cell.alignment.horizontal is None:
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                if not cell.font or cell.font.size is None:
+                    cell.font = Font(size=11)
             
             row += 1
         
