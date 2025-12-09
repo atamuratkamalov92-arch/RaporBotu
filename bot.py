@@ -4394,7 +4394,7 @@ async def post_init(application: Application):
         BotCommand("istatistik", "Genel istatistikler (Admin)"),
         BotCommand("haftalik_rapor", "Haftalık rapor (Admin)"),
         BotCommand("aylik_rapor", "Aylık rapor (Admin)"),
-        BotCommand("tariharaligi", "Tarih aralığı raporu (Admin)"),
+        BotCommand("tariharaligi", "Tarih aralığı raporu mesaj halinde (Admin)"),
         BotCommand("haftalik_istatistik", "Haftalık istatistik (Admin)"),
         BotCommand("aylik_istatistik", "Aylık istatistik (Admin)"),
         BotCommand("excel_tariharaligi", "Excel tarih aralığı raporu (Admin)"),
