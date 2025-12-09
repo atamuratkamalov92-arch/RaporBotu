@@ -4383,18 +4383,22 @@ async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Bot başlatıcı mesaj hatası: {e}")
 
 async def post_init(application: Application):
-    commands = [
+    # Temel komutlar (tüm kullanıcılar için)
+    basic_commands = [
         BotCommand("start", "Botu başlat"),
         BotCommand("info", "Komut bilgisi"),
         BotCommand("hakkinda", "Bot hakkında bilgi"),
-        
+    ]
+    
+    # Admin komutları (sadece adminler için)
+    admin_commands = basic_commands + [
         BotCommand("bugun", "Bugünün özeti (Admin)"),
         BotCommand("dun", "Dünün özeti (Admin)"),
         BotCommand("eksikraporlar", "Eksik raporları listele (Admin)"),
         BotCommand("istatistik", "Genel istatistikler (Admin)"),
         BotCommand("haftalik_rapor", "Haftalık rapor (Admin)"),
         BotCommand("aylik_rapor", "Aylık rapor (Admin)"),
-        BotCommand("tariharaligi", "Tarih aralığı raporu (Admin)"),
+        BotCommand("tariharaligi", "Tarih aralığı raporu mesaj halinde (Admin)"),
         BotCommand("haftalik_istatistik", "Haftalık istatistik (Admin)"),
         BotCommand("aylik_istatistik", "Aylık istatistik (Admin)"),
         BotCommand("excel_tariharaligi", "Excel tarih aralığı raporu (Admin)"),
@@ -4406,7 +4410,10 @@ async def post_init(application: Application):
         BotCommand("eksik_rapor_excel", "Eksik rapor Excel analizi (Admin)"),
         BotCommand("haftalik_eksik_raporlar", "Haftalık eksik rapor analizi (Admin)"),
         BotCommand("aylik_eksik_raporlar", "Aylık eksik rapor analizi (Admin)"),
-        
+    ]
+    
+    # Super Admin komutları (sadece super admin için)
+    super_admin_commands = admin_commands + [
         BotCommand("reload", "Excel yenile (Super Admin)"),
         BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
         BotCommand("chatid", "Chat ID göster (Super Admin)"),
@@ -4414,7 +4421,32 @@ async def post_init(application: Application):
         BotCommand("reset_database", "Veritabanını sıfırla (Super Admin)"),
         BotCommand("fix_sequences", "Sequence'leri düzelt (Super Admin)"),
     ]
-    await application.bot.set_my_commands(commands)
+    
+    # Varsayılan komutları temel komutlar olarak ayarla.
+    await application.bot.set_my_commands(basic_commands)
+    
+    # Eğer özel sohbetler için komut ayarlama desteği varsa, tüm özel sohbetler için temel komutları ayarla.
+    if HAS_PRIVATE_SCOPE:
+        try:
+            from telegram import BotCommandScopeAllPrivateChats
+            await application.bot.set_my_commands(basic_commands, scope=BotCommandScopeAllPrivateChats())
+            logging.info("Özel sohbetler için temel komutlar ayarlandı.")
+        except Exception as e:
+            logging.error(f"Özel sohbetler için komutlar ayarlanamadı: {e}")
+    
+    # Her bir admin kullanıcısı için admin komutlarını ayarla.
+    for admin_id in ADMINS:
+        try:
+            from telegram import BotCommandScopeChat
+            scope = BotCommandScopeChat(chat_id=admin_id)
+            # Eğer admin aynı zamanda super admin ise, super admin komutlarını ayarla.
+            if admin_id == SUPER_ADMIN_ID:
+                await application.bot.set_my_commands(super_admin_commands, scope=scope)
+            else:
+                await application.bot.set_my_commands(admin_commands, scope=scope)
+            logging.info(f"Admin komutları {admin_id} kullanıcısı için ayarlandı.")
+        except Exception as e:
+            logging.error(f"Admin {admin_id} için komutlar ayarlanamadı: {e}")
     
     await bot_baslatici_mesaji(application)
 
