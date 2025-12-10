@@ -1,5 +1,13 @@
 """
-📋 CHANGELOG - bot.py v4.7.6
+📋 CHANGELOG - bot.py v4.7.7
+
+✅ OHP ŞANTİYESİ OPSİYONEL MOD
+- OHP şantiyesi artık opsiyonel rapor modunda çalışıyor
+- Rapor gönderilirse işlenir, gönderilmezse eksik listesine dahil edilmez
+- Hatırlatma mesajlarında görünmez
+- Admin kontrol listelerinde görünmez
+- Excel eksik rapor analizinde yer almaz
+- Yalnızca OHP için bu özel durum geçerlidir
 
 ✅ ÇALIŞMA YOK RAPORLARI DÜZELTMESİ
 - "Çalışma yok", "iş yok", "faaliyet yok" gibi raporlar artık doğru şekilde işleniyor
@@ -437,7 +445,10 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'OHP', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT', 'MOS']
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT', 'MOS']
+
+# OPSİYONEL ŞANTİYELER (rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz)
+OPSIYONEL_SANTIYELER = ['OHP']
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
@@ -448,13 +459,13 @@ SANTIYE_USERNAME_MAPPING = {
     'STADYUM': ['Adnan_Keleş'],
     'LOT13': ['Adnan_Keleş'],
     'LOT71': ['Adnan_Keleş'],
-    'OHP': ['Erdoğan.Karamısır'],
     'YHP': ['Orhan_Ceylan'],
     'MMP': ['Orhan_Ceylan'],
     'RMC': ['Orhan_Ceylan'],
     'TYM': ['Orhan_Ceylan'],
     'PİRAMİT': ['ON5428'],
     'MOS': ['Orhan_Ceylan']
+    # OHP opsiyonel olduğu için kaldırıldı
 }
 
 # Giriş doğrulama fonksiyonları
@@ -524,7 +535,7 @@ def normalize_site_name(site_name):
         'DMC': 'DMC',
         'KÖKSARAY': 'KÖKSARAY',
         'KOK SARAY': 'KÖKSARAY',
-        'OHP': 'OHP',
+        'OHP': 'OHP',  # Hala normalize ediliyor, sadece opsiyonel
         'TYM': 'TYM',
         'YHP': 'YHP',
         'MMP': 'MMP',
@@ -1026,7 +1037,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
    - Tarih yoksa bugünün tarihini kullan
 
 10. ŞANTİYE NORMALİZASYONU:
-    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS
+    - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS, OHP
     - "Lot 13", "lot13", "LOT-13" → "LOT13"
     - "SKP Daho" → "SKP"
     - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
@@ -1037,6 +1048,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - "RMC" → "RMC"
     - "KOK SARAY" → "KÖKSARAY"
     - "MOS" → "MOS"
+    - "OHP" → "OHP"
 
 11. PERSONEL KATEGORİLERİ:
     - staff: mühendis, tekniker, formen, ekipbaşı, şef, Türk mühendis, Türk formen, Yerel formen, Yerel Ekipbaşı, Yerel ekipbaşı, Toplam staff, Staff
@@ -1854,7 +1866,7 @@ init_database()
 init_db_pool()
 
 async def get_santiye_rapor_durumu(bugun):
-    """Güvenli tuple işleme ile şantiye rapor durumunu al - TÜMÜ FİLTRELENDİ"""
+    """Güvenli tuple işleme ile şantiye rapor durumunu al - OPSİYONEL ŞANTİYELER HARİÇ"""
     try:
         rows = await async_fetchall("""
             SELECT DISTINCT project_name FROM reports 
@@ -1872,10 +1884,13 @@ async def get_santiye_rapor_durumu(bugun):
 
 async def get_eksik_santiyeler(bugun):
     try:
-        # TÜMÜ şantiyesini filtrele ve sabit şantiyeleri ekle
+        # TÜMÜ şantiyesini filtrele, sabit şantiyeleri ekle, OPSİYONEL ŞANTİYELERİ ÇIKAR
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
-        # SABİT ŞANTİYELERİ EKLE
         tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
+        
+        # OPSİYONEL ŞANTİYELERİ ÇIKAR (OHP gibi)
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
+        
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         eksik_santiyeler = tum_santiyeler - rapor_veren_santiyeler
         
@@ -1886,9 +1901,13 @@ async def get_eksik_santiyeler(bugun):
 
 async def get_santiye_bazli_rapor_durumu(bugun):
     try:
-        # TÜMÜ şantiyesini filtrele ve SABİT ŞANTİYELERİ EKLE
+        # TÜMÜ şantiyesini filtrele, SABİT ŞANTİYELERİ EKLE, OPSİYONEL ŞANTİYELERİ ÇIKAR
         tum_santiyeler = set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
+        
+        # OPSİYONEL ŞANTİYELERİ ÇIKAR (OHP gibi)
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
+        
         rapor_veren_santiyeler = await get_santiye_rapor_durumu(bugun)
         
         rows = await async_fetchall("""
@@ -1900,10 +1919,10 @@ async def get_santiye_bazli_rapor_durumu(bugun):
         for row in rows:
             if row and len(row) >= 2:
                 project_name = safe_get_tuple_value(row, 0, '')
-                # PROJE ADINI NORMALİZE ET - EKLENDİ
+                # PROJE ADINI NORMALİZE ET
                 project_name = normalize_site_name(project_name)
                 user_id = safe_get_tuple_value(row, 1, 0)
-                if project_name and project_name != "TÜMÜ" and user_id:  # TÜMÜ filtrele
+                if project_name and project_name != "TÜMÜ" and user_id:
                     if project_name not in santiye_rapor_verenler:
                         santiye_rapor_verenler[project_name] = []
                     santiye_rapor_verenler[project_name].append(user_id)
@@ -2154,7 +2173,7 @@ async def generate_gelismis_personel_ozeti(target_date):
             yapilan_is = safe_get_tuple_value(row, 4, '')
             ai_analysis = safe_get_tuple_value(row, 5, '{}')
             
-            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            # PROJE ADINI NORMALİZE ET
             proje_adi = normalize_site_name(proje_adi)
             
             if not proje_adi or proje_adi == "TÜMÜ":
@@ -2312,8 +2331,9 @@ async def generate_gelismis_personel_ozeti(target_date):
             if genel_dis_gorev_toplam > 0:
                 mesaj += f"• Dış Görev: {genel_dis_gorev_toplam} (%{genel_dis_gorev_toplam/genel_toplam*100:.1f})\n"
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET, OPSİYONEL HARİÇ
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
         aktif_projeler = set(proje_analizleri.keys())
         eksik_projeler = [s for s in (tum_santiyeler - aktif_projeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2356,7 +2376,7 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
             
-            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            # PROJE ADINI NORMALİZE ET
             proje_adi = normalize_site_name(proje_adi)
             
             # TÜMÜ şantiyesini filtrele
@@ -2433,8 +2453,9 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         # GENEL TOPLAM = Tüm kategorilerin toplamı
         genel_toplam = genel_staff + genel_calisan + genel_mobilizasyon + genel_ambarci + genel_izinli + genel_dis_gorev_toplam
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET, OPSİYONEL HARİÇ
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2451,17 +2472,17 @@ async def generate_haftalik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "STADYUM", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT", "MOS"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
-                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"
                 if analiz['dis_gorev_toplam'] > 0:
                     mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
                 mesaj += "\n"
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"
                 if analiz['dis_gorev_toplam'] > 0:
                     mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
                 mesaj += "\n"
@@ -2536,7 +2557,7 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
             proje_adi = safe_get_tuple_value(row, 0, '')
             ai_analysis = safe_get_tuple_value(row, 1, '{}')
             
-            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            # PROJE ADINI NORMALİZE ET
             proje_adi = normalize_site_name(proje_adi)
             
             # TÜMÜ şantiyesini filtrele
@@ -2613,8 +2634,9 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         # GENEL TOPLAM = Tüm kategorilerin toplamı
         genel_toplam = genel_staff + genel_calisan + genel_mobilizasyon + genel_ambarci + genel_izinli + genel_dis_gorev_toplam
         
-        # TÜM SABİT ŞANTİYELERİ DAHİL ET
+        # TÜM SABİT ŞANTİYELERİ DAHİL ET, OPSİYONEL HARİÇ
         tum_santiyeler = set(SABIT_SANTIYELER).union(set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ"))
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
         rapor_veren_santiyeler = set(proje_analizleri.keys())
         eksik_santiyeler = [s for s in (tum_santiyeler - rapor_veren_santiyeler) if s not in ["Belli değil", "Tümü"]]
         
@@ -2631,17 +2653,17 @@ async def generate_aylik_rapor_mesaji(start_date, end_date):
         
         onemli_projeler = ["SKP", "LOT13", "LOT71", "BWC", "DMC", "YHP", "TYM", "MMP", "RMC", "PİRAMİT", "MOS"]
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
-                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+            if proje_adi in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):
+                mesaj += f"🏗️ {proje_adi}: {analiz['santiye_baslik']} kişi"
                 if analiz['dis_gorev_toplam'] > 0:
                     mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
                 mesaj += "\n"
                 mesaj += f"   └─ Staff:{analiz['staff']}, Çalışan:{analiz['calisan']}, Mobilizasyon:{analiz['mobilizasyon']}, Ambarcı:{analiz['ambarci']}, İzinli:{analiz['izinli']}\n\n"
         
         for proje_adi, analiz in sorted(proje_analizleri.items(), key=lambda x: x[1]['toplam'], reverse=True):
-            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):  # KRİTİK GÜNCELLEME: santiye_baslik kullan
+            if proje_adi not in onemli_projeler and (analiz['santiye_baslik'] > 0 or analiz['dis_gorev_toplam'] > 0):
                 emoji = "🏢" if proje_adi == "TYM" else "🏗️"
-                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"  # KRİTİK GÜNCELLEME: Şantiye başlık göster
+                mesaj += f"{emoji} {proje_adi}: {analiz['santiye_baslik']} kişi"
                 if analiz['dis_gorev_toplam'] > 0:
                     mesaj += f" (Dış görev: {analiz['dis_gorev_toplam']})"
                 mesaj += "\n"
@@ -2829,11 +2851,15 @@ def parse_tr_date(date_str: str) -> dt.date:
         raise ValueError("Geçersiz tarih formatı. GG.AA.YYYY şeklinde olmalı.")
 
 async def analyze_missing_reports(start_date: dt.date, end_date: dt.date) -> Tuple[Dict, List]:
-    """Belirtilen tarih aralığındaki eksik raporları analiz eder"""
+    """Belirtilen tarih aralığındaki eksik raporları analiz eder - OPSİYONEL ŞANTİYELER HARİÇ"""
     try:
         tum_santiyeler = set(SABIT_SANTIYELER).union(
             set(santiye for santiye in santiye_sorumlulari.keys() if santiye != "TÜMÜ")
         )
+        
+        # OPSİYONEL ŞANTİYELERİ ÇIKAR (OHP gibi)
+        tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
+        
         current_date = start_date
         gunler = []
         while current_date <= end_date:
@@ -2974,11 +3000,10 @@ async def create_missing_reports_excel(analiz: Dict, start_date: dt.date, end_da
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.font = Font(size=11)
             
-            # Tüm hücrelere kenarlık ve hizalama ekle (hata düzeltildi)
+            # Tüm hücrelere kenarlık ve hizalama ekle
             for col in range(1, len(headers) + 1):
                 cell = ws.cell(row=row, column=col)
-                # Kenarlığı kontrol et - Border nesnesi border_style özelliğine sahip değil
-                # Bunun yerine kenarlığı her zaman uygula
+                # Kenarlığı her zaman uygula
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.font = Font(size=11)
@@ -3452,11 +3477,11 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.6\n"
+        "Versiyon: 4.7.7\n"
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• GPT-4 ile akıllı rapor analizi: otomatik parsing ve personel dağılımı\n"
-        "• Şantiye bazlı sistem: 14+ şantiye takibi\n"
+        "• Şantiye bazlı sistem: 13+ şantiye takibi (OHP opsiyonel)\n"
         "• Otomatik hatırlatmalar: 12:30, 15:00, 17:30'da grup bildirimleri\n"
         "• Eksik rapor analizi: Excel ve detaylı raporlama\n"
         "• Haftalık rapor: Pazar 09:00 (Pazar 00:00 - Cumartesi 23:59)\n"
@@ -3660,7 +3685,7 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mesaj = "🏗️ ŞANTİYE LİSTESİ\n\n"
     
-    # TÜMÜ şantiyesini filtrele
+    # TÜMÜ şantiyesini filtrele, SABİT ŞANTİYELERİ EKLE
     filtered_santiyeler = {santiye: sorumlular for santiye, sorumlular in santiye_sorumlulari.items() if santiye != "TÜMÜ"}
     
     # Sabit şantiyeleri ekle
@@ -3668,11 +3693,19 @@ async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if santiye not in filtered_santiyeler:
             filtered_santiyeler[santiye] = []
     
-    for santiye in sorted(filtered_santiyeler.keys()):
-        # Sadece şantiye ismini göster, sorumlu sayısını gösterme
-        mesaj += f"• {santiye}\n"
+    # OPSİYONEL ŞANTİYELERİ EKLE (OHP gibi) ama opsiyonel olduğunu belirt
+    for santiye in OPSIYONEL_SANTIYELER:
+        if santiye not in filtered_santiyeler:
+            filtered_santiyeler[santiye] = []
     
-    mesaj += f"\n📊 Toplam {len(filtered_santiyeler)} şantiye"
+    for santiye in sorted(filtered_santiyeler.keys()):
+        # Opsiyonel şantiyeler için özel işaret
+        if santiye in OPSIYONEL_SANTIYELER:
+            mesaj += f"• {santiye} (Opsiyonel - rapor gönderilirse işlenir)\n"
+        else:
+            mesaj += f"• {santiye}\n"
+    
+    mesaj += f"\n📊 Toplam {len(filtered_santiyeler)} şantiye ({len(OPSIYONEL_SANTIYELER)} opsiyonel)"
     
     await update.message.reply_text(mesaj)
 
@@ -3683,23 +3716,23 @@ async def santiye_durum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bugun = dt.datetime.now(TZ).date()
     durum = await get_santiye_bazli_rapor_durumu(bugun)
     
-    # Sabit şantiyeleri ekle - artık get_santiye_bazli_rapor_durumu içinde zaten ekleniyor
-    tum_santiyeler_with_sabit = durum['tum_santiyeler']
-    eksik_santiyeler_with_sabit = tum_santiyeler_with_sabit - durum['rapor_veren_santiyeler']
-    
     mesaj = f"📊 Şantiye Rapor Durumu - {bugun.strftime('%d.%m.%Y')} \n\n"
     
     mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
     for santiye in sorted(durum['rapor_veren_santiyeler']):
         mesaj += f"• {santiye}\n"
     
-    mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(eksik_santiyeler_with_sabit)}):\n"
-    for santiye in sorted(eksik_santiyeler_with_sabit):
+    mesaj += f"\n❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
+    for santiye in sorted(durum['eksik_santiyeler']):
         if santiye in ["Belli değil", "TÜMÜ"]:
             continue
         mesaj += f"• {santiye}\n"
     
-    mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(tum_santiyeler_with_sabit)} şantiye rapor iletmiş"
+    # OPSİYONEL ŞANTİYELER HAKKINDA NOT
+    if OPSIYONEL_SANTIYELER:
+        mesaj += f"\nℹ️ Opsiyonel Şantiyeler (OHP): Rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz\n"
+    
+    mesaj += f"\n📈 Özet: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş"
     
     await update.message.reply_text(mesaj)
 
@@ -3808,7 +3841,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             is_edited = safe_get_tuple_value(row, 9, False)
             ai_analysis = safe_get_tuple_value(row, 10, '{}')
             
-            # PROJE ADINI NORMALİZE ET - EKLENDİ
+            # PROJE ADINI NORMALİZE ET
             proje_adi = normalize_site_name(proje_adi)
             
             # TÜMÜ şantiyesini filtrele
@@ -3986,7 +4019,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ['📅 Rapor Periyodu', f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"],
             ['📊 Toplam Rapor', toplam_rapor],
             ['👥 Toplam Kullanıcı', toplam_kullanici],
-            ['📅 Toplam Gün', gun_sayisi],  # "İş Günü" yerine "Toplam Gün"
+            ['📅 Toplam Gün', gun_sayisi],
             ['🕒 Oluşturulma', dt.datetime.now(TZ).strftime('%d.%m.%Y %H:%M')],
             ['', ''],
             ['👨‍💼 PERSONEL DAĞILIMI', ''],
@@ -4034,7 +4067,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
     except Exception as e:
         raise e
 
-# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ - TALİMATA GÖRE DÜZELTİLDİ
+# YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ
 def schedule_jobs(app):
     jq = app.job_queue
     
@@ -4204,6 +4237,10 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
             else:
                 mesaj = "❌ Eksik raporlar var:\n"
                 for santiye in sorted(durum['eksik_santiyeler']):
+                    # OPSİYONEL ŞANTİYELERİ ATLA (OHP gibi)
+                    if santiye in OPSIYONEL_SANTIYELER:
+                        continue
+                    
                     # Şantiye için kullanıcı adlarını al
                     usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
                     if usernames:
@@ -4213,8 +4250,14 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
                     else:
                         mesaj += f"• {santiye}\n"
                 
-                # SABİT NOT EKLENİYOR (eksik rapor varsa)
-                mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
+                # Eğer opsiyonel şantiyeler hariç tüm şantiyeler rapor verdiyse
+                eksik_santiyeler_filtreli = [s for s in durum['eksik_santiyeler'] if s not in OPSIYONEL_SANTIYELER]
+                if not eksik_santiyeler_filtreli:
+                    mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış.\n\n"
+                    mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
+                else:
+                    # SABİT NOT EKLENİYOR (eksik rapor varsa)
+                    mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
             
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
@@ -4242,11 +4285,12 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         else:
             mesaj += "✅ Rapor iletilen şantiyeler (0):\n\n"
         
-        if durum['eksik_santiyeler']:
-            mesaj += f"❌ Rapor iletilmeyen şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
-            for santiye in sorted(durum['eksik_santiyeler']):
-                if santiye in ["Belli değil", "Tümü"]:
-                    continue
+        # OPSİYONEL ŞANTİYELER HARİÇ EKSİK ŞANTİYELER
+        eksik_santiyeler_filtreli = [s for s in sorted(durum['eksik_santiyeler']) if s not in OPSIYONEL_SANTIYELER and s not in ["Belli değil", "Tümü"]]
+        
+        if eksik_santiyeler_filtreli:
+            mesaj += f"❌ Rapor iletilmeyen şantiyeler ({len(eksik_santiyeler_filtreli)}):\n"
+            for santiye in eksik_santiyeler_filtreli:
                 mesaj += f"• {santiye}\n"
             
             # EKSİK RAPOR VARSA MEVCUT NOT
@@ -4281,9 +4325,12 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
         
         mesaj = "🕠 Gün Sonu Şantiye Rapor Analizi\n\n"
         
-        if durum['eksik_santiyeler']:
-            mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
-            for santiye in sorted(durum['eksik_santiyeler']):
+        # OPSİYONEL ŞANTİYELER HARİÇ EKSİK ŞANTİYELER
+        eksik_santiyeler_filtreli = [s for s in sorted(durum['eksik_santiyeler']) if s not in OPSIYONEL_SANTIYELER]
+        
+        if eksik_santiyeler_filtreli:
+            mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(eksik_santiyeler_filtreli)}):\n"
+            for santiye in eksik_santiyeler_filtreli:
                 mesaj += f"• {santiye}\n"
             
             mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
@@ -4299,6 +4346,10 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             
             # EKSİK RAPOR YOKSA YENİ NOT
             mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
+        
+        # OPSİYONEL ŞANTİYELER HAKKINDA NOT EKLE
+        if OPSIYONEL_SANTIYELER:
+            mesaj += f"\n\nℹ️ Not: OHP şantiyesi opsiyoneldir - rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz."
         
         # DÜZELTİLDİ: GRUBA GÖNDER
         if GROUP_ID:
@@ -4528,41 +4579,11 @@ def main():
         
         # Railway için webhook yerine polling kullan
         logging.info("🔄 Polling başlatılıyor...")
-        app.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
-        )
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
         
     except Exception as e:
-        logging.error(f"❌ Bot başlatma hatası: {e}", exc_info=True)
+        logging.error(f"❌ Bot başlatma hatası: {e}")
         raise
 
 if __name__ == "__main__":
-    print("🚀 Telegram Bot Başlatılıyor...")
-    print("📝 GÜNCELLENMİŞ Versiyon v4.7.6 - ZAMANLAMA DÜZELTMESİ:")
-    print("   - ÇALIŞMA YOK RAPORU DÜZELTMESİ: Tüm 'çalışma yok', 'iş yok', 'faaliyet yok' vb. raporlar artık doğru işleniyor")
-    print("   - Personel kategorileri 0 olarak kaydediliyor")
-    print("   - GENEL TOPLAM: 0 olarak hesaplanıyor")
-    print("   - Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor")
-    print("   - HAFTALIK NORMAL RAPOR: Her Pazar 09:00 (7 günlük periyot: Pazartesi 00:00 - Pazar 00:00)")
-    print("   - HAFTALIK EKSİK RAPOR: Her Pazar 10:00 (Haftalık normal raporla aynı tarih aralığı)")
-    print("   - AYLIK NORMAL RAPOR: Her ayın 1'i 08:30 (Bir önceki ayın tamamı)")
-    print("   - AYLIK EKSİK RAPOR: Her ayın 1'i 08:45 (Aylık normal raporla aynı tarih aralığı)")
-    print("   - 7/24 ÇALIŞMA SİSTEMİ: Hafta sonları da çalışma günü olarak kabul edilir")
-    print("   - GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır")
-    print("   - Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100")
-    print("   - MOS şantiyesi eklendi: Sorumlu @OrhanCeylan")
-    print("   - EKSİK RAPOR ANALİZİ: Excel formatında detaylı eksik rapor takibi eklendi")
-    print("   - Hata yönetimi güçlendirildi")
-    print("   - YHP, TYM, MMP, RMC şantiyeleri eklendi")
-    print("   - EKSİK ŞANTİYELER listesinde MMP, RMC, TYM, YHP artık doğru şekilde gösteriliyor")
-    print("   - PİRAMİT şantiyesi tüm sistemlere eklendi")
-    print("   - 'PİRAMİT TOWER', 'PİRAMİT', 'PRAMİT', 'PIRAMIT' vb. tüm varyasyonlar 'PİRAMİT' olarak normalize ediliyor")
-    print("   - Hatırlatma mesajlarında eksik şantiyelerin yanına sorumlu kullanıcı adları eklendi")
-    print("   - 17:30 son kontrol mesajı artık sadece Adminlere gönderiliyor")
-    print("   - 09:00 özeti sadece Eren Boz'a gönderiliyor")
-    print("   - Haftalık ve aylık rapor job'ları aktif edildi")
-    print("   - HAFTALIK ve AYLIK raporlarda toplam personel hesaplaması düzeltildi")
-    print("   - MOS şantiyesi eklendi - Sorumlu: @OrhanCeylan")
-    
     main()
