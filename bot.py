@@ -4199,7 +4199,8 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
         
         if GROUP_ID:
             if not durum['eksik_santiyeler']:
-                mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış."
+                mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış.\n\n"
+                mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
             else:
                 mesaj = "❌ Eksik raporlar var:\n"
                 for santiye in sorted(durum['eksik_santiyeler']):
@@ -4211,9 +4212,9 @@ async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
                         mesaj += f"• {santiye} ({username_str} )\n"
                     else:
                         mesaj += f"• {santiye}\n"
-            
-            # SABİT NOT EKLENİYOR
-            mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
+                
+                # SABİT NOT EKLENİYOR (eksik rapor varsa)
+                mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
             
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
@@ -4247,12 +4248,14 @@ async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
                 mesaj += f"• {santiye}\n"
+            
+            # EKSİK RAPOR VARSA MEVCUT NOT
+            mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
         else:
             mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
-            mesaj += "🎉 Tüm şantiyeler raporlarını iletti!"
-        
-        # SABİT NOT EKLENİYOR
-        mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
+            mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n\n"
+            # EKSİK RAPOR YOKSA YENİ NOT
+            mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
         
         if GROUP_ID:
             try:
@@ -4282,15 +4285,20 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(durum['eksik_santiyeler'])}):\n"
             for santiye in sorted(durum['eksik_santiyeler']):
                 mesaj += f"• {santiye}\n"
+            
+            mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
+            mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
+            
+            # EKSİK RAPOR VARSA MEVCUT NOT
+            mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
         else:
             mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
             mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
-        
-        mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
-        mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
-        
-        # SABİT NOT EKLENİYOR (Kullanıcılar için)
-        mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
+            mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
+            mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda.\n\n"
+            
+            # EKSİK RAPOR YOKSA YENİ NOT
+            mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
         
         # DÜZELTİLDİ: GRUBA GÖNDER
         if GROUP_ID:
