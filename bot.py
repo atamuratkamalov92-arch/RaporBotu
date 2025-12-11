@@ -4347,10 +4347,6 @@ async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
             # EKSİK RAPOR YOKSA YENİ NOT
             mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
         
-        # OPSİYONEL ŞANTİYELER HAKKINDA NOT EKLE
-        if OPSIYONEL_SANTIYELER:
-            mesaj += f"\n\nℹ️ Not: OHP şantiyesi opsiyoneldir - rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz."
-        
         # DÜZELTİLDİ: GRUBA GÖNDER
         if GROUP_ID:
             try:
