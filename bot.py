@@ -3842,6 +3842,24 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         tum_santiyeler = tum_santiyeler.union(set(SABIT_SANTIYELER))
         tum_santiyeler = tum_santiyeler - set(OPSIYONEL_SANTIYELER)
         
+        # 3. SABİT SORUMLU İSİMLERİ (ekran görüntüsünden alındı)
+        sabit_sorumlular = {
+            "BWC": "Yusuf Direk",
+            "DATA CENTR": "Temur Şahin",
+            "DMC": "Yusuf Müftü",
+            "NORABAY": "Erdoğan Kurumu",
+            "LOT13": "Adem Kıbrı",
+            "LOT21": "Adem Kıbrı",
+            "MAP": "Orhan Çetin",
+            "MEX": "Orhan Çetin",
+            "MARMARİT": "Ömer Çevik",
+            "BL1C": "Orhan Çetin",
+            "SKP": "Yusuf Müftü",
+            "STADYUMA": "Adem Kıbrı",
+            "TWA": "Orhan Çetin",
+            "VHP": "Orhan Çetin"
+        }
+        
         # 3. Veritabanından raporları al
         rows = await async_fetchall("""
             SELECT project_name, report_date, ai_analysis
@@ -4015,15 +4033,36 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         
         # 4. SATIR ve sonrası: ŞANTİYE VERİLERİ
         row_idx = 4
+        # Önce ekran görüntüsündeki sıraya göre şantiyeleri sırala
+        ekran_sirasi = [
+            "BWC", "DATA CENTR", "DMC", "NORABAY", "LOT13", "LOT21", 
+            "MAP", "MEX", "MARMARİT", "BL1C", "SKP", "STADYUMA", "TWA", "VHP"
+        ]
+        
+        # Mevcut şantiyelerle ekran sırasını birleştir
+        sirali_santiyeler = []
+        for santiye in ekran_sirasi:
+            if santiye in tum_santiyeler:
+                sirali_santiyeler.append(santiye)
+        
+        # Ekran sırasında olmayan diğer şantiyeleri ekle
         for santiye in sorted(tum_santiyeler):
+            if santiye not in sirali_santiyeler:
+                sirali_santiyeler.append(santiye)
+        
+        for santiye in sirali_santiyeler:
             # A sütunu: Şantiye adı
             ws.cell(row=row_idx, column=COL_SANTIYELER, value=santiye)
             ws.cell(row=row_idx, column=COL_SANTIYELER).alignment = left_align
             ws.cell(row=row_idx, column=COL_SANTIYELER).border = thin_border
             
-            # B sütunu: Sorumlu adı soyadı
-            sorumlu_id = get_santiye_sorumlusu(santiye)
-            sorumlu_adi = id_to_name.get(sorumlu_id, "") if sorumlu_id else ""
+            # B sütunu: SABİT sorumlu adı (ekran görüntüsünden)
+            sorumlu_adi = sabit_sorumlular.get(santiye, "")
+            if not sorumlu_adi:
+                # Eğer sabit listede yoksa, mevcut sistemden al
+                sorumlu_id = get_santiye_sorumlusu(santiye)
+                sorumlu_adi = id_to_name.get(sorumlu_id, "") if sorumlu_id else ""
+            
             ws.cell(row=row_idx, column=COL_SORUMLU, value=sorumlu_adi)
             ws.cell(row=row_idx, column=COL_SORUMLU).alignment = left_align
             ws.cell(row=row_idx, column=COL_SORUMLU).border = thin_border
@@ -4167,7 +4206,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.cell(row=toplam_satir, column=COL_SANTIYELER).alignment = center_align
         ws.cell(row=toplam_satir, column=COL_SANTIYELER).border = thin_border
         
-        # B sütunu boş
+        # B sütunu boş (TOPLAM satırında sorumlu olmaz)
         ws.cell(row=toplam_satir, column=COL_SORUMLU, value="")
         ws.cell(row=toplam_satir, column=COL_SORUMLU).border = thin_border
         
@@ -4203,6 +4242,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 if j == 6:  # Toplam sütunu
                     ws.cell(row=toplam_satir, column=col).fill = toplam_fill
         
+        # BOŞ SATIR (TOPLAM ile Eksik Rapor arasında)
+        row_idx += 1
+        
         # EKSİK RAPOR SATIRI
         eksik_satir = row_idx + 1
         ws.cell(row=eksik_satir, column=COL_SANTIYELER, value="Eksik Rapor")
@@ -4210,28 +4252,38 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.cell(row=eksik_satir, column=COL_SANTIYELER).alignment = center_align
         ws.cell(row=eksik_satir, column=COL_SANTIYELER).border = thin_border
         
-        # B sütunu boş
+        # B sütunu boş (Eksik Rapor satırında sorumlu olmaz)
         ws.cell(row=eksik_satir, column=COL_SORUMLU, value="")
         ws.cell(row=eksik_satir, column=COL_SORUMLU).border = thin_border
         
-        # GENEL TOPLAM sütunları boş
+        # GENEL TOPLAM sütunları boş (Eksik Rapor sadece günlük sütunlarda gösterilir)
         for col in range(COL_GENEL_START, COL_GENEL_END + 1):
             ws.cell(row=eksik_satir, column=col, value="")
             ws.cell(row=eksik_satir, column=col).border = thin_border
         
-        # Gün blokları için eksik rapor formülleri
+        # Gün blokları için eksik rapor formülleri (sadece toplamlar - ekran görüntüsünde olduğu gibi)
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
             end_col = start_col + 6
             
-            # 7 sütunu birleştir
+            # 7 sütunu birleştir (ekran görüntüsündeki gibi)
             ws.merge_cells(start_row=eksik_satir, start_column=start_col, end_row=eksik_satir, end_column=end_col)
             
-            # Formülü oluştur (sadece Staff sütunundaki "✗" sayısı)
+            # Formülü oluştur (o güne ait tüm şantiyelerdeki "✗" sayısının toplamı)
             baslangic_satir = 4
             bitis_satir = toplam_satir - 2
-            hucre_aralik = f"{get_column_letter(start_col)}{baslangic_satir}:{get_column_letter(start_col)}{bitis_satir}"
-            formül = f"=COUNTIF({hucre_aralik},\"✗\")"
+            
+            # Tüm şantiyeler için o günün Staff sütunundaki "✗" sayısını say
+            formül_parts = []
+            for s_row in range(baslangic_satir, bitis_satir + 1):
+                staff_col_letter = get_column_letter(start_col)
+                cell_ref = f"{staff_col_letter}{s_row}"
+                formül_parts.append(f'COUNTIF({cell_ref},"✗")')
+            
+            if formül_parts:
+                formül = f"={'+'.join(formül_parts)}"
+            else:
+                formül = "=0"
             
             ws.cell(row=eksik_satir, column=start_col, value=formül)
             ws.cell(row=eksik_satir, column=start_col).alignment = center_align
