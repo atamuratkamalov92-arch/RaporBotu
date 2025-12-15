@@ -3826,10 +3826,10 @@ async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"❌ Sequence düzeltme hatası: {e}")
         await update.message.reply_text(f"❌ Sequence düzeltme hatası: {e}")
 
-# DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU TARIH ARALıĞıNA GÖRE
+# DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU BELIRLİ BİR TARİH ARALIĞI İÇİN
 async def create_excel_report(start_date, end_date, rapor_baslik):
     """YENİ: Örnek Excel ile birebir uyumlu dinamik Excel raporu oluşturur"""
-    try:     
+    try:
         # 1. Tarih aralığındaki tüm günleri listele (hafta sonları dahil)
         gunler = []
         current_date = start_date
@@ -3911,6 +3911,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             }
         
         # 5. Excel oluşturma
+        from openpyxl.utils import get_column_letter
+        
         wb = Workbook()
         ws = wb.active
         ws.title = "Raporlar"
