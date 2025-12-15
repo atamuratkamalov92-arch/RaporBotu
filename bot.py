@@ -3826,7 +3826,7 @@ async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"❌ Sequence düzeltme hatası: {e}")
         await update.message.reply_text(f"❌ Sequence düzeltme hatası: {e}")
 
-# DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU BELIRLİ BİR TARİH ARALIĞI İÇİN
+# DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU BELIRLİ TARİH ARALIĞI İÇİN
 async def create_excel_report(start_date, end_date, rapor_baslik):
     """YENİ: Örnek Excel ile birebir uyumlu dinamik Excel raporu oluşturur"""
     try:
