@@ -3826,10 +3826,10 @@ async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"❌ Sequence düzeltme hatası: {e}")
         await update.message.reply_text(f"❌ Sequence düzeltme hatası: {e}")
 
-# YENİ: ÖRNEK EXCEL İLE BİREBİR UYUMLU DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU
+# DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU TARIH ARALıĞıNA GÖRE
 async def create_excel_report(start_date, end_date, rapor_baslik):
     """YENİ: Örnek Excel ile birebir uyumlu dinamik Excel raporu oluşturur"""
-    try:
+    try:     
         # 1. Tarih aralığındaki tüm günleri listele (hafta sonları dahil)
         gunler = []
         current_date = start_date
@@ -3911,8 +3911,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             }
         
         # 5. Excel oluşturma
-        from openpyxl.utils import get_column_letter
-        
         wb = Workbook()
         ws = wb.active
         ws.title = "Raporlar"
@@ -3926,8 +3924,19 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             top=Side(style='thin'),
             bottom=Side(style='thin')
         )
+        thick_border = Border(
+            left=Side(style='thick'),
+            right=Side(style='thick'),
+            top=Side(style='thick'),
+            bottom=Side(style='thick')
+        )
         center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
         left_align = Alignment(horizontal='left', vertical='center')
+        
+        # RENK DOLGULARI
+        eksik_rapor_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        toplam_fill = PatternFill(start_color="B7DEE8", end_color="B7DEE8", fill_type="solid")
+        kategori_fill = PatternFill(start_color="D8E4BC", end_color="D8E4BC", fill_type="solid")
         
         # SABİT SÜTUN TANIMLARI
         COL_SANTIYELER = 1  # A
@@ -4020,49 +4029,85 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             # GÜNLÜK VERİLERİ DOLDUR
             for i, gun in enumerate(gunler):
                 start_col = gun_blok_start + (i * 7)
+                end_col = start_col + 6
                 
                 # Bu gün için rapor var mı?
                 rapor = rapor_dict.get(santiye, {}).get(gun, None)
                 
                 if rapor:
-                    # Staff
-                    ws.cell(row=row_idx, column=start_col + 0, value=rapor['staff'])
-                    ws.cell(row=row_idx, column=start_col + 0).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 0).border = thin_border
+                    # Tüm değerler 0 mı kontrol et
+                    tum_degerler = [
+                        rapor['staff'], rapor['calisan'], rapor['ambarci'],
+                        rapor['mobilizasyon'], rapor['izinli'], rapor['dis_gorev']
+                    ]
                     
-                    # Çalışan
-                    ws.cell(row=row_idx, column=start_col + 1, value=rapor['calisan'])
-                    ws.cell(row=row_idx, column=start_col + 1).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 1).border = thin_border
-                    
-                    # Ambarcı
-                    ws.cell(row=row_idx, column=start_col + 2, value=rapor['ambarci'])
-                    ws.cell(row=row_idx, column=start_col + 2).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 2).border = thin_border
-                    
-                    # Mobilizasyon
-                    ws.cell(row=row_idx, column=start_col + 3, value=rapor['mobilizasyon'])
-                    ws.cell(row=row_idx, column=start_col + 3).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 3).border = thin_border
-                    
-                    # İzinli
-                    ws.cell(row=row_idx, column=start_col + 4, value=rapor['izinli'])
-                    ws.cell(row=row_idx, column=start_col + 4).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 4).border = thin_border
-                    
-                    # Dış Görev
-                    ws.cell(row=row_idx, column=start_col + 5, value=rapor['dis_gorev'])
-                    ws.cell(row=row_idx, column=start_col + 5).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 5).border = thin_border
-                    
-                    # Toplam sütunu için formül (daha sonra eklenecek)
-                    # Şimdilik boş bırak
+                    if all(deger == 0 for deger in tum_degerler):
+                        # Tüm değerler 0 ise, "Çalışma Yok" yaz
+                        ws.merge_cells(start_row=row_idx, start_column=start_col, end_row=row_idx, end_column=end_col)
+                        ws.cell(row=row_idx, column=start_col, value="Çalışma Yok")
+                        ws.cell(row=row_idx, column=start_col).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col).border = thick_border
+                    else:
+                        # Değerleri doldur
+                        # Staff
+                        ws.cell(row=row_idx, column=start_col + 0, value=rapor['staff'])
+                        ws.cell(row=row_idx, column=start_col + 0).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 0).border = thick_border
+                        if rapor['staff'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 0).fill = kategori_fill
+                        
+                        # Çalışan
+                        ws.cell(row=row_idx, column=start_col + 1, value=rapor['calisan'])
+                        ws.cell(row=row_idx, column=start_col + 1).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 1).border = thick_border
+                        if rapor['calisan'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 1).fill = kategori_fill
+                        
+                        # Ambarcı
+                        ws.cell(row=row_idx, column=start_col + 2, value=rapor['ambarci'])
+                        ws.cell(row=row_idx, column=start_col + 2).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 2).border = thick_border
+                        if rapor['ambarci'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 2).fill = kategori_fill
+                        
+                        # Mobilizasyon
+                        ws.cell(row=row_idx, column=start_col + 3, value=rapor['mobilizasyon'])
+                        ws.cell(row=row_idx, column=start_col + 3).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 3).border = thick_border
+                        if rapor['mobilizasyon'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 3).fill = kategori_fill
+                        
+                        # İzinli
+                        ws.cell(row=row_idx, column=start_col + 4, value=rapor['izinli'])
+                        ws.cell(row=row_idx, column=start_col + 4).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 4).border = thick_border
+                        if rapor['izinli'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 4).fill = kategori_fill
+                        
+                        # Dış Görev
+                        ws.cell(row=row_idx, column=start_col + 5, value=rapor['dis_gorev'])
+                        ws.cell(row=row_idx, column=start_col + 5).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 5).border = thick_border
+                        if rapor['dis_gorev'] > 0:
+                            ws.cell(row=row_idx, column=start_col + 5).fill = kategori_fill
+                        
+                        # Toplam sütunu için formül
+                        ilk4_baslangic = get_column_letter(start_col)
+                        ilk4_bitis = get_column_letter(start_col + 3)
+                        formül_gun_toplam = f"=IF(SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx})>0,SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx}),\"\")"
+                        
+                        ws.cell(row=row_idx, column=start_col + 6, value=formül_gun_toplam)
+                        ws.cell(row=row_idx, column=start_col + 6).alignment = center_align
+                        ws.cell(row=row_idx, column=start_col + 6).border = thick_border
+                        ws.cell(row=row_idx, column=start_col + 6).fill = toplam_fill
+                        ws.cell(row=row_idx, column=start_col + 6).font = Font(bold=True)
                 else:
-                    # Eksik rapor: Staff sütununa "✗"
-                    ws.cell(row=row_idx, column=start_col + 0, value="✗")
-                    ws.cell(row=row_idx, column=start_col + 0).alignment = center_align
-                    ws.cell(row=row_idx, column=start_col + 0).border = thin_border
-                    # Diğer sütunlar boş kalacak
+                    # Eksik rapor: Tüm 7 sütunu birleştir ve "✗" yaz
+                    ws.merge_cells(start_row=row_idx, start_column=start_col, end_row=row_idx, end_column=end_col)
+                    ws.cell(row=row_idx, column=start_col, value="✗")
+                    ws.cell(row=row_idx, column=start_col).alignment = center_align
+                    ws.cell(row=row_idx, column=start_col).border = thick_border
+                    ws.cell(row=row_idx, column=start_col).fill = eksik_rapor_fill
             
             # GENEL TOPLAM FORMÜLLERİNİ EKLE
             # Her kategori için (Staff, Çalışan, Ambarcı, Mobilizasyon, İzinli, Dış Görev)
@@ -4090,6 +4135,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 ws.cell(row=row_idx, column=col_genel, value=formül)
                 ws.cell(row=row_idx, column=col_genel).alignment = center_align
                 ws.cell(row=row_idx, column=col_genel).border = thin_border
+                if idx < 6:  # İlk 6 kategori için
+                    ws.cell(row=row_idx, column=col_genel).fill = kategori_fill
             
             # GENEL TOPLAM - Toplam sütunu (I sütunu)
             col_genel_toplam = COL_GENEL_END  # I
@@ -4103,22 +4150,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ws.cell(row=row_idx, column=col_genel_toplam, value=formül_toplam)
             ws.cell(row=row_idx, column=col_genel_toplam).alignment = center_align
             ws.cell(row=row_idx, column=col_genel_toplam).border = thin_border
-            
-            # GÜNLÜK TOPLAM FORMÜLLERİ (her gün bloğunun son sütunu)
-            for i in range(len(gunler)):
-                start_col = gun_blok_start + (i * 7)
-                col_toplam = start_col + 6  # 7. sütun (Toplam)
-                
-                # Formül: =IF(SUM(J4:M4)>0,SUM(J4:M4),"")
-                # J4:M4 = Staff, Çalışan, Ambarcı, Mobilizasyon (ilk 4 kategori)
-                ilk4_baslangic = get_column_letter(start_col)
-                ilk4_bitis = get_column_letter(start_col + 3)
-                
-                formül_gun_toplam = f"=IF(SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx})>0,SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx}),\"\")"
-                
-                ws.cell(row=row_idx, column=col_toplam, value=formül_gun_toplam)
-                ws.cell(row=row_idx, column=col_toplam).alignment = center_align
-                ws.cell(row=row_idx, column=col_toplam).border = thin_border
+            ws.cell(row=row_idx, column=col_genel_toplam).fill = toplam_fill
+            ws.cell(row=row_idx, column=col_genel_toplam).font = Font(bold=True)
             
             row_idx += 1
         
@@ -4146,10 +4179,14 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ws.cell(row=toplam_satir, column=col, value=formül)
             ws.cell(row=toplam_satir, column=col).alignment = center_align
             ws.cell(row=toplam_satir, column=col).border = thin_border
+            ws.cell(row=toplam_satir, column=col).font = Font(bold=True)
+            if col == COL_GENEL_END:  # Toplam sütunu
+                ws.cell(row=toplam_satir, column=col).fill = toplam_fill
         
         # Gün blokları için toplam formülleri
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
+            end_col = start_col + 6
             for j in range(7):  # Her kategorinin toplamı
                 col = start_col + j
                 baslangic_satir = 4
@@ -4159,7 +4196,10 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 
                 ws.cell(row=toplam_satir, column=col, value=formül)
                 ws.cell(row=toplam_satir, column=col).alignment = center_align
-                ws.cell(row=toplam_satir, column=col).border = thin_border
+                ws.cell(row=toplam_satir, column=col).border = thick_border
+                ws.cell(row=toplam_satir, column=col).font = Font(bold=True)
+                if j == 6:  # Toplam sütunu
+                    ws.cell(row=toplam_satir, column=col).fill = toplam_fill
         
         # EKSİK RAPOR SATIRI
         eksik_satir = row_idx + 1
@@ -4177,10 +4217,15 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             ws.cell(row=eksik_satir, column=col, value="")
             ws.cell(row=eksik_satir, column=col).border = thin_border
         
-        # Gün blokları için eksik rapor formülleri (sadece Staff sütunu için)
+        # Gün blokları için eksik rapor formülleri
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
-            # Staff sütunu: start_col
+            end_col = start_col + 6
+            
+            # 7 sütunu birleştir
+            ws.merge_cells(start_row=eksik_satir, start_column=start_col, end_row=eksik_satir, end_column=end_col)
+            
+            # Formülü oluştur (sadece Staff sütunundaki "✗" sayısı)
             baslangic_satir = 4
             bitis_satir = toplam_satir - 2
             hucre_aralik = f"{get_column_letter(start_col)}{baslangic_satir}:{get_column_letter(start_col)}{bitis_satir}"
@@ -4188,13 +4233,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             
             ws.cell(row=eksik_satir, column=start_col, value=formül)
             ws.cell(row=eksik_satir, column=start_col).alignment = center_align
-            ws.cell(row=eksik_satir, column=start_col).border = thin_border
-            
-            # Diğer 6 sütun boş
-            for j in range(1, 7):
-                col = start_col + j
-                ws.cell(row=eksik_satir, column=col, value="")
-                ws.cell(row=eksik_satir, column=col).border = thin_border
+            ws.cell(row=eksik_satir, column=start_col).border = thick_border
+            ws.cell(row=eksik_satir, column=start_col).font = Font(bold=True)
+            ws.cell(row=eksik_satir, column=start_col).fill = eksik_rapor_fill
         
         # SÜTUN GENİŞLİKLERİNİ AYARLA
         ws.column_dimensions['A'].width = 20  # ŞANTİYELER
