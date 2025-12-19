@@ -507,6 +507,13 @@ def normalize_site_name(site_name):
         'LOT71': 'LOT71',
         'SKP DAHO': 'SKP',
         'SKP': 'SKP',
+        'SKP ELEKTRIK GRUBU': 'SKP',
+        'SKP ELEKTRİK GRUBU': 'SKP',
+        'SKP ELEKTRIK': 'SKP',
+        'SKP ELEKTRİK': 'SKP',
+        'SKP ELEKTRIK GRUBU': 'SKP',
+        'SKP-ELEKTRIK': 'SKP',
+        'SKP-ELEKTRİK': 'SKP',
         'PİRAMİT TOWER': 'PİRAMİT',
         'PİRAMİT': 'PİRAMİT',
         'PRAMİT': 'PİRAMİT',
@@ -1053,7 +1060,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 10. ŞANTİYE NORMALİZASYONU:
     - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS, OHP, DATA CENTR
     - "Lot 13", "lot13", "LOT-13" → "LOT13"
-    - "SKP Daho" → "SKP"
+    - "SKP Elektrik Grubu", "SKP ELEKTRIK GRUBU", "SKP Daho", "📍 SKP Elektrik Grubu" → "SKP"
     - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
     - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
     - "YHP" → "YHP"
