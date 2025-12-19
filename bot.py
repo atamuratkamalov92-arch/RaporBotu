@@ -1,44 +1,15 @@
 """
-📋 CHANGELOG - bot.py v4.7.7
+📋 CHANGELOG - bot.py v4.7.8
 
-✅ OHP ŞANTİYESİ OPSİYONEL MOD
-- OHP şantiyesi artık opsiyonel rapor modunda çalışıyor
-- Rapor gönderilirse işlenir, gönderilmezse eksik listesine dahil edilmez
-- Hatırlatma mesajlarında görünmez
-- Admin kontrol listelerinde görünmez
-- Excel eksik rapor analizinde yer almaz
-- Yalnızca OHP için bu özel durum geçerlidir
+✅ SKP RAPOR HATASI DÜZELTMESİ
+- "📍 SKP Elektrik Grubu" formatındaki SKP raporları artık düzgün şekilde işleniyor
+- GPT analizinden dönen string formatı düzeltildi
+- JSON parsing hataları giderildi
+- Tüm şantiye isimleri düzgün normalleştiriliyor
 
-✅ ÇALIŞMA YOK RAPORLARI DÜZELTMESİ
-- "Çalışma yok", "iş yok", "faaliyet yok" gibi raporlar artık doğru şekilde işleniyor
-- Tüm personel kategorileri 0 olarak kaydediliyor
-- GENEL TOPLAM: 0 olarak hesaplanıyor
-- Şantiye bazlı sistemde eksik rapor listesinden çıkarılıyor
-
-✅ HAFTALIK RAPOR TARİH DÜZELTMESİ
-- Haftalık rapor artık Pazar 09:00'da doğru tarih aralığı ile gönderiliyor
-- Haftalık eksik rapor artık Pazar 10:00'da doğru tarih aralığı ile gönderiliyor
-- Aylık rapor artık ayın 1'i 08:30'da doğru tarih aralığı ile gönderiliyor
-- Aylık eksik rapor artık ayın 1'i 08:45'de doğru tarih aralığı ile gönderiliyor
-
-✅ 7/24 ÇALIŞMA SİSTEMİNE GEÇİŞ
-- Hafta sonları (Cumartesi-Pazar) artık tatil değil, çalışma günü
-- Tüm raporlarda hafta sonları dahil ediliyor
-- Eksik rapor analizinde hafta sonları da kontrol ediliyor
-- Haftalık ve aylık raporlarda tüm günler dahil
-
-✅ KRİTİK DÜZELTMELER: TOPLAMA VE YÜZDE HESAPLAMA
-- GENEL TOPLAM hesaplaması düzeltildi: Tüm kategorilerin toplamı alınır
-- Yüzde hesaplama düzeltildi: (kategori_toplamı / genel_toplam) * 100
-- MOS şantiyesi eklendi: Sorumlu @OrhanCeylan
-- Haftalık ve aylık raporlarda personel dağılımı yüzdeleri doğru hesaplanıyor
-- EKSİK RAPOR ANALİZİ eklendi: Excel ve detaylı raporlama
-
-✅ ZAMANLAMA DÜZELTMELERİ
-- HAFTALIK NORMAL RAPOR: Her Pazar 09:00 (7 günlük periyot: Pazartesi 00:00 - Pazar 00:00)
-- HAFTALIK EKSİK RAPOR: Her Pazar 10:00 (Haftalık normal raporla aynı tarih aralığı)
-- AYLIK NORMAL RAPOR: Her ayın 1'i 08:30 (Bir önceki ayın tamamı)
-- AYLIK EKSİK RAPOR: Her ayın 1'i 08:45 (Aylık normal raporla aynı tarih aralığı)
+✅ DİĞER İYİLEŞTİRMELER
+- GPT analizi sonrası string kontrolü eklendi
+- Hata mesajları daha açıklayıcı hale getirildi
 """
 
 import os
@@ -266,10 +237,51 @@ def safe_json_loads(json_string, default=None):
     if isinstance(json_string, dict):
         return json_string
     
+    # Eğer liste ise, doğrudan döndür
+    if isinstance(json_string, list):
+        return json_string
+    
     try:
         return json.loads(json_string)
     except json.JSONDecodeError as e:
         logging.error(f"JSON decode hatası: {e}, Girdi: {json_string[:100]}...")
+        # JSON'da hata varsa, düzeltmeye çalış
+        try:
+            # JSON string'ini temizle
+            cleaned = json_string.strip()
+            # Eğer başında/ortasında/sonunda gereksiz karakterler varsa
+            if cleaned.startswith('```json'):
+                cleaned = cleaned[7:]
+            if cleaned.startswith('```'):
+                cleaned = cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned[:-3]
+            
+            # Birden fazla JSON nesnesi varsa, ilkini al
+            cleaned = cleaned.strip()
+            
+            # JSON array başlangıcını bul
+            start_idx = cleaned.find('[')
+            end_idx = cleaned.rfind(']')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_part = cleaned[start_idx:end_idx+1]
+                return json.loads(json_part)
+            
+            # JSON object başlangıcını bul
+            start_idx = cleaned.find('{')
+            end_idx = cleaned.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_part = cleaned[start_idx:end_idx+1]
+                result = json.loads(json_part)
+                # Eğer tek bir dict ise, liste içinde döndür
+                if isinstance(result, dict):
+                    return [result]
+                return result
+                
+        except Exception as parse_error:
+            logging.error(f"JSON düzeltme denemesi de başarısız: {parse_error}")
         return default
     except Exception as e:
         logging.error(f"Beklenmeyen JSON parsing hatası: {e}")
@@ -1343,6 +1355,7 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
     """Kapsamlı doğrulama ile gelen mesajı işle - DÜZELTİLDİ: Çalışma yok raporları için geliştirildi"""
     is_valid, cleaned_text = validate_user_input(raw_text)
     if not is_valid:
+        logging.error(f"❌ Geçersiz kullanıcı girişi: {raw_text[:100]}")
         return [] if is_group else {"error": "geçersiz_giriş"}
     
     today = dt.date.today()
@@ -1358,22 +1371,39 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             content = gpt_analyze_enhanced(SYSTEM_PROMPT, user_prompt)
             
             if not content:
+                logging.warning(f"⚠️ GPT'den boş yanıt geldi (deneme {attempt + 1})")
                 if attempt < max_retries - 1:
                     time_module.sleep(retry_delay)
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
             
+            # GPT yanıtını logla (ilk 500 karakter)
+            logging.info(f"🤖 GPT Yanıtı (ilk 500 karakter): {content[:500]}")
+            
             data = safe_json_loads(content)
             if data is None:
+                logging.warning(f"⚠️ JSON parse edilemedi (deneme {attempt + 1}): {content[:200]}")
                 if attempt < max_retries - 1:
                     time_module.sleep(retry_delay)
                     continue
                 return [] if is_group else {"dm_info": "no_report_detected"}
+            
+            # Eğer data string ise (hata durumu), tekrar parse et
+            if isinstance(data, str):
+                logging.warning(f"⚠️ Data string olarak geldi, tekrar parse ediliyor: {data[:200]}")
+                data = safe_json_loads(data)
+                if data is None:
+                    logging.error(f"❌ String data da parse edilemedi: {data[:200]}")
+                    if attempt < max_retries - 1:
+                        time_module.sleep(retry_delay)
+                        continue
+                    return [] if is_group else {"dm_info": "no_report_detected"}
             
             if isinstance(data, dict):
                 data = [data]
             
             if not isinstance(data, list):
+                logging.error(f"❌ Data liste değil: {type(data)} - {str(data)[:200]}")
                 if attempt < max_retries - 1:
                     time_module.sleep(retry_delay)
                     continue
@@ -1381,7 +1411,9 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
             
             filtered_reports = []
             for report in data:
+                # Raporun dictionary olup olmadığını kontrol et
                 if not isinstance(report, dict):
+                    logging.warning(f"⚠️ Rapor dictionary değil: {type(report)} - {str(report)[:200]}")
                     continue
                     
                 date_str = report.get('date')
@@ -1460,10 +1492,11 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
                 if report['genel_toplam'] > 0 or report['staff'] > 0 or is_calisma_yok:
                     filtered_reports.append(report)
             
+            logging.info(f"✅ {len(filtered_reports)} rapor başarıyla işlendi")
             return filtered_reports
                 
         except Exception as e:
-            logging.error(f"Mesaj işleme hatası (deneme {attempt + 1}): {e}")
+            logging.error(f"❌ Mesaj işleme hatası (deneme {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time_module.sleep(retry_delay)
     
@@ -1472,6 +1505,11 @@ def process_incoming_message(raw_text: str, is_group: bool = False):
 # RAPOR KAYIT FONKSİYONU - ŞANTİYE BAZLI SİSTEM
 async def raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, orijinal_metin, gpt_rapor, msg, rapor_no=1):
     try:
+        # ÖNEMLİ DÜZELTME: gpt_rapor'un dictionary olduğundan emin ol
+        if not isinstance(gpt_rapor, dict):
+            logging.error(f"❌ gpt_rapor dictionary değil: {type(gpt_rapor)} - {str(gpt_rapor)[:200]}")
+            raise ValueError(f"Geçersiz rapor formatı: {type(gpt_rapor)}")
+        
         site = gpt_rapor.get('site', 'BELİRSİZ')
         date_str = gpt_rapor.get('date')
         
@@ -1635,7 +1673,8 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         
         raporlar = process_incoming_message(metin, is_group)
         
-        if is_dm and isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
+        # DÜZELTME: raporlar'ın tipini kontrol et
+        if isinstance(raporlar, dict) and raporlar.get('dm_info') == 'no_report_detected':
             # Eğer çalışma yok raporuysa, bunu kabul et
             if is_calisma_yok:
                 # Çalışma yok raporu için basit bir JSON oluştur
@@ -1738,6 +1777,13 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
         basarili_kayitlar = 0
         for i, rapor in enumerate(raporlar):
             try:
+                # DÜZELTME: Raporun dictionary olduğundan emin ol
+                if not isinstance(rapor, dict):
+                    logging.error(f"❌ Rapor {i+1} dictionary değil: {type(rapor)} - {str(rapor)[:200]}")
+                    if is_dm:
+                        await msg.reply_text(f"❌ Rapor {i+1} geçersiz format: dictionary değil")
+                    continue
+                    
                 await raporu_gpt_formatinda_kaydet(user_id, kullanici_adi, metin, rapor, msg, i+1)
                 basarili_kayitlar += 1
             except Exception as e:
@@ -3519,7 +3565,7 @@ async def hakkinda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hakkinda_text = (
         "🤖 Rapor Botu Hakkında \n\n"
         "Geliştirici: Atamurat Kamalov\n"
-        "Versiyon: 4.7.7\n"
+        "Versiyon: 4.7.8\n"
         "Özellikler:\n\n"
         "• Her sabah 09:00'da dünkü personel icmalini Eren Boz'a gönderir\n"
         "• GPT-4 ile akıllı rapor analizi: otomatik parsing ve personel dağılımı\n"
