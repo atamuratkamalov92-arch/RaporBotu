@@ -3847,7 +3847,7 @@ SABIT_SANTIYE_SORUMLULARI = {
     "OHP": "Erdoğan Karamısır"
 }
 
-# YENİ: EXCEL ŞABLONUNA TAM UYUMLU RAPOR OLUŞTURMA
+# YENİ: DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU BELIRLI TARIH ARALIGI ICIN
 async def create_excel_report(start_date, end_date, rapor_baslik):
     """Örnek Excel ile birebir uyumlu dinamik Excel raporu oluşturur"""
     try:
@@ -3953,17 +3953,19 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.title = "Raporlar"
         
         # PROFESYONEL STİLLER - EXCEL ŞABLONUNA GÖRE
-        # Başlık fontu
-        baslik_font = Font(bold=True, color="366092", size=14)
-        # Header fontları
-        header_font = Font(bold=True, color="FFFFFF", size=11, name="Calibri")
-        subheader_font = Font(bold=True, size=10, name="Calibri")
+        # Fontlar
+        baslik_font = Font(bold=True, color="366092", size=14, name="Calibri")
+        header_font = Font(bold=True, color="FFFFFF", size=11, name="Calibri")  # Beyaz ve bold
+        subheader_font = Font(bold=True, color="FFFFFF", size=10, name="Calibri")  # Beyaz ve bold
         normal_font = Font(size=11, name="Calibri")
+        bold_font = Font(bold=True, size=11, name="Calibri")
         
         # Dolgu renkleri
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        eksik_rapor_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Sarı
-        calisma_yok_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Açık yeşil
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")  # Mavi
+        toplam_fill = PatternFill(start_color="B7DEE8", end_color="B7DEE8", fill_type="solid")  # Açık mavi - Toplam sütunu
+        calisma_yok_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Sarı
+        eksik_rapor_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # Açık kırmızı
+        data_fill = PatternFill(start_color="D8E4BC", end_color="D8E4BC", fill_type="solid")  # Açık yeşil - Veri olan hücreler
         
         # Kenarlıklar
         thin_border = Border(
@@ -4036,22 +4038,22 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         # 3. SATIR: ALT BAŞLIKLAR
         genel_kategoriler = ["Staff", "Çalışan", "Ambarcı", "Mobilizasyon", "İzinli", "Dış Görev", "Toplam"]
         
-        # GENEL TOPLAM kategorileri (C3:I3)
+        # GENEL TOPLAM kategorileri (C3:I3) - BEYAZ ve BOLD
         for idx, kategori in enumerate(genel_kategoriler):
             col = COL_GENEL_START + idx
             cell = ws.cell(row=3, column=col, value=kategori)
-            cell.font = subheader_font
+            cell.font = subheader_font  # Beyaz ve bold
             cell.fill = header_fill
             cell.alignment = center_align
             cell.border = thin_border
         
-        # Her gün için kategoriler
+        # Her gün için kategoriler - BEYAZ ve BOLD
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
             for j, kategori in enumerate(genel_kategoriler):
                 col = start_col + j
                 cell = ws.cell(row=3, column=col, value=kategori)
-                cell.font = subheader_font
+                cell.font = subheader_font  # Beyaz ve bold
                 cell.fill = header_fill
                 cell.alignment = center_align
                 cell.border = thin_border
@@ -4063,13 +4065,13 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             if santiye not in SABIT_SANTIYE_SORUMLULARI:
                 continue
                 
-            # A sütunu: Şantiye adı
+            # A sütunu: Şantiye adı - KENARLIK VAR, DOLGU YOK
             a_cell = ws.cell(row=row_idx, column=COL_SANTIYELER, value=santiye)
             a_cell.alignment = left_align
             a_cell.font = normal_font
             a_cell.border = thin_border
             
-            # B sütunu: Sorumlu
+            # B sütunu: Sorumlu - KENARLIK VAR, DOLGU YOK
             sorumlu_adi = SABIT_SANTIYE_SORUMLULARI.get(santiye, "")
             b_cell = ws.cell(row=row_idx, column=COL_SORUMLU, value=sorumlu_adi)
             b_cell.alignment = left_align
@@ -4091,8 +4093,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         ws.merge_cells(start_row=row_idx, start_column=start_col, end_row=row_idx, end_column=end_col)
                         calisma_yok_cell = ws.cell(row=row_idx, column=start_col, value="Çalışma Yok")
                         calisma_yok_cell.alignment = center_align
-                        calisma_yok_cell.fill = calisma_yok_fill
-                        calisma_yok_cell.font = normal_font
+                        calisma_yok_cell.fill = calisma_yok_fill  # SARI
+                        calisma_yok_cell.font = bold_font  # BOLD
                         calisma_yok_cell.border = thin_border
                     else:
                         # Normal rapor - her hücreyi ayrı doldur
@@ -4101,6 +4103,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         staff_cell = ws.cell(row=row_idx, column=start_col, value=staff_val if staff_val != 0 else "")
                         if staff_val != 0:
                             staff_cell.number_format = number_format
+                            staff_cell.fill = data_fill  # AÇIK YEŞİL
                         staff_cell.alignment = center_align
                         staff_cell.font = normal_font
                         staff_cell.border = thin_border
@@ -4110,6 +4113,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         calisan_cell = ws.cell(row=row_idx, column=start_col + 1, value=calisan_val if calisan_val != 0 else "")
                         if calisan_val != 0:
                             calisan_cell.number_format = number_format
+                            calisan_cell.fill = data_fill  # AÇIK YEŞİL
                         calisan_cell.alignment = center_align
                         calisan_cell.font = normal_font
                         calisan_cell.border = thin_border
@@ -4119,6 +4123,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         ambarci_cell = ws.cell(row=row_idx, column=start_col + 2, value=ambarci_val if ambarci_val != 0 else "")
                         if ambarci_val != 0:
                             ambarci_cell.number_format = number_format
+                            ambarci_cell.fill = data_fill  # AÇIK YEŞİL
                         ambarci_cell.alignment = center_align
                         ambarci_cell.font = normal_font
                         ambarci_cell.border = thin_border
@@ -4128,6 +4133,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         mobilizasyon_cell = ws.cell(row=row_idx, column=start_col + 3, value=mobilizasyon_val if mobilizasyon_val != 0 else "")
                         if mobilizasyon_val != 0:
                             mobilizasyon_cell.number_format = number_format
+                            mobilizasyon_cell.fill = data_fill  # AÇIK YEŞİL
                         mobilizasyon_cell.alignment = center_align
                         mobilizasyon_cell.font = normal_font
                         mobilizasyon_cell.border = thin_border
@@ -4137,6 +4143,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         izinli_cell = ws.cell(row=row_idx, column=start_col + 4, value=izinli_val if izinli_val != 0 else "")
                         if izinli_val != 0:
                             izinli_cell.number_format = number_format
+                            izinli_cell.fill = data_fill  # AÇIK YEŞİL
                         izinli_cell.alignment = center_align
                         izinli_cell.font = normal_font
                         izinli_cell.border = thin_border
@@ -4146,6 +4153,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         dis_gorev_cell = ws.cell(row=row_idx, column=start_col + 5, value=dis_gorev_val if dis_gorev_val != 0 else "")
                         if dis_gorev_val != 0:
                             dis_gorev_cell.number_format = number_format
+                            dis_gorev_cell.fill = data_fill  # AÇIK YEŞİL
                         dis_gorev_cell.alignment = center_align
                         dis_gorev_cell.font = normal_font
                         dis_gorev_cell.border = thin_border
@@ -4158,15 +4166,16 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         
                         toplam_cell = ws.cell(row=row_idx, column=start_col + 6, value=formül_gun_toplam)
                         toplam_cell.alignment = center_align
-                        toplam_cell.font = normal_font
+                        toplam_cell.fill = toplam_fill  # AÇIK MAVİ
+                        toplam_cell.font = bold_font  # BOLD
                         toplam_cell.border = thin_border
                 else:
                     # Rapor yok - 7 hücreyi birleştir ve "✗" yaz
                     ws.merge_cells(start_row=row_idx, start_column=start_col, end_row=row_idx, end_column=end_col)
                     eksik_cell = ws.cell(row=row_idx, column=start_col, value="✗")
                     eksik_cell.alignment = center_align
-                    eksik_cell.fill = eksik_rapor_fill
-                    eksik_cell.font = Font(bold=True, size=12, name="Calibri")
+                    eksik_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
+                    eksik_cell.font = bold_font  # BOLD
                     eksik_cell.border = thin_border
             
             # GENEL TOPLAM FORMÜLLERİNİ EKLE
@@ -4196,8 +4205,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 genel_cell.alignment = center_align
                 genel_cell.font = normal_font
                 genel_cell.border = thin_border
+                # Bu hücreler için dolgu yok (formül hücreleri)
             
-            # GENEL TOPLAM - Toplam sütunu (I sütunu)
+            # GENEL TOPLAM - Toplam sütunu (I sütunu) - AÇIK MAVİ ve BOLD
             col_genel_toplam = COL_GENEL_END  # I
             
             # Formül: =IF(SUM(C4:H4)>0,SUM(C4:H4),"")
@@ -4208,7 +4218,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             
             toplam_genel_cell = ws.cell(row=row_idx, column=col_genel_toplam, value=formül_toplam)
             toplam_genel_cell.alignment = center_align
-            toplam_genel_cell.font = normal_font
+            toplam_genel_cell.fill = toplam_fill  # AÇIK MAVİ
+            toplam_genel_cell.font = bold_font  # BOLD
             toplam_genel_cell.border = thin_border
             
             row_idx += 1
@@ -4216,15 +4227,15 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         # TOPLAM SATIRI (Excel'de 18. satır)
         toplam_satir = row_idx
         toplam_baslik = ws.cell(row=toplam_satir, column=COL_SANTIYELER, value="TOPLAM")
-        toplam_baslik.font = Font(bold=True, size=11, name="Calibri")
+        toplam_baslik.font = bold_font
         toplam_baslik.alignment = center_align
         toplam_baslik.border = thin_border
         
-        # B sütunu boş
+        # B sütunu boş - KENARLIK VAR
         ws.cell(row=toplam_satir, column=COL_SORUMLU, value="")
         ws.cell(row=toplam_satir, column=COL_SORUMLU).border = thin_border
         
-        # GENEL TOPLAM sütunları için toplam formülleri (C-I)
+        # GENEL TOPLAM sütunları için toplam formülleri (C-I) - KENARLIK VAR, FORMÜLLER İÇİN DOLGU YOK
         for col in range(COL_GENEL_START, COL_GENEL_END + 1):
             baslangic_satir = 4
             bitis_satir = toplam_satir - 1  # TOPLAM satırından önceki satır
@@ -4235,8 +4246,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             toplam_cell.alignment = center_align
             toplam_cell.font = normal_font
             toplam_cell.border = thin_border
+            # Formül hücreleri için dolgu yok
         
-        # Gün blokları için toplam formülleri
+        # Gün blokları için toplam formülleri - KENARLIK VAR, DOLGU YOK
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
             for j in range(7):  # Her kategorinin toplamı
@@ -4250,25 +4262,26 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 toplam_cell.alignment = center_align
                 toplam_cell.font = normal_font
                 toplam_cell.border = thin_border
+                # Formül hücreleri için dolgu yok
         
         # EKSİK RAPOR SATIRI (Excel'de 19. satır)
         eksik_satir = row_idx + 1
         eksik_baslik = ws.cell(row=eksik_satir, column=COL_SANTIYELER, value="Eksik Rapor")
-        eksik_baslik.font = Font(bold=True, size=11, name="Calibri")
+        eksik_baslik.font = bold_font
         eksik_baslik.alignment = center_align
         eksik_baslik.border = thin_border
         
-        # B sütunu boş
+        # B sütunu boş - KENARLIK VAR
         ws.cell(row=eksik_satir, column=COL_SORUMLU, value="")
         ws.cell(row=eksik_satir, column=COL_SORUMLU).border = thin_border
         
-        # GENEL TOPLAM sütunları boş (C-I)
+        # GENEL TOPLAM sütunları boş (C-I) - KENARLIK VAR
         for col in range(COL_GENEL_START, COL_GENEL_END + 1):
             ws.cell(row=eksik_satir, column=col, value="")
             ws.cell(row=eksik_satir, column=col).border = thin_border
         
         # EKSİK RAPOR FORMÜLLERİ
-        # C sütunu: Tüm günlerin eksik rapor sayısı toplamı
+        # C sütunu: Tüm günlerin eksik rapor sayısı toplamı - AÇIK KIRMIZI ve BOLD
         eksik_formul_c = "="
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)  # Her günün Staff sütunu
@@ -4282,10 +4295,11 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         
         eksik_c_cell = ws.cell(row=eksik_satir, column=COL_GENEL_START, value=eksik_formul_c)
         eksik_c_cell.alignment = center_align
-        eksik_c_cell.font = normal_font
+        eksik_c_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
+        eksik_c_cell.font = bold_font  # BOLD
         eksik_c_cell.border = thin_border
         
-        # Gün blokları için eksik rapor formülleri (sadece Staff sütunu için)
+        # Gün blokları için eksik rapor formülleri (sadece Staff sütunu için) - AÇIK KIRMIZI ve BOLD
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
             # Staff sütunu: start_col
@@ -4296,10 +4310,11 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             
             eksik_gun_cell = ws.cell(row=eksik_satir, column=start_col, value=formül)
             eksik_gun_cell.alignment = center_align
-            eksik_gun_cell.font = normal_font
+            eksik_gun_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
+            eksik_gun_cell.font = bold_font  # BOLD
             eksik_gun_cell.border = thin_border
             
-            # Diğer 6 sütun boş
+            # Diğer 6 sütun boş - KENARLIK VAR
             for j in range(1, 7):
                 col = start_col + j
                 ws.cell(row=eksik_satir, column=col, value="")
