@@ -4176,6 +4176,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                     eksik_cell.alignment = center_align
                     eksik_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
                     eksik_cell.font = bold_font  # BOLD
+                    # Hücreye kenarlık ekleyelim (birleştirilmiş hücreler için)
                     eksik_cell.border = thin_border
             
             # GENEL TOPLAM FORMÜLLERİNİ EKLE
@@ -4341,6 +4342,63 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         
         # OTOMATİK FİLTRE EKLE (Excel'deki gibi)
         ws.auto_filter.ref = f"A3:{get_column_letter(toplam_sutun)}{eksik_satir}"
+        
+        # BİRLEŞTİRİLMİŞ HÜCRELERİN KENAR ÇİZGİLERİNİ TAMAMLA
+        # Tüm birleştirilmiş hücrelerin kenar çizgilerini kontrol et ve eksik olanları ekle
+        for merged_range in list(ws.merged_cells.ranges):
+            # Birleştirilmiş aralığın sınırlarını al
+            min_col, min_row, max_col, max_row = merged_range.min_col, merged_range.min_row, merged_range.max_col, merged_range.max_row
+            
+            # Birleştirilmiş alanın tüm dış kenarlarına çizgi çek
+            # Üst kenar
+            for col in range(min_col, max_col + 1):
+                cell = ws.cell(row=min_row, column=col)
+                # Mevcut kenarlığı al
+                current_border = cell.border
+                # Üst kenar yoksa veya ince değilse, ince kenar ekle
+                if current_border.top.style is None:
+                    cell.border = Border(
+                        left=current_border.left,
+                        right=current_border.right,
+                        top=Side(style='thin', color="000000"),
+                        bottom=current_border.bottom
+                    )
+            
+            # Alt kenar
+            for col in range(min_col, max_col + 1):
+                cell = ws.cell(row=max_row, column=col)
+                current_border = cell.border
+                if current_border.bottom.style is None:
+                    cell.border = Border(
+                        left=current_border.left,
+                        right=current_border.right,
+                        top=current_border.top,
+                        bottom=Side(style='thin', color="000000")
+                    )
+            
+            # Sol kenar
+            for row in range(min_row, max_row + 1):
+                cell = ws.cell(row=row, column=min_col)
+                current_border = cell.border
+                if current_border.left.style is None:
+                    cell.border = Border(
+                        left=Side(style='thin', color="000000"),
+                        right=current_border.right,
+                        top=current_border.top,
+                        bottom=current_border.bottom
+                    )
+            
+            # Sağ kenar
+            for row in range(min_row, max_row + 1):
+                cell = ws.cell(row=row, column=max_col)
+                current_border = cell.border
+                if current_border.right.style is None:
+                    cell.border = Border(
+                        left=current_border.left,
+                        right=Side(style='thin', color="000000"),
+                        top=current_border.top,
+                        bottom=current_border.bottom
+                    )
         
         # DOSYAYI KAYDET
         timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
