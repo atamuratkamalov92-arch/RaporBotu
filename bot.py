@@ -3949,44 +3949,62 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.cell(row=1, column=1).font = Font(bold=True, size=14, color="366092")
         ws.cell(row=1, column=1).alignment = center_align
         
-        # 2. SATIR: ALT BAŞLIKLAR (A2 ve A3 birleşik, B2 ve B3 birleşik)
-        # A2 ve A3: ŞANTİYELER (2 satır birleşik)
-        ws.merge_cells(start_row=2, start_column=COL_SANTIYELER, end_row=3, end_column=COL_SANTIYELER)
+        # 2. SATIR: ALT BAŞLIKLAR
+        # A2: ŞANTİYELER
         ws.cell(row=2, column=COL_SANTIYELER, value="ŞANTİYELER")
         ws.cell(row=2, column=COL_SANTIYELER).font = header_font
         ws.cell(row=2, column=COL_SANTIYELER).fill = header_fill
         ws.cell(row=2, column=COL_SANTIYELER).alignment = center_align
         ws.cell(row=2, column=COL_SANTIYELER).border = thin_border
         
-        # B2 ve B3: SORUMLU (2 satır birleşik)
-        ws.merge_cells(start_row=2, start_column=COL_SORUMLU, end_row=3, end_column=COL_SORUMLU)
-        ws.cell(row=2, column=COL_SORUMLU, value="SORUMLU")
+        # B2: Sorumlu
+        ws.cell(row=2, column=COL_SORUMLU, value="Sorumlu")
         ws.cell(row=2, column=COL_SORUMLU).font = header_font
         ws.cell(row=2, column=COL_SORUMLU).fill = header_fill
         ws.cell(row=2, column=COL_SORUMLU).alignment = center_align
         ws.cell(row=2, column=COL_SORUMLU).border = thin_border
         
-        # C2:I2: GENEL TOPLAM (7 sütun birleşik, 2 satır birleşik)
-        ws.merge_cells(start_row=2, start_column=COL_GENEL_START, end_row=3, end_column=COL_GENEL_END)
+        # C2:I2: GENEL TOPLAM (7 sütun birleşik)
+        ws.merge_cells(start_row=2, start_column=COL_GENEL_START, end_row=2, end_column=COL_GENEL_END)
         ws.cell(row=2, column=COL_GENEL_START, value="GENEL TOPLAM")
         ws.cell(row=2, column=COL_GENEL_START).font = header_font
         ws.cell(row=2, column=COL_GENEL_START).fill = header_fill
         ws.cell(row=2, column=COL_GENEL_START).alignment = center_align
         ws.cell(row=2, column=COL_GENEL_START).border = thin_border
         
-        # Her gün için 7 sütunluk başlık (2 satır birleşik)
+        # Her gün için 7 sütunluk başlık
         for i, gun in enumerate(gunler):
             start_col = gun_blok_start + (i * 7)
             end_col = start_col + 6
-            # Gün başlığı için 2 satır birleştir
-            ws.merge_cells(start_row=2, start_column=start_col, end_row=3, end_column=end_col)
+            ws.merge_cells(start_row=2, start_column=start_col, end_row=2, end_column=end_col)
             ws.cell(row=2, column=start_col, value=gun.strftime('%Y-%m-%d'))
             ws.cell(row=2, column=start_col).font = header_font
             ws.cell(row=2, column=start_col).fill = header_fill
             ws.cell(row=2, column=start_col).alignment = center_align
             ws.cell(row=2, column=start_col).border = thin_border
         
-        # 4. SATIR ve sonrası: ŞANTİYE VERİLERİ (artık 3. satır yok, direkt 4. satırdan başlıyor)
+        # 3. SATIR: KATEGORİ BAŞLIKLARI
+        genel_kategoriler = ["Staff", "Çalışan", "Ambarcı", "Mobilizasyon", "İzinli", "Dış Görev", "Toplam"]
+        
+        # GENEL TOPLAM kategorileri (C3:I3)
+        for idx, kategori in enumerate(genel_kategoriler):
+            col = COL_GENEL_START + idx
+            ws.cell(row=3, column=col, value=kategori)
+            ws.cell(row=3, column=col).font = Font(bold=True, size=10)
+            ws.cell(row=3, column=col).alignment = center_align
+            ws.cell(row=3, column=col).border = thin_border
+        
+        # Her gün için kategoriler
+        for i in range(len(gunler)):
+            start_col = gun_blok_start + (i * 7)
+            for j, kategori in enumerate(genel_kategoriler):
+                col = start_col + j
+                ws.cell(row=3, column=col, value=kategori)
+                ws.cell(row=3, column=col).font = Font(bold=True, size=10)
+                ws.cell(row=3, column=col).alignment = center_align
+                ws.cell(row=3, column=col).border = thin_border
+        
+        # 4. SATIR ve sonrası: ŞANTİYE VERİLERİ
         row_idx = 4
         for santiye in sorted(tum_santiyeler):
             # A sütunu: Şantiye adı
@@ -4059,16 +4077,16 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 first_day_col = gun_blok_start
                 last_day_col = gun_blok_start + (len(gunler) * 7) - 1
                 
-                # Kategori başlık hücresi (artık 2. satırda)
-                kategori_hucre = f"${get_column_letter(col_genel)}$2"
+                # Kategori başlık hücresi (örn: C3, D3, ...)
+                kategori_hucre = f"${get_column_letter(col_genel)}$3"
                 
-                # Başlık aralığı (J2:son_sütun2)
-                aralik_baslik = f"${get_column_letter(first_day_col)}$2:${get_column_letter(last_day_col)}$2"
+                # Başlık aralığı (J3:son_sütun3)
+                aralik_baslik = f"${get_column_letter(first_day_col)}$3:${get_column_letter(last_day_col)}$3"
                 
                 # Değer aralığı (J4:son_sütun4)
                 aralik_deger = f"${get_column_letter(first_day_col)}${row_idx}:${get_column_letter(last_day_col)}${row_idx}"
                 
-                # Formül: =IF(SUMIF($J$2:$son_sütun$2,$C$2,$J4:$son_sütun4)>0,SUMIF($J$2:$son_sütun$2,$C$2,$J4:$son_sütun4),"")
+                # Formül: =IF(SUMIF($J$3:$son_sütun$3,$C$3,$J4:$son_sütun4)>0,SUMIF($J$3:$son_sütun$3,$C$3,$J4:$son_sütun4),"")
                 formül = f"=IF(SUMIF({aralik_baslik},{kategori_hucre},{aralik_deger})>0,SUMIF({aralik_baslik},{kategori_hucre},{aralik_deger}),\"\")"
                 
                 ws.cell(row=row_idx, column=col_genel, value=formül)
@@ -4182,7 +4200,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         
         # SÜTUN GENİŞLİKLERİNİ AYARLA
         ws.column_dimensions['A'].width = 20  # ŞANTİYELER
-        ws.column_dimensions['B'].width = 20  # SORUMLU
+        ws.column_dimensions['B'].width = 20  # Sorumlu
         
         # GENEL TOPLAM sütunları
         for col in range(COL_GENEL_START, COL_GENEL_END + 1):
