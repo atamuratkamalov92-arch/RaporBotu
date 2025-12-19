@@ -507,13 +507,16 @@ def normalize_site_name(site_name):
         'LOT71': 'LOT71',
         'SKP DAHO': 'SKP',
         'SKP': 'SKP',
+         # YENİ EKLEME: SKP çeşitli formatları - GÜNCELLENDİ
         'SKP ELEKTRIK GRUBU': 'SKP',
         'SKP ELEKTRİK GRUBU': 'SKP',
         'SKP ELEKTRIK': 'SKP',
         'SKP ELEKTRİK': 'SKP',
-        'SKP ELEKTRIK GRUBU': 'SKP',
         'SKP-ELEKTRIK': 'SKP',
         'SKP-ELEKTRİK': 'SKP',
+        'SKP ELEKTRIK GRUBU': 'SKP',
+        '📍 SKP ELEKTRIK GRUBU': 'SKP',
+        '📍 SKP ELEKTRİK GRUBU': 'SKP',
         'PİRAMİT TOWER': 'PİRAMİT',
         'PİRAMİT': 'PİRAMİT',
         'PRAMİT': 'PİRAMİT',
@@ -564,7 +567,24 @@ def normalize_site_name(site_name):
         'DATA CENTER ŞANTİYESİ': 'DATA CENTR'
     }
     
-    return mappings.get(site_name, site_name)
+    # Önce tam eşleşmeyi kontrol et
+    if site_name in mappings:
+        return mappings[site_name]
+    
+    # Parçalı eşleşme kontrolü (örnek: "SKP ELEKTRIK GRUBU" içinde "SKP" ara)
+    for key, value in mappings.items():
+        # EMOJI ve boşlukları temizle
+        key_clean = key.replace('📍', '').replace('📅', '').replace('•', '').strip()
+        if key_clean and key_clean in site_name:
+            logging.info(f"✅ Şantiye eşleşmesi: '{site_name}' → '{value}' (key: '{key_clean}')")
+            return value
+    
+    # Eğer yukarıdakiler işe yaramazsa, sadece "SKP" kelimesini ara
+    if 'SKP' in site_name:
+        logging.info(f"✅ SKP kelimesi bulundu: '{site_name}' → 'SKP'")
+        return 'SKP'
+    
+    return site_name
 
 # YENİ ŞANTİYE PARSING FONKSİYONU - "TÜMÜ" FİLTRELENDİ
 def parse_santiye_list(proje_string):
@@ -1060,7 +1080,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 10. ŞANTİYE NORMALİZASYONU:
     - LOT13, LOT71, SKP, BWC, Piramit, STADYUM, DMC, YHP, TYM, MMP, RMC, PİRAMİT, MOS, OHP, DATA CENTR
     - "Lot 13", "lot13", "LOT-13" → "LOT13"
-    - "SKP Elektrik Grubu", "SKP ELEKTRIK GRUBU", "SKP Daho", "📍 SKP Elektrik Grubu" → "SKP"
+    - "SKP Daho", "📍 SKP Elektrik Grubu", "📍 SKP Elektrik Grubu", "SKP Elektrik Grubu", "SKP ELEKTRIK GRUBU" → "SKP"
     - "Piramit Tower", "PİRAMİT TOWER", "PRAMİT", "PIRAMIT", "PİRAMİD", "PIRAMID", "PYRAMIT", "PYRAMID", "PİRAMİT", "PIRAMIT TOWER" → "PİRAMİT"
     - "DMC Ellipse Garden", "DMC ELLIPSE GARDEN", "DMC Ellipse", "DMC Garden", "DMC Ellipse Garden Elektrik Grubu", "DMC ELEKTRIK GRUBU" → "DMC"
     - "YHP" → "YHP"
