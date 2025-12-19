@@ -3979,8 +3979,8 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
         left_align = Alignment(horizontal='left', vertical='center')
         
-        # Sayı formatı
-        number_format = '0'
+        # Sayı formatı - GÜNCELLENDİ: "# ##0" formatı
+        number_format = '# ##0'
         
         # SABİT SÜTUN TANIMLARI
         COL_SANTIYELER = 1  # A
@@ -4102,7 +4102,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         staff_val = gun_rapor['staff']
                         staff_cell = ws.cell(row=row_idx, column=start_col, value=staff_val if staff_val != 0 else "")
                         if staff_val != 0:
-                            staff_cell.number_format = number_format
+                            staff_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             staff_cell.fill = data_fill  # AÇIK YEŞİL
                         staff_cell.alignment = center_align
                         staff_cell.font = normal_font
@@ -4112,7 +4112,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         calisan_val = gun_rapor['calisan']
                         calisan_cell = ws.cell(row=row_idx, column=start_col + 1, value=calisan_val if calisan_val != 0 else "")
                         if calisan_val != 0:
-                            calisan_cell.number_format = number_format
+                            calisan_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             calisan_cell.fill = data_fill  # AÇIK YEŞİL
                         calisan_cell.alignment = center_align
                         calisan_cell.font = normal_font
@@ -4122,7 +4122,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         ambarci_val = gun_rapor['ambarci']
                         ambarci_cell = ws.cell(row=row_idx, column=start_col + 2, value=ambarci_val if ambarci_val != 0 else "")
                         if ambarci_val != 0:
-                            ambarci_cell.number_format = number_format
+                            ambarci_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             ambarci_cell.fill = data_fill  # AÇIK YEŞİL
                         ambarci_cell.alignment = center_align
                         ambarci_cell.font = normal_font
@@ -4132,7 +4132,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         mobilizasyon_val = gun_rapor['mobilizasyon']
                         mobilizasyon_cell = ws.cell(row=row_idx, column=start_col + 3, value=mobilizasyon_val if mobilizasyon_val != 0 else "")
                         if mobilizasyon_val != 0:
-                            mobilizasyon_cell.number_format = number_format
+                            mobilizasyon_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             mobilizasyon_cell.fill = data_fill  # AÇIK YEŞİL
                         mobilizasyon_cell.alignment = center_align
                         mobilizasyon_cell.font = normal_font
@@ -4142,7 +4142,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         izinli_val = gun_rapor['izinli']
                         izinli_cell = ws.cell(row=row_idx, column=start_col + 4, value=izinli_val if izinli_val != 0 else "")
                         if izinli_val != 0:
-                            izinli_cell.number_format = number_format
+                            izinli_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             izinli_cell.fill = data_fill  # AÇIK YEŞİL
                         izinli_cell.alignment = center_align
                         izinli_cell.font = normal_font
@@ -4152,7 +4152,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         dis_gorev_val = gun_rapor['dis_gorev']
                         dis_gorev_cell = ws.cell(row=row_idx, column=start_col + 5, value=dis_gorev_val if dis_gorev_val != 0 else "")
                         if dis_gorev_val != 0:
-                            dis_gorev_cell.number_format = number_format
+                            dis_gorev_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                             dis_gorev_cell.fill = data_fill  # AÇIK YEŞİL
                         dis_gorev_cell.alignment = center_align
                         dis_gorev_cell.font = normal_font
@@ -4165,6 +4165,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         formül_gun_toplam = f"=IF(SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx})>0,SUM({ilk4_baslangic}{row_idx}:{ilk4_bitis}{row_idx}),\"\")"
                         
                         toplam_cell = ws.cell(row=row_idx, column=start_col + 6, value=formül_gun_toplam)
+                        toplam_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                         toplam_cell.alignment = center_align
                         toplam_cell.fill = toplam_fill  # AÇIK MAVİ
                         toplam_cell.font = bold_font  # BOLD
@@ -4203,8 +4204,9 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 formül = f"=IF(SUMIF({aralik_baslik},{kategori_hucre},{aralik_deger})>0,SUMIF({aralik_baslik},{kategori_hucre},{aralik_deger}),\"\")"
                 
                 genel_cell = ws.cell(row=row_idx, column=col_genel, value=formül)
+                genel_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                 genel_cell.alignment = center_align
-                genel_cell.font = normal_font
+                genel_cell.font = bold_font  # BOLD YAPILDI
                 genel_cell.border = thin_border
                 # Bu hücreler için dolgu yok (formül hücreleri)
             
@@ -4218,6 +4220,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             formül_toplam = f"=IF(SUM({baslangic_genel}{row_idx}:{bitis_genel}{row_idx})>0,SUM({baslangic_genel}{row_idx}:{bitis_genel}{row_idx}),\"\")"
             
             toplam_genel_cell = ws.cell(row=row_idx, column=col_genel_toplam, value=formül_toplam)
+            toplam_genel_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
             toplam_genel_cell.alignment = center_align
             toplam_genel_cell.fill = toplam_fill  # AÇIK MAVİ
             toplam_genel_cell.font = bold_font  # BOLD
@@ -4247,6 +4250,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             formül = f"=SUM({hucre_aralik})"
             
             toplam_cell = ws.cell(row=toplam_satir, column=col, value=formül)
+            toplam_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
             toplam_cell.alignment = center_align
             toplam_cell.font = normal_font
             toplam_cell.border = thin_border
@@ -4263,6 +4267,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 formül = f"=SUM({hucre_aralik})"
                 
                 toplam_cell = ws.cell(row=toplam_satir, column=col, value=formül)
+                toplam_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
                 toplam_cell.alignment = center_align
                 toplam_cell.font = normal_font
                 toplam_cell.border = thin_border
@@ -4298,6 +4303,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             eksik_formul_c += f'COUNTIF({hucre_aralik},"✗")'
         
         eksik_c_cell = ws.cell(row=eksik_satir, column=COL_GENEL_START, value=eksik_formul_c)
+        eksik_c_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
         eksik_c_cell.alignment = center_align
         eksik_c_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
         eksik_c_cell.font = bold_font  # BOLD
@@ -4318,6 +4324,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             formül = f'=COUNTIF({hucre_aralik},"✗")'
             
             eksik_gun_cell = ws.cell(row=eksik_satir, column=start_col, value=formül)
+            eksik_gun_cell.number_format = number_format  # GÜNCELLENDİ: "# ##0" formatı
             eksik_gun_cell.alignment = center_align
             eksik_gun_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
             eksik_gun_cell.font = bold_font  # BOLD
