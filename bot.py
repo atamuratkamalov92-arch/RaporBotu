@@ -4224,7 +4224,10 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             
             row_idx += 1
         
-        # TOPLAM SATIRI (Excel'de 18. satır)
+        # Şantiyelerden sonra bir boş satır ekle
+        row_idx += 1
+        
+        # TOPLAM SATIRI
         toplam_satir = row_idx
         toplam_baslik = ws.cell(row=toplam_satir, column=COL_SANTIYELER, value="TOPLAM")
         toplam_baslik.font = bold_font
@@ -4238,7 +4241,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         # GENEL TOPLAM sütunları için toplam formülleri (C-I) - KENARLIK VAR, FORMÜLLER İÇİN DOLGU YOK
         for col in range(COL_GENEL_START, COL_GENEL_END + 1):
             baslangic_satir = 4
-            bitis_satir = toplam_satir - 1  # TOPLAM satırından önceki satır
+            bitis_satir = toplam_satir - 2  # TOPLAM satırından önceki son şantiye satırı
             hucre_aralik = f"{get_column_letter(col)}{baslangic_satir}:{get_column_letter(col)}{bitis_satir}"
             formül = f"=SUM({hucre_aralik})"
             
@@ -4254,7 +4257,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             for j in range(7):  # Her kategorinin toplamı
                 col = start_col + j
                 baslangic_satir = 4
-                bitis_satir = toplam_satir - 1
+                bitis_satir = toplam_satir - 2  # TOPLAM satırından önceki son şantiye satırı
                 hucre_aralik = f"{get_column_letter(col)}{baslangic_satir}:{get_column_letter(col)}{bitis_satir}"
                 formül = f"=SUM({hucre_aralik})"
                 
@@ -4264,8 +4267,11 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 toplam_cell.border = thin_border
                 # Formül hücreleri için dolgu yok
         
-        # EKSİK RAPOR SATIRI (Excel'de 19. satır)
-        eksik_satir = row_idx + 1
+        # TOPLAM'dan sonra bir boş satır ekle
+        row_idx += 1
+        
+        # EKSİK RAPOR SATIRI
+        eksik_satir = row_idx
         eksik_baslik = ws.cell(row=eksik_satir, column=COL_SANTIYELER, value="Eksik Rapor")
         eksik_baslik.font = bold_font
         eksik_baslik.alignment = center_align
@@ -4275,18 +4281,15 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         ws.cell(row=eksik_satir, column=COL_SORUMLU, value="")
         ws.cell(row=eksik_satir, column=COL_SORUMLU).border = thin_border
         
-        # GENEL TOPLAM sütunları boş (C-I) - KENARLIK VAR
-        for col in range(COL_GENEL_START, COL_GENEL_END + 1):
-            ws.cell(row=eksik_satir, column=col, value="")
-            ws.cell(row=eksik_satir, column=col).border = thin_border
+        # GENEL TOPLAM sütunlarını birleştir (C-I) - AÇIK KIRMIZI ve BOLD
+        ws.merge_cells(start_row=eksik_satir, start_column=COL_GENEL_START, end_row=eksik_satir, end_column=COL_GENEL_END)
         
-        # EKSİK RAPOR FORMÜLLERİ
-        # C sütunu: Tüm günlerin eksik rapor sayısı toplamı - AÇIK KIRMIZI ve BOLD
+        # Tüm günlerin eksik rapor sayısı toplamı formülü
         eksik_formul_c = "="
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)  # Her günün Staff sütunu
             baslangic_satir = 4
-            bitis_satir = toplam_satir - 1
+            bitis_satir = toplam_satir - 2  # TOPLAM satırından önceki son şantiye satırı
             hucre_aralik = f"{get_column_letter(start_col)}{baslangic_satir}:{get_column_letter(start_col)}{bitis_satir}"
             
             if i > 0:
@@ -4299,12 +4302,17 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         eksik_c_cell.font = bold_font  # BOLD
         eksik_c_cell.border = thin_border
         
-        # Gün blokları için eksik rapor formülleri (sadece Staff sütunu için) - AÇIK KIRMIZI ve BOLD
+        # Gün blokları için eksik rapor formülleri - Her günün 7 sütununu birleştir
         for i in range(len(gunler)):
             start_col = gun_blok_start + (i * 7)
-            # Staff sütunu: start_col
+            end_col = start_col + 6
+            
+            # 7 hücreyi birleştir
+            ws.merge_cells(start_row=eksik_satir, start_column=start_col, end_row=eksik_satir, end_column=end_col)
+            
+            # Staff sütunu için eksik rapor formülü
             baslangic_satir = 4
-            bitis_satir = toplam_satir - 1
+            bitis_satir = toplam_satir - 2  # TOPLAM satırından önceki son şantiye satırı
             hucre_aralik = f"{get_column_letter(start_col)}{baslangic_satir}:{get_column_letter(start_col)}{bitis_satir}"
             formül = f'=COUNTIF({hucre_aralik},"✗")'
             
@@ -4313,12 +4321,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             eksik_gun_cell.fill = eksik_rapor_fill  # AÇIK KIRMIZI
             eksik_gun_cell.font = bold_font  # BOLD
             eksik_gun_cell.border = thin_border
-            
-            # Diğer 6 sütun boş - KENARLIK VAR
-            for j in range(1, 7):
-                col = start_col + j
-                ws.cell(row=eksik_satir, column=col, value="")
-                ws.cell(row=eksik_satir, column=col).border = thin_border
         
         # SÜTUN GENİŞLİKLERİNİ AYARLA (Excel şablonundaki gibi)
         ws.column_dimensions['A'].width = 20  # ŞANTİYELER
