@@ -470,7 +470,7 @@ SANTIYE_USERNAME_MAPPING = {
 }
 
 # Giriş doğrulama fonksiyonları
-def validate_user_input(text, max_length=1000):
+def validate_user_input(text, max_length=5000):
     """Kullanıcı giriş metnini doğrula"""
     if not text or not isinstance(text, str):
         return False, "Giriş boş olmayan string olmalı"
@@ -1238,7 +1238,7 @@ def gpt_analyze(system_prompt, user_prompt):
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0,
-            max_tokens=2000
+            max_tokens=4000
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -1248,7 +1248,7 @@ def gpt_analyze(system_prompt, user_prompt):
 # Gelişmiş GPT analizi ile giriş doğrulama
 def gpt_analyze_enhanced(system_prompt, user_prompt):
     """Gelişmiş hata yönetimi ile GPT ile metin analizi"""
-    is_valid, cleaned_prompt = validate_user_input(user_prompt, 4000)
+    is_valid, cleaned_prompt = validate_user_input(user_prompt, 10000)
     if not is_valid:
         logging.error("GPT'ye geçersiz kullanıcı girişi sağlandı")
         return ""
