@@ -2793,70 +2793,47 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Eksik raporlar kontrol edilirken hata: {e}")
 
-async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await admin_kontrol(update, context):
-        return
-    
+def parse_rapor_tarihi(metin):
     try:
         bugun = dt.datetime.now(TZ).date()
-        bu_hafta_baslangic = bugun - dt.timedelta(days=bugun.weekday())
-        bu_ay_baslangic = bugun.replace(day=1)
+        metin_lower = metin.lower()
         
-        bugun_rapor = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
-        bugun_rapor_sayisi = safe_get_tuple_value(bugun_rapor, 0, 0)
+        if 'bugün' in metin_lower or 'bugun' in metin_lower:
+            return bugun
+        if 'dün' in metin_lower or 'dun' in metin_lower:
+            return bugun - dt.timedelta(days=1)
         
-        hafta_rapor = await async_fetchone("""
-            SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
-        """, (bu_hafta_baslangic, bugun))
-        hafta_rapor_sayisi = safe_get_tuple_value(hafta_rapor, 0, 0)
+        date_patterns = [
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})',
+            r'(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2})',
+            r'(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})',
+            r'(\d{1,2})\s*[/\.\-]\s*(\d{1,2})\s*[/\.\-]\s*(\d{4})',
+            r'(\d{1,2})\s*[/\.\-]\s*(\d{1,2})\s*[/\.\-]\s*(\d{2})',
+        ]
         
-        ay_rapor = await async_fetchone("""
-            SELECT COUNT(*) FROM reports WHERE report_date BETWEEN %s AND %s
-        """, (bu_ay_baslangic, bugun))
-        ay_rapor_sayisi = safe_get_tuple_value(ay_rapor, 0, 0)
+        for pattern in date_patterns:
+            matches = re.finditer(pattern, metin)
+            for match in matches:
+                groups = match.groups()
+                if len(groups) == 3:
+                    try:
+                        if len(groups[2]) == 4:
+                            day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
+                        elif len(groups[0]) == 4:
+                            year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
+                        else:
+                            day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
+                            year += 2000
+                        
+                        parsed_date = dt.datetime(year, month, day).date()
+                        if parsed_date <= bugun:
+                            return parsed_date
+                    except ValueError:
+                        continue
         
-        toplam_kullanici = await async_fetchone("SELECT COUNT(DISTINCT user_id) FROM reports")
-        toplam_kullanici_sayisi = safe_get_tuple_value(toplam_kullanici, 0, 0)
-        
-        toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
-        toplam_rapor_sayisi = safe_get_tuple_value(toplam_rapor, 0, 0)
-        
-        durum = await get_santiye_bazli_rapor_durumu(bugun)
-        
-        mesaj = "📊 GENEL İSTATİSTİKLER \n\n"
-        
-        mesaj += "📅 GÜNLÜK İSTATİSTİKLER:\n"
-        mesaj += f"• Bugünkü Rapor: {bugun_rapor_sayisi}\n"
-        mesaj += f"• Bu Hafta: {hafta_rapor_sayisi}\n"
-        mesaj += f"• Bu Ay: {ay_rapor_sayisi}\n\n"
-        
-        mesaj += "👥 KULLANICI İSTATİSTİKLERİ:\n"
-        mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} \n"
-        mesaj += f"• Admin: {len(ADMINS)}\n"
-        mesaj += f"• Şantiye: {len(santiye_sorumlulari)} \n\n"
-        
-        mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
-        mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
-        
-        if toplam_kullanici_sayisi > 0:
-            ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
-            mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
-        
-        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU :\n"
-        mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
-        
-        toplam_santiye = len(durum['tum_santiyeler'])
-        if toplam_santiye > 0:
-            basari_orani = (len(durum['rapor_veren_santiyeler']) / toplam_santiye) * 100
-            mesaj += f"• Başarı Oranı: %{basari_orani:.1f}\n"
-        else:
-            mesaj += "• Başarı Oranı: %0.0\n"
-        
-        await update.message.reply_text(mesaj)
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
+        return None
+    except Exception:
+        return None
 
 # EKSİK RAPOR ANALİZ FONKSİYONLARI
 def parse_tr_date(date_str: str) -> dt.date:
@@ -3452,16 +3429,12 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"`/bugun` - Bugünün özeti (Admin)\n"
             f"`/dun` - Dünün özeti (Admin)\n"
             f"`/eksikraporlar` - Eksik raporları listele (Admin)\n"
-            f"`/istatistik` - Genel istatistikler (Admin)\n"
             f"`/haftalik_rapor` - Haftalık rapor (Admin)\n"
             f"`/aylik_rapor` - Aylık rapor (Admin)\n"
             f"`/tariharaligi` - Tarih aralığı raporu (Admin)\n"
-            f"`/haftalik_istatistik` - Haftalık istatistik (Admin)\n"
-            f"`/aylik_istatistik` - Aylık istatistik (Admin)\n"
             f"`/excel_tariharaligi` - Excel raporu (Admin)\n"
             f"`/maliyet` - Maliyet analizi (Admin)\n"
             f"`/ai_rapor` - Detaylı AI raporu (Admin)\n"
-            f"`/kullanicilar` - Tüm kullanıcı listesi (Admin)\n"
             f"`/santiyeler` - Şantiye listesi (Admin)\n"
             f"`/santiye_durum` - Şantiye rapor durumu (Admin)\n"
             f"`/eksik_rapor_excel` - Eksik rapor Excel analizi (Admin)\n"
@@ -3569,32 +3542,6 @@ async def aylik_rapor_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
     await update.message.reply_text(mesaj)
 
-async def haftalik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await admin_kontrol(update, context):
-        return
-    
-    await update.message.chat.send_action(action="typing")
-    
-    today = dt.datetime.now(TZ).date()
-    start_date = today - dt.timedelta(days=6)  # 7 günlük periyot (bugün dahil)
-    end_date = today
-    
-    mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
-    await update.message.reply_text(mesaj)
-
-async def aylik_istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await admin_kontrol(update, context):
-        return
-    
-    await update.message.chat.send_action(action="typing")
-    
-    today = dt.datetime.now(TZ).date()
-    start_date = today.replace(day=1)
-    end_date = today
-    
-    mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
-    await update.message.reply_text(mesaj)
-
 async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
@@ -3667,34 +3614,6 @@ async def excel_tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         await update.message.reply_text("❌ Tarih formatı hatalı. GG.AA.YYYY şeklinde girin.")
         logging.error(f"Excel tarih aralığı rapor hatası: {e}")
-
-async def kullanicilar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await admin_kontrol(update, context):
-        return
-    
-    mesaj = "👥 TÜM KULLANICI LİSTESİ - ŞANTİYE BAZLI\n\n"
-    
-    mesaj += f"📋 Aktif Kullanıcılar ({len(rapor_sorumlulari)} - Aktif/Pasif='E'):\n"
-    
-    # Proje bazlı kullanıcı sayıları - TÜMÜ hariç
-    proje_kullanici_sayilari = {}
-    for tid in rapor_sorumlulari:
-        projeler = id_to_projects.get(tid, [])
-        # TÜMÜ şantiyesini filtrele
-        projeler = [proje for proje in projeler if proje != "TÜMÜ"]
-        for proje in projeler:
-            if proje not in proje_kullanici_sayilari:
-                proje_kullanici_sayilari[proje] = 0
-            proje_kullanici_sayilari[proje] += 1
-    
-    for proje, sayi in sorted(proje_kullanici_sayilari.items()):
-        mesaj += f"• {proje}: {sayi} kullanıcı\n"
-    
-    mesaj += f"\n🛡️ Adminler: {len(ADMINS)}\n"
-    mesaj += f"👀 İzleyiciler: {len(IZLEYICILER)}\n"
-    mesaj += f"🏗️ Toplam Şantiye: {len(santiye_sorumlulari)} \n"
-    
-    await update.message.reply_text(mesaj)
 
 async def santiyeler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
@@ -4503,416 +4422,185 @@ async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
                     logging.error(f"📊 {admin_id} adminine haftalık rapor gönderilemedi: {e}")
         
     except Exception as e:
-        logging.error(f"📊 Haftalık grup raporu hatası: {e}")
-        await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
+        logging.error(f"📊 Haftalık rapor job hatası: {e}")
 
-# YENİ: ASYNC POSTGRES YEDEKLEME
-async def async_yedekle_postgres():
-    """Async Postgres yedekleme"""
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, yedekle_postgres)
-
-# YENİ: AYLIK RAPOR KONTROL FONKSİYONU (geriye uyumluluk için)
-async def aylik_grup_raporu_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """Ayın 1'inde aylık rapor gönder"""
+async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
+    """Her sabah 09:00'da dünün rapor özetini gruba gönder"""
     try:
-        today = dt.datetime.now(TZ).date()
-        if today.day == 1:  # Ayın 1'inde çalıştır
-            # Önceki ayın raporunu oluştur
-            start_date = today.replace(day=1) - dt.timedelta(days=1)
-            start_date = start_date.replace(day=1)
-            end_date = today.replace(day=1) - dt.timedelta(days=1)
-            
-            await aylik_grup_raporu_tarihli(context, start_date, end_date)
-    except Exception as e:
-        logging.error(f"🗓️ Aylık rapor kontrol hatası: {e}")
-
-# YENİ: TARİHLİ AYLIK RAPOR (geriye uyumluluk için)
-async def aylik_grup_raporu_tarihli(context: ContextTypes.DEFAULT_TYPE, start_date, end_date):
-    """Belirli tarih aralığı için aylık rapor gönder"""
-    try:
-        mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
+        bugun = dt.datetime.now(TZ).date()
+        dun = bugun - dt.timedelta(days=1)
+        
+        mesaj = await generate_gelismis_personel_ozeti(dun)
         
         if GROUP_ID:
             try:
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🗓️ Aylık grup raporu gönderildi: {start_date} - {end_date}")
+                logging.info(f"📊 Günlük rapor özeti gruba gönderildi: {dun}")
             except Exception as e:
-                logging.error(f"🗓️ Aylık grup raporu gönderilemedi: {e}")
-        
-        for admin_id in ADMINS:
-            try:
-                await context.bot.send_message(chat_id=admin_id, text=mesaj)
-                logging.info(f"🗓️ Aylık rapor {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                if "Chat not found" not in str(e):
-                    logging.error(f"🗓️ {admin_id} adminine aylık rapor gönderilemedi: {e}")
-        
+                logging.error(f"📊 Gruba günlük rapor özeti gönderilemedi: {e}")
+        else:
+            logging.error("📊 GROUP_ID ayarlanmamış, günlük rapor özeti gönderilemedi")
     except Exception as e:
-        logging.error(f"🗓️ Aylık grup raporu hatası: {e}")
+        logging.error(f"📊 Günlük rapor özeti job hatası: {e}")
+
+async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
+    """Her gün 12:30'da eksik raporları hatırlat"""
+    try:
+        bugun = dt.datetime.now(TZ).date()
+        eksik_santiyeler = await get_eksik_santiyeler(bugun)
+        
+        if not eksik_santiyeler:
+            return
+        
+        mesaj = "⏰ **EKSİK RAPOR HATIRLATMASI** ⏰\n\n"
+        mesaj += f"📅 {bugun.strftime('%d.%m.%Y')} tarihi için henüz rapor iletmeyen şantiyeler:\n\n"
+        
+        for santiye in sorted(eksik_santiyeler.keys()):
+            if santiye in ["Belli değil", "TÜMÜ"]:
+                continue
+                
+            usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
+            mentions = " ".join([f"@{username}" for username in usernames if username])
+            
+            mesaj += f"• {santiye} {mentions}\n"
+        
+        mesaj += "\n⚠️ Lütfen günlük raporlarınızı iletiniz. Teşekkürler."
+        
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj, parse_mode="Markdown")
+                logging.info(f"⏰ Eksik rapor hatırlatması gruba gönderildi: {bugun}")
+            except Exception as e:
+                logging.error(f"⏰ Gruba hatırlatma mesajı gönderilemedi: {e}")
+        else:
+            logging.error("⏰ GROUP_ID ayarlanmamış, hatırlatma mesajı gönderilemedi")
+    except Exception as e:
+        logging.error(f"⏰ Hatırlatma mesajı job hatası: {e}")
+
+async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
+    """Her gün 15:00'da eksik raporları kontrol et"""
+    await genel_rapor_kontrol(context, "İLK")
+
+async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
+    """Her gün 17:30'da eksik raporları kontrol et"""
+    await genel_rapor_kontrol(context, "SON")
+
+async def genel_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE, tur="İLK"):
+    """Genel rapor kontrol fonksiyonu"""
+    try:
+        bugun = dt.datetime.now(TZ).date()
+        eksik_santiyeler = await get_eksik_santiyeler(bugun)
+        
+        if not eksik_santiyeler:
+            return
+        
+        mesaj = f"⚠️ **{tur} KONTROL - EKSİK RAPORLAR** ⚠️\n\n"
+        mesaj += f"📅 {bugun.strftime('%d.%m.%Y')} tarihi için henüz rapor iletmeyen şantiyeler:\n\n"
+        
+        for santiye in sorted(eksik_santiyeler.keys()):
+            if santiye in ["Belli değil", "TÜMÜ"]:
+                continue
+                
+            usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
+            mentions = " ".join([f"@{username}" for username in usernames if username])
+            
+            mesaj += f"• {santiye} {mentions}\n"
+        
+        mesaj += f"\n🚨 Lütfen günlük raporlarınızı iletiniz. Teşekkürler."
+        
+        if GROUP_ID:
+            try:
+                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj, parse_mode="Markdown")
+                logging.info(f"⚠️ {tur} kontrol gruba gönderildi: {bugun}")
+            except Exception as e:
+                logging.error(f"⚠️ Gruba {tur} kontrol mesajı gönderilemedi: {e}")
+        else:
+            logging.error(f"⚠️ GROUP_ID ayarlanmamış, {tur} kontrol mesajı gönderilemedi")
+    except Exception as e:
+        logging.error(f"⚠️ {tur} kontrol job hatası: {e}")
 
 async def auto_watch_excel(context: ContextTypes.DEFAULT_TYPE):
+    """Excel dosyasını otomatik olarak izle ve yenile"""
     try:
-        load_excel_intelligent()
+        global last_excel_update, excel_file_hash, excel_last_modified
+        
+        if not os.path.exists(USERS_FILE):
+            return
+        
+        current_mtime = os.path.getmtime(USERS_FILE)
+        current_hash = get_file_hash(USERS_FILE)
+        
+        if current_mtime > last_excel_update or current_hash != excel_file_hash:
+            logging.info("🔄 Excel dosyası değişti, yeniden yükleniyor...")
+            load_excel_intelligent()
+            
+            # Tüm adminlere bildir
+            for admin_id in ADMINS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text="🔄 Excel dosyası değişti ve başarıyla yeniden yüklendi!"
+                    )
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logging.error(f"Admin {admin_id} bildirilemedi: {e}")
+        
     except Exception as e:
         logging.error(f"Excel otomatik izleme hatası: {e}")
 
-async def gunluk_rapor_ozeti(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        dun = (dt.datetime.now(TZ) - dt.timedelta(days=1)).date()
-        rapor_mesaji = await generate_gelismis_personel_ozeti(dun)
-        
-        # DÜZELTİLDİ: Hem Eren Boz'a hem de sana (Super Admin) gönder
-        hedef_kullanicilar = [709746899, 1000157326]  # Eren Boz ve Atamurat Kamalov
-        
-        for user_id in hedef_kullanicilar:
-            try:
-                await context.bot.send_message(chat_id=user_id, text=rapor_mesaji)
-                logging.info(f"🕘 09:00 özeti {user_id} kullanıcısına gönderildi")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logging.error(f"🕘 {user_id} kullanıcısına özet gönderilemedi: {e}")
-                
-    except Exception as e:
-        logging.error(f"🕘 09:00 rapor hatası: {e}")
-        await hata_bildirimi(context, f"09:00 rapor hatası: {e}")
-
-async def hatirlatma_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        logging.info("12:30 hatırlatma mesajı tetiklendi")
-        bugun = dt.datetime.now(TZ).date()
-        durum = await get_santiye_bazli_rapor_durumu(bugun)
-        
-        if GROUP_ID:
-            if not durum['eksik_santiyeler']:
-                mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış.\n\n"
-                mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
-            else:
-                mesaj = "❌ Eksik raporlar var:\n"
-                for santiye in sorted(durum['eksik_santiyeler']):
-                    # OPSİYONEL ŞANTİYELERİ ATLA (OHP gibi)
-                    if santiye in OPSIYONEL_SANTIYELER:
-                        continue
-                    
-                    # Şantiye için kullanıcı adlarını al
-                    usernames = SANTIYE_USERNAME_MAPPING.get(santiye, [])
-                    if usernames:
-                        # Kullanıcı adlarını @ ile birleştir
-                        username_str = " @" + ", @".join(usernames)
-                        mesaj += f"• {santiye} ({username_str} )\n"
-                    else:
-                        mesaj += f"• {santiye}\n"
-                
-                # Eğer opsiyonel şantiyeler hariç tüm şantiyeler rapor verdiyse
-                eksik_santiyeler_filtreli = [s for s in durum['eksik_santiyeler'] if s not in OPSIYONEL_SANTIYELER]
-                if not eksik_santiyeler_filtreli:
-                    mesaj = "✅ Bugün için tüm şantiyelerden raporlar alınmış.\n\n"
-                    mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
-                else:
-                    # SABİT NOT EKLENİYOR (eksik rapor varsa)
-                    mesaj += "\n\n📝 Not: Şantiyenin dili verdiği rapordur; raporu olmayan iş tamamlanmış sayılmaz. ⚠️\nLütfen günlük raporlarınızı zamanında iletiniz."
-            
-            try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🟡 12:30 hatırlatma mesajı gruba gönderildi: {GROUP_ID}")
-            except Exception as e:
-                logging.error(f"🟡 Gruba hatırlatma mesajı gönderilemedi: {e}")
-        else:
-            logging.error("🟡 GROUP_ID ayarlanmamış, hatırlatma mesajı gönderilemedi")
-            
-    except Exception as e:
-        logging.error(f"Hatırlatma mesajı hatası: {e}")
-
-async def ilk_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        bugun = dt.datetime.now(TZ).date()
-        durum = await get_santiye_bazli_rapor_durumu(bugun)
-        
-        mesaj = "🕒 15:00 Şantiye Rapor Durumu\n\n"
-        
-        if durum['rapor_veren_santiyeler']:
-            mesaj += f"✅ Rapor iletilen şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
-            for santiye in sorted(durum['rapor_veren_santiyeler']):
-                mesaj += f"• {santiye}\n"
-            mesaj += "\n"
-        else:
-            mesaj += "✅ Rapor iletilen şantiyeler (0):\n\n"
-        
-        # OPSİYONEL ŞANTİYELER HARİÇ EKSİK ŞANTİYELER
-        eksik_santiyeler_filtreli = [s for s in sorted(durum['eksik_santiyeler']) if s not in OPSIYONEL_SANTIYELER and s not in ["Belli değil", "Tümü"]]
-        
-        if eksik_santiyeler_filtreli:
-            mesaj += f"❌ Rapor iletilmeyen şantiyeler ({len(eksik_santiyeler_filtreli)}):\n"
-            for santiye in eksik_santiyeler_filtreli:
-                mesaj += f"• {santiye}\n"
-            
-            # EKSİK RAPOR VARSA MEVCUT NOT
-            mesaj += "\n\n📝 Not: Yapılan işin raporunu vermek, işi yapmak kadar önemlidir. ⚠️\nEksik olan raporları lütfen iletiniz."
-        else:
-            mesaj += "❌ Rapor iletilmeyen şantiyeler (0):\n"
-            mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n\n"
-            # EKSİK RAPOR YOKSA YENİ NOT
-            mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
-        
-        if GROUP_ID:
-            try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🟠 15:00 şantiye kontrol mesajı gruba gönderildi: {GROUP_ID}")
-            except Exception as e:
-                logging.error(f"🟠 Gruba şantiye kontrol mesajı gönderilemedi: {e}")
-        else:
-            logging.error("🟠 GROUP_ID ayarlanmamış, şantiye kontrol mesajı gönderilemedi")
-        
-    except Exception as e:
-        logging.error(f"🟠 Şantiye rapor kontrol hatası: {e}")
-        await hata_bildirimi(context, f"Şantiye rapor kontrol hatası: {e}")
-
-async def son_rapor_kontrol(context: ContextTypes.DEFAULT_TYPE):
-    """🔴 17:30 - Gün sonu şantiye bazlı rapor analizi - GRUBA GÖNDER"""
-    try:
-        bugun = dt.datetime.now(TZ).date()
-        durum = await get_santiye_bazli_rapor_durumu(bugun)
-        
-        result = await async_fetchone("SELECT COUNT(*) FROM reports WHERE report_date = %s", (bugun,))
-        toplam_rapor = result[0] if result else 0
-        
-        mesaj = "🕠 Gün Sonu Şantiye Rapor Analizi\n\n"
-        
-        # OPSİYONEL ŞANTİYELER HARİÇ EKSİK ŞANTİYELER
-        eksik_santiyeler_filtreli = [s for s in sorted(durum['eksik_santiyeler']) if s not in OPSIYONEL_SANTIYELER]
-        
-        if eksik_santiyeler_filtreli:
-            mesaj += f"❌ Rapor İletilmeyen Şantiyeler ({len(eksik_santiyeler_filtreli)}):\n"
-            for santiye in eksik_santiyeler_filtreli:
-                mesaj += f"• {santiye}\n"
-            
-            mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
-            mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda."
-            
-            # EKSİK RAPOR VARSA MEVCUT NOT
-            mesaj += "\n\n📝 Not:\nYapılan işin raporunu vermek, saha yönetiminin en kritik adımıdır. 📊\nBunca çabaya rağmen rapor iletmeyen şantiyeler, lütfen rapor düzenine özen göstersin. 🙏\nUnutmayın: İşi yapmak cesarettir, raporlamak ise disiplindir. ⚠️"
-        else:
-            mesaj += "❌ Rapor İletilmeyen Şantiyeler (0):\n"
-            mesaj += "🎉 Tüm şantiyeler raporlarını iletti!\n"
-            mesaj += f"\n📊 Bugün toplam {toplam_rapor} rapor alındı."
-            mesaj += f"\n🏗️ {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])} şantiye rapor iletmiş durumda.\n\n"
-            
-            # EKSİK RAPOR YOKSA YENİ NOT
-            mesaj += "📝 Not: Eksik rapor bulunmamaktadır. Düzenli paylaşımlarınız için teşekkürler. 🙏"
-        
-        # DÜZELTİLDİ: GRUBA GÖNDER
-        if GROUP_ID:
-            try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🔴 17:30 gün sonu analizi gruba gönderildi: {GROUP_ID}")
-            except Exception as e:
-                logging.error(f"🔴 Gruba gün sonu analizi gönderilemedi: {e}")
-        else:
-            logging.error("🔴 GROUP_ID ayarlanmamış, gün sonu analizi gönderilemedi")
-        
-    except Exception as e:
-        logging.error(f"🔴 Şantiye son rapor kontrol hatası: {e}")
-        await hata_bildirimi(context, f"Şantiye son rapor kontrol hatası: {e}")
-
-async def haftalik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Eski haftalık rapor fonksiyonu - geriye uyumluluk için (artık kullanılmayacak)"""
-    try:
-        today = dt.datetime.now(TZ).date()
-        
-        # DÜZELTİLDİ: ÖNCEKİ HAFTANIN RAPORUNU HAZIRLA (Bugünden 7 gün geriye)
-        end_date = today - dt.timedelta(days=1)  # Dün dahil
-        start_date = end_date - dt.timedelta(days=6)  # 6 gün geri (7 günlük periyot)
-        
-        mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
-        
-        if GROUP_ID:
-            try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"📊 Haftalık grup raporu gönderildi: {start_date} - {end_date}")
-            except Exception as e:
-                logging.error(f"📊 Haftalık grup raporu gönderilemedi: {e}")
-        
-        for admin_id in ADMINS:
-            try:
-                await context.bot.send_message(chat_id=admin_id, text=mesaj)
-                logging.info(f"📊 Haftalık rapor {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                if "Chat not found" not in str(e):
-                    logging.error(f"📊 {admin_id} adminine haftalık rapor gönderilemedi: {e}")
-        
-    except Exception as e:
-        logging.error(f"📊 Haftalık grup raporu hatası: {e}")
-        await hata_bildirimi(context, f"Haftalık grup raporu hatası: {e}")
-
-async def aylik_grup_raporu(context: ContextTypes.DEFAULT_TYPE):
-    """Mevcut aylık rapor fonksiyonu - geriye uyumluluk için"""
-    try:
-        today = dt.datetime.now(TZ).date()
-        start_date = today.replace(day=1)
-        end_date = today
-        
-        mesaj = await generate_aylik_rapor_mesaji(start_date, end_date)
-        
-        if GROUP_ID:
-            try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"🗓️ Aylık grup raporu gönderildi: {start_date} - {end_date}")
-            except Exception as e:
-                logging.error(f"🗓️ Aylık grup raporu gönderilemedi: {e}")
-        
-        for admin_id in ADMINS:
-            try:
-                await context.bot.send_message(chat_id=admin_id, text=mesaj)
-                logging.info(f"🗓️ Aylık rapor {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                if "Chat not found" not in str(e):
-                    logging.error(f"🗓️ {admin_id} adminine aylık rapor gönderilemedi: {e}")
-        
-    except Exception as e:
-        logging.error(f"🗓️ Aylık grup raporu hatası: {e}")
-        await hata_bildirimi(context, f"Aylık grup raporu hatası: {e}")
-
-async def bot_baslatici_mesaji(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        mesaj = "🤖 Rapor Kontrol Botu Aktif!\n\nKontrol bende ⚡️\nKolay gelsin 👷‍♂️"
-        
-        for admin_id in ADMINS:
-            try:
-                await context.bot.send_message(chat_id=admin_id, text=mesaj)
-                logging.info(f"Başlangıç mesajı {admin_id} adminine gönderildi")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                if "Chat not found" not in str(e):
-                    logging.error(f"Başlangıç mesajı {admin_id} adminine gönderilemedi: {e}")
-        
-    except Exception as e:
-        logging.error(f"Bot başlatıcı mesaj hatası: {e}")
-
-async def post_init(application: Application):
-    # Temel komutlar (tüm kullanıcılar için)
-    basic_commands = [
-        BotCommand("start", "Botu başlat"),
-        BotCommand("info", "Komut bilgisi"),
-        BotCommand("hakkinda", "Bot hakkında bilgi"),
-    ]
-    
-    # Admin komutları (sadece adminler için)
-    admin_commands = basic_commands + [
-        BotCommand("bugun", "Bugünün özeti (Admin)"),
-        BotCommand("dun", "Dünün özeti (Admin)"),
-        BotCommand("eksikraporlar", "Eksik raporları listele (Admin)"),
-        BotCommand("istatistik", "Genel istatistikler (Admin)"),
-        BotCommand("haftalik_rapor", "Haftalık rapor (Admin)"),
-        BotCommand("aylik_rapor", "Aylık rapor (Admin)"),
-        BotCommand("tariharaligi", "Tarih aralığı raporu mesaj halinde (Admin)"),
-        BotCommand("haftalik_istatistik", "Haftalık istatistik (Admin)"),
-        BotCommand("aylik_istatistik", "Aylık istatistik (Admin)"),
-        BotCommand("excel_tariharaligi", "Excel tarih aralığı raporu (Admin)"),
-        BotCommand("maliyet", "Maliyet analizi (Admin)"),
-        BotCommand("ai_rapor", "Detaylı AI raporu (Admin)"),
-        BotCommand("kullanicilar", "Tüm kullanıcı listesi (Admin)"),
-        BotCommand("santiyeler", "Şantiye listesi (Admin)"),
-        BotCommand("santiye_durum", "Şantiye rapor durumu (Admin)"),
-        BotCommand("eksik_rapor_excel", "Eksik rapor Excel analizi (Admin)"),
-        BotCommand("haftalik_eksik_raporlar", "Haftalık eksik rapor analizi (Admin)"),
-        BotCommand("aylik_eksik_raporlar", "Aylık eksik rapor analizi (Admin)"),
-    ]
-    
-    # Super Admin komutları (sadece super admin için)
-    super_admin_commands = admin_commands + [
-        BotCommand("reload", "Excel yenile (Super Admin)"),
-        BotCommand("yedekle", "Manuel yedekleme (Super Admin)"),
-        BotCommand("chatid", "Chat ID göster (Super Admin)"),
-        BotCommand("excel_durum", "Excel sistem durumu (Super Admin)"),
-        BotCommand("reset_database", "Veritabanını sıfırla (Super Admin)"),
-        BotCommand("fix_sequences", "Sequence'leri düzelt (Super Admin)"),
-    ]
-    
-    # Varsayılan komutları temel komutlar olarak ayarla.
-    await application.bot.set_my_commands(basic_commands)
-    
-    # Eğer özel sohbetler için komut ayarlama desteği varsa, tüm özel sohbetler için temel komutları ayarla.
-    if HAS_PRIVATE_SCOPE:
-        try:
-            from telegram import BotCommandScopeAllPrivateChats
-            await application.bot.set_my_commands(basic_commands, scope=BotCommandScopeAllPrivateChats())
-            logging.info("Özel sohbetler için temel komutlar ayarlandı.")
-        except Exception as e:
-            logging.error(f"Özel sohbetler için komutlar ayarlanamadı: {e}")
-    
-    # Her bir admin kullanıcısı için admin komutlarını ayarla.
-    for admin_id in ADMINS:
-        try:
-            from telegram import BotCommandScopeChat
-            scope = BotCommandScopeChat(chat_id=admin_id)
-            # Eğer admin aynı zamanda super admin ise, super admin komutlarını ayarla.
-            if admin_id == SUPER_ADMIN_ID:
-                await application.bot.set_my_commands(super_admin_commands, scope=scope)
-            else:
-                await application.bot.set_my_commands(admin_commands, scope=scope)
-            logging.info(f"Admin komutları {admin_id} kullanıcısı için ayarlandı.")
-        except Exception as e:
-            logging.error(f"Admin {admin_id} için komutlar ayarlanamadı: {e}")
-    
-    await bot_baslatici_mesaji(application)
+async def async_yedekle_postgres():
+    """Async PostgreSQL yedekleme"""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, yedekle_postgres)
 
 def main():
+    """Ana bot fonksiyonu"""
     try:
-        logging.info("🚀 Bot başlatılıyor...")
-        
-        # Önce veritabanı bağlantılarını test et
-        init_db_pool()
-        init_database()
-        
-        app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+        app = Application.builder().token(BOT_TOKEN).build()
         
         # Handler'ları ekle
         app.add_handler(CommandHandler("start", start_cmd))
         app.add_handler(CommandHandler("info", info_cmd))
         app.add_handler(CommandHandler("hakkinda", hakkinda_cmd))
+        app.add_handler(CommandHandler("chatid", chatid_cmd))
         
+        # Admin komutları
         app.add_handler(CommandHandler("bugun", bugun_cmd))
         app.add_handler(CommandHandler("dun", dun_cmd))
         app.add_handler(CommandHandler("eksikraporlar", eksikraporlar_cmd))
-        app.add_handler(CommandHandler("istatistik", istatistik_cmd))
         app.add_handler(CommandHandler("haftalik_rapor", haftalik_rapor_cmd))
         app.add_handler(CommandHandler("aylik_rapor", aylik_rapor_cmd))
-        app.add_handler(CommandHandler("haftalik_istatistik", haftalik_istatistik_cmd))
-        app.add_handler(CommandHandler("aylik_istatistik", aylik_istatistik_cmd))
         app.add_handler(CommandHandler("tariharaligi", tariharaligi_cmd))
         app.add_handler(CommandHandler("excel_tariharaligi", excel_tariharaligi_cmd))
-        app.add_handler(CommandHandler("kullanicilar", kullanicilar_cmd))
         app.add_handler(CommandHandler("santiyeler", santiyeler_cmd))
         app.add_handler(CommandHandler("santiye_durum", santiye_durum_cmd))
         app.add_handler(CommandHandler("maliyet", maliyet_cmd))
         app.add_handler(CommandHandler("ai_rapor", ai_rapor_cmd))
-        app.add_handler(CommandHandler("reload", reload_cmd))
-        app.add_handler(CommandHandler("yedekle", yedekle_cmd))
-        app.add_handler(CommandHandler("chatid", chatid_cmd))
-        app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
-        app.add_handler(CommandHandler("reset_database", reset_database_cmd))
-        app.add_handler(CommandHandler("fix_sequences", fix_sequences_cmd))
         app.add_handler(CommandHandler("eksik_rapor_excel", eksik_rapor_excel_cmd))
         app.add_handler(CommandHandler("haftalik_eksik_raporlar", haftalik_eksik_raporlar_cmd))
         app.add_handler(CommandHandler("aylik_eksik_raporlar", aylik_eksik_raporlar_cmd))
         
-        # Rapor işleme handler'ı
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_gpt_rapor_isleme))
+        # Super Admin komutları
+        app.add_handler(CommandHandler("reload", reload_cmd))
+        app.add_handler(CommandHandler("yedekle", yedekle_cmd))
+        app.add_handler(CommandHandler("excel_durum", excel_durum_cmd))
+        app.add_handler(CommandHandler("reset_database", reset_database_cmd))
+        app.add_handler(CommandHandler("fix_sequences", fix_sequences_cmd))
         
-        # Yeni üye karşılama
+        # Mesaj handler'ları
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, yeni_gpt_rapor_isleme))
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, yeni_uye_karşilama))
         
-        # Zamanlama job'larını ayarla
+        # Zamanlanmış görevleri ayarla
         schedule_jobs(app)
         
-        # Railway için uygulamayı başlat
+        # Botu başlat
+        logging.info("🚀 Bot başlatılıyor...")
         app.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
-        logging.error(f"❌ Bot başlatma hatası: {e}")
+        logging.error(f"❌ Bot başlatılırken hata: {e}")
+        raise
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
