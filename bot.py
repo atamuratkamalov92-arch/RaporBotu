@@ -451,22 +451,23 @@ SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP
 OPSIYONEL_SANTIYELER = ['OHP']
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
-SANTIYE_USERNAME_MAPPING = {
-    'BWC': ['YsF1434'],
-    'SKP': ['uzyusufmutlu'],
-    'DMC': ['uzyusufmutlu'],
-    'KÖKSARAY': ['Erdoğan_Karamısır'],
-    'STADYUM': ['Adnan_Keleş'],
-    'LOT13': ['Adnan_Keleş'],
-    'LOT71': ['Adnan_Keleş'],
-    'YHP': ['Orhan_Ceylan'],
-    'MMP': ['Orhan_Ceylan'],
-    'RMC': ['Orhan_Ceylan'],
-    'TYM': ['Orhan_Ceylan'],
-    'PİRAMİT': ['ON5428'],
-    'MOS': ['Orhan_Ceylan'],
-    'DATA CENTR': ['S_Temur0222']  # YENİ EKLENDİ
-    # OHP opsiyonel olduğu için kaldırıldı
+SABIT_SANTIYE_SORUMLULARI = {
+    "BWC": "Yusuf Özçelik",
+    "SKP": "Yusuf Mutlu", 
+    "DMC": "Yusuf Mutlu",
+    "PİRAMİT": "Onur Çetin",
+    # "DATA CENTR": "Temur Saburov",  # OPSİYONEL olduğu için kaldırıldı
+    "LOT13": "Adnan Keleş",
+    "LOT71": "Adnan Keleş", 
+    "STADYUM": "Adnan Keleş",
+    "MMP": "Orhan Ceylan",
+    "MOS": "Orhan Ceylan",
+    "RMC": "Orhan Ceylan",
+    "TYM": "Orhan Ceylan",
+    "YHP": "Orhan Ceylan",
+    "KÖKSARAY": "Erdoğan Karamısır",
+    "OHP": "Erdoğan Karamısır"  # OPSİYONEL ama bilgi amaçlı kalabilir
+}
 }
 
 # Giriş doğrulama fonksiyonları
@@ -3959,7 +3960,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         santiye_sirasi = [
             "BWC", "SKP", "DMC", "KÖKSARAY", "LOT13", "LOT71",
             "STADYUM", "MMP", "MOS", "PİRAMİT", "RMC", "TYM", 
-            "YHP", "DATA CENTR"
+            "YHP",
         ]
         
         # 3. Veritabanından raporları al
