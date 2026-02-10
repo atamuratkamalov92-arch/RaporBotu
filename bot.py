@@ -2815,15 +2815,12 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (bu_ay_baslangic, bugun))
         ay_rapor_sayisi = safe_get_tuple_value(ay_rapor, 0, 0)
         
-        toplam_kullanici = await async_fetchone("SELECT COUNT(DISTINCT user_id) FROM reports")
-        toplam_kullanici_sayisi = safe_get_tuple_value(toplam_kullanici, 0, 0)
-        
         toplam_rapor = await async_fetchone("SELECT COUNT(*) FROM reports")
         toplam_rapor_sayisi = safe_get_tuple_value(toplam_rapor, 0, 0)
         
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
-        # YENİ: Haftalık performans analizi ekle - TAM 7 GÜN
+        # Haftalık performans analizi ekle - TAM 7 GÜN
         haftalik_performans = ""
         try:
             # Haftanın tamamını analiz et (7 gün)
@@ -2832,12 +2829,12 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             analiz, gunler = await analyze_missing_reports(hafta_baslangic, hafta_bitis)
             if analiz:
-                haftalik_performans = await generate_performans_analizi(analiz, hafta_baslangic, hafta_bitis, "haftalik")
+                haftalik_performans = await generate_performans_analizi(analiz, hafta_baslangic, hafta_bitis, gunler, "haftalik")
         except Exception as e:
             logging.error(f"Haftalık performans analizi hatası: {e}")
             haftalik_performans = "⚠️ Haftalık performans analizi oluşturulamadı."
         
-        # YENİ: Aylık performans analizi ekle
+        # Aylık performans analizi ekle
         aylik_performans = ""
         try:
             # Ayın tamamını analiz et
@@ -2846,7 +2843,7 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             analiz_aylik, gunler_aylik = await analyze_missing_reports(ay_baslangic, ay_bitis)
             if analiz_aylik:
-                aylik_performans = await generate_performans_analizi(analiz_aylik, ay_baslangic, ay_bitis, "aylik")
+                aylik_performans = await generate_performans_analizi(analiz_aylik, ay_baslangic, ay_bitis, gunler_aylik, "aylik")
         except Exception as e:
             logging.error(f"Aylık performans analizi hatası: {e}")
             aylik_performans = "⚠️ Aylık performans analizi oluşturulamadı."
@@ -2856,38 +2853,26 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mesaj += "📅 GÜNLÜK İSTATİSTİKLER:\n"
         mesaj += f"• Bugünkü Rapor: {bugun_rapor_sayisi}\n"
         mesaj += f"• Bu Hafta: {hafta_rapor_sayisi}\n"
-        mesaj += f"• Bu Ay: {ay_rapor_sayisi}\n\n"
+        mesaj += f"• Bu Ay: {ay_rapor_sayisi}\n"
+        mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n\n"
         
-        mesaj += "👥 KULLANICI İSTATİSTİKLERİ:\n"
-        mesaj += f"• Toplam Kullanıcı: {toplam_kullanici_sayisi}\n"
-        mesaj += f"• Aktif Kullanıcı: {len(rapor_sorumlulari)} \n"
-        mesaj += f"• Admin: {len(ADMINS)}\n"
-        mesaj += f"• Şantiye: {len(santiye_sorumlulari)} \n\n"
-        
-        mesaj += "🎯 PERFORMANS İSTATİSTİKLERİ:\n"
-        mesaj += f"• Toplam Rapor: {toplam_rapor_sayisi}\n"
-        
-        if toplam_kullanici_sayisi > 0:
-            ortalama_rapor = toplam_rapor_sayisi / toplam_kullanici_sayisi
-            mesaj += f"• Kullanıcı Başı Ortalama: {ortalama_rapor:.1f} rapor\n"
-        
-        mesaj += f"\n🏗️ BUGÜNKÜ ŞANTİYE DURUMU :\n"
+        mesaj += f"🏗️ BUGÜNKÜ ŞANTİYE DURUMU :\n"
         mesaj += f"• Rapor İleten: {len(durum['rapor_veren_santiyeler'])}/{len(durum['tum_santiyeler'])}\n"
         
         toplam_santiye = len(durum['tum_santiyeler'])
         if toplam_santiye > 0:
             basari_orani = (len(durum['rapor_veren_santiyeler']) / toplam_santiye) * 100
-            mesaj += f"• Başarı Oranı: %{basari_orani:.1f}\n"
+            mesaj += f"• Başarı Oranı: %{basari_orani:.1f}\n\n"
         else:
-            mesaj += "• Başarı Oranı: %0.0\n"
+            mesaj += "• Başarı Oranı: %0.0\n\n"
         
         # Haftalık performans analizi ekle
         if haftalik_performans:
-            mesaj += f"\n{haftalik_performans}"
+            mesaj += f"{haftalik_performans}"
         
         # Aylık performans analizi ekle
         if aylik_performans:
-            mesaj += f"\n\n{aylik_performans}"
+            mesaj += f"\n{aylik_performans}"
         
         # Mesaj çok uzunsa böl
         if len(mesaj) > 4000:
@@ -3192,7 +3177,7 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     return mesaj
 
 # REVİZYON 6: PERFORMANS ANALİZİ FONKSİYONU (GÜNCELLENMİŞ - TÜM ŞANTİYELER)
-async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date, period_type="haftalik") -> str:
+async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List, period_type="haftalik") -> str:
     """Performans analizi oluştur: En iyi 1 şantiye ve en kötü 3 şantiye"""
     try:
         # TÜM şantiyeleri analiz et (aktif/pasif ayrımı YOK)
@@ -3231,9 +3216,16 @@ async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_dat
         eksiksiz_santiyeler = [p for p in performans_listesi if p[1] == 0]
         
         if eksiksiz_santiyeler:
-            en_iyi = eksiksiz_santiyeler[0]  # İlk eksiksiz şantiye
-            mesaj += f"🏆 EN İYİ PERFORMANS (EKSİKSİZ):\n"
-            mesaj += f"• {en_iyi[0]}: %{en_iyi[1]:.1f} eksik ({en_iyi[2]}/{en_iyi[3]} gün)\n\n"
+            # Tüm eksiksiz şantiyeleri göster (sadece 1 değil)
+            if len(eksiksiz_santiyeler) == 1:
+                en_iyi = eksiksiz_santiyeler[0]
+                mesaj += f"🏆 EN İYİ PERFORMANS (EKSİKSİZ):\n"
+                mesaj += f"• {en_iyi[0]}: %{en_iyi[1]:.1f} eksik ({en_iyi[2]}/{en_iyi[3]} gün)\n\n"
+            else:
+                mesaj += f"🏆 EN İYİ PERFORMANS - EKSİKSİZ ŞANTİYELER ({len(eksiksiz_santiyeler)}):\n"
+                for santiye, yuzde, eksik, toplam in eksiksiz_santiyeler:
+                    mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün)\n"
+                mesaj += "\n"
         elif performans_listesi:  # Hiç eksiksiz yoksa en az eksik olan
             en_iyi = performans_listesi[0]
             mesaj += f"🏆 EN İYİ PERFORMANS (EN AZ EKSİK):\n"
@@ -3243,47 +3235,47 @@ async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_dat
         # Sıralamayı eksik yüzdesine göre yap, sonra en kötü 3'ü al
         performans_listesi_kotu = sorted(performans_listesi, key=lambda x: x[1], reverse=True)
         
-        # HİÇ RAPOR GÖNDERMEYENLER (%100 eksik) öncelikli olsun
-        hic_gondermeyenler = [p for p in performans_listesi_kotu if p[1] == 100]
+        # KÖTÜ PERFORMANSLI ŞANTİYELER (%0-100 arası eksik)
         diger_kotuler = [p for p in performans_listesi_kotu if p[1] < 100 and p[1] > 0]
         
-        kotu_liste = hic_gondermeyenler + diger_kotuler
+        # HİÇ RAPOR GÖNDERMEYENLER (%100 eksik)
+        hic_gondermeyenler = [p for p in performans_listesi_kotu if p[1] == 100]
         
-        if kotu_liste:
+        # DEĞİŞİKLİK: Önce kötü performanslılar, sonra hiç göndermeyenler
+        if diger_kotuler:
             # Kaç tane kötü şantiye göstereceğiz? (max 3)
-            gosterilecek_sayi = min(3, len(kotu_liste))
+            gosterilecek_sayi = min(3, len(diger_kotuler))
             
-            # Özel durum: Hiç rapor göndermeyenler için
-            if hic_gondermeyenler:
-                mesaj += f"🔴 HİÇ RAPOR GÖNDERMEYEN ŞANTİYELER ({len(hic_gondermeyenler)}):\n"
-                for santiye, yuzde, eksik, toplam in hic_gondermeyenler[:min(3, len(hic_gondermeyenler))]:
-                    mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün) - HİÇ RAPOR YOK!\n"
-                mesaj += "\n"
-            
-            # Diğer kötü performanslılar
-            if diger_kotuler and gosterilecek_sayi > len(hic_gondermeyenler):
-                kalan_kotu = gosterilecek_sayi - len(hic_gondermeyenler)
-                if kalan_kotu > 0:
-                    mesaj += f"⚠️ DİĞER KÖTÜ PERFORMANSLAR (İlk {kalan_kotu}):\n"
-                    for i in range(kalan_kotu):
-                        if i < len(diger_kotuler):
-                            santiye, yuzde, eksik, toplam = diger_kotuler[i]
-                            mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün)\n"
-        else:
-            # Hiç eksik raporu olan şantiye yoksa
-            mesaj += "✅ Tüm şantiyeler eksiksiz rapor vermiş! Harika iş! 🎉\n"
+            mesaj += f"⚠️ KÖTÜ PERFORMANSLI ŞANTİYELER (İlk {gosterilecek_sayi}):\n"
+            for i in range(gosterilecek_sayi):
+                if i < len(diger_kotuler):
+                    santiye, yuzde, eksik, toplam = diger_kotuler[i]
+                    mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün)\n"
+            mesaj += "\n"
+        
+        # HİÇ RAPOR GÖNDERMEYENLER
+        if hic_gondermeyenler:
+            mesaj += f"🔴 HİÇ RAPOR GÖNDERMEYEN ŞANTİYELER ({len(hic_gondermeyenler)}):\n"
+            # Max 5 tane göster
+            for santiye, yuzde, eksik, toplam in hic_gondermeyenler[:min(5, len(hic_gondermeyenler))]:
+                mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün) - HİÇ RAPOR YOK!\n"
+            mesaj += "\n"
+        
+        # Hiç eksik yoksa özel mesaj
+        if not diger_kotuler and not hic_gondermeyenler:
+            mesaj += "✅ Tüm şantiyeler eksiksiz rapor vermiş! Harika iş! 🎉\n\n"
         
         # Ek bilgi: Kaç şantiye eksiksiz, kaçı eksikli, kaçı hiç göndermemiş
         toplam_santiye = len(filtrelenmis_analiz)
         eksiksiz_sayisi = len(eksiksiz_santiyeler)
-        eksikli_sayisi = len([p for p in performans_listesi if p[1] > 0 and p[1] < 100])
+        eksikli_sayisi = len(diger_kotuler)
         hic_gondermeyen_sayisi = len(hic_gondermeyenler)
         
-        mesaj += f"\n📊 ÖZET:\n"
+        mesaj += f"📊 ÖZET:\n"
         mesaj += f"• Toplam Şantiye: {toplam_santiye}\n"
         mesaj += f"• Eksiksiz: {eksiksiz_sayisi} şantiye\n"
         if eksikli_sayisi > 0:
-            mesaj += f"• Eksik Raporu Olan: {eksikli_sayisi} şantiye\n"
+            mesaj += f"• Kötü Performans: {eksikli_sayisi} şantiye\n"
         if hic_gondermeyen_sayisi > 0:
             mesaj += f"• Hiç Rapor Göndermeyen: {hic_gondermeyen_sayisi} şantiye\n"
         
