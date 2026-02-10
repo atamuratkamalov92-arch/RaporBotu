@@ -445,7 +445,7 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT', 'MOS', 'DATA CENTR']
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT', 'MOS',]
 
 # OPSİYONEL ŞANTİYELER (rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz)
 OPSIYONEL_SANTIYELER = ['OHP']
@@ -2823,6 +2823,19 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         durum = await get_santiye_bazli_rapor_durumu(bugun)
         
+        # YENİ: Haftalık performans analizi ekle
+        haftalik_performans = ""
+        try:
+            hafta_baslangic = bugun - dt.timedelta(days=bugun.weekday())  # Bu haftanın başlangıcı
+            hafta_bitis = bugun  # Bugüne kadar
+            
+            analiz, gunler = await analyze_missing_reports(hafta_baslangic, hafta_bitis)
+            if analiz:
+                haftalik_performans = await generate_performans_analizi(analiz, hafta_baslangic, hafta_bitis)
+        except Exception as e:
+            logging.error(f"Performans analizi hatası: {e}")
+            haftalik_performans = "⚠️ Performans analizi oluşturulamadı."
+        
         mesaj = "📊 GENEL İSTATİSTİKLER \n\n"
         
         mesaj += "📅 GÜNLÜK İSTATİSTİKLER:\n"
@@ -2853,7 +2866,18 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             mesaj += "• Başarı Oranı: %0.0\n"
         
-        await update.message.reply_text(mesaj)
+        # YENİ: Haftalık performans analizi ekle
+        mesaj += f"\n📈 BU HAFTA PERFORMANS ANALİZİ:\n"
+        mesaj += haftalik_performans
+        
+        # Mesaj çok uzunsa böl
+        if len(mesaj) > 4000:
+            part1 = mesaj[:4000]
+            part2 = mesaj[4000:]
+            await update.message.reply_text(part1)
+            await update.message.reply_text(part2)
+        else:
+            await update.message.reply_text(mesaj)
         
     except Exception as e:
         await update.message.reply_text(f"❌ İstatistikler oluşturulurken hata: {e}")
@@ -3147,6 +3171,63 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     
     return mesaj
 
+# REVİZYON 6: PERFORMANS ANALİZİ FONKSİYONU (YENİ)
+async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date) -> str:
+    """Haftalık performans analizi oluştur: En iyi 1 şantiye ve en kötü 3 şantiye"""
+    try:
+        # Aktif şantiyeleri filtrele (pasif olanları hariç tut)
+        aktif_santiyeler = {}
+        for santiye, a in analiz.items():
+            # Şantiyenin aktif olup olmadığını kontrol et (Excel'deki Aktif/Pasif durumu)
+            # Bu kısımda, şantiyenin sorumlularından en az biri aktifse şantiye aktif kabul edilir
+            santiye_aktif = False
+            if santiye in santiye_sorumlulari:
+                for sorumlu_id in santiye_sorumlulari[santiye]:
+                    if sorumlu_id in rapor_sorumlulari:  # Aktif kullanıcı listesinde varsa
+                        santiye_aktif = True
+                        break
+            
+            if santiye_aktif:
+                aktif_santiyeler[santiye] = a
+        
+        if not aktif_santiyeler:
+            return "⚠️ Bu hafta aktif şantiye bulunamadı."
+        
+        # Performans hesaplama: Eksik rapor yüzdesine göre sırala
+        performans_listesi = []
+        for santiye, a in aktif_santiyeler.items():
+            eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 100
+            performans_listesi.append((santiye, eksik_yuzde, len(a['eksik_gunler']), a['toplam_gun']))
+        
+        # Eksik yüzdesine göre sırala (en düşük = en iyi)
+        performans_listesi.sort(key=lambda x: x[1])
+        
+        mesaj = ""
+        
+        # EN İYİ 1 ŞANTİYE
+        if len(performans_listesi) >= 1:
+            en_iyi = performans_listesi[0]
+            mesaj += f"🏆 EN İYİ PERFORMANS:\n"
+            mesaj += f"• {en_iyi[0]}: %{en_iyi[1]:.1f} eksik ({en_iyi[2]}/{en_iyi[3]} gün)\n\n"
+        
+        # EN KÖTÜ 3 ŞANTİYE (ters sırada son 3)
+        if len(performans_listesi) >= 3:
+            mesaj += f"⚠️ EN KÖTÜ PERFORMANS (İlk 3):\n"
+            for i in range(1, 4):
+                if len(performans_listesi) >= i:
+                    santiye, yuzde, eksik, toplam = performans_listesi[-i]
+                    mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün)\n"
+        elif len(performans_listesi) > 1:
+            mesaj += f"⚠️ EN KÖTÜ PERFORMANS:\n"
+            for i in range(1, len(performans_listesi)):
+                santiye, yuzde, eksik, toplam = performans_listesi[-i]
+                mesaj += f"• {santiye}: %{yuzde:.1f} eksik ({eksik}/{toplam} gün)\n"
+        
+        return mesaj
+    except Exception as e:
+        logging.error(f"Performans analizi hatası: {e}")
+        return "⚠️ Performans analizi oluşturulamadı."
+
 async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
         return
@@ -3264,56 +3345,66 @@ async def aylik_eksik_raporlar_cmd(update: Update, context: ContextTypes.DEFAULT
         logging.error(f"Aylık eksik rapor analizi hatası: {e}")
 
 # YENİ: HAFTALIK NORMAL RAPOR JOB FONKSİYONU
+# REVİZYON 2: HAFTALIK NORMAL RAPOR JOB FONKSİYONU (Pazar 09:30, Excel)
 async def haftalik_normal_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her Pazar 09:00'da haftalık normal raporu gruba gönder"""
+    """Her Pazar 09:30'da haftalık normal raporu (Excel) gruba gönder"""
     try:
         today = dt.datetime.now(TZ).date()
         now_time = dt.datetime.now(TZ).time()
         
-        # Sadece Pazar günü ve saat 09:00'da çalıştır
+        # Sadece Pazar günü ve saat 09:30'da çalıştır
         if today.weekday() != 6:  # 0=Pazartesi, 6=Pazar
             return
-        if not (8 <= now_time.hour <= 9):  # Saat 09:00 civarında
+        if not (9 <= now_time.hour <= 10):  # Saat 09:30 civarında
             return
             
-        # Haftalık rapor tarih aralığı: Geçmiş 7 gün (bugün dahil değil)
-        # Örnek: Pazar 09:00 gönderimi için Pazartesi 00:00 - Pazar 00:00 (7 gün)
-        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
-        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
+        # Haftalık rapor tarih aralığı: Önceki Pazar 00:01'den Cumartesi 23:58'e kadar
+        end_date = today - dt.timedelta(days=1)  # Cumartesi
+        start_date = end_date - dt.timedelta(days=6)  # Önceki Pazar
         
-        logging.info(f"📊 Haftalık normal rapor tetiklendi: {start_date} - {end_date}")
+        logging.info(f"📊 Haftalık normal rapor (Excel) tetiklendi: {start_date} - {end_date}")
         
-        mesaj = await generate_haftalik_rapor_mesaji(start_date, end_date)
+        # Excel raporu oluştur
+        excel_dosyasi = await create_excel_report(start_date, end_date, "Haftalik_Rapor")
         
         if GROUP_ID:
             try:
-                await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
-                logging.info(f"📊 Haftalık normal rapor gruba gönderildi: {start_date} - {end_date}")
+                with open(excel_dosyasi, 'rb') as file:
+                    await context.bot.send_document(
+                        chat_id=GROUP_ID,
+                        document=file,
+                        filename=f"Haftalik_Rapor_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
+                        caption=f"📊 HAFTALIK RAPOR (Excel)\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                    )
+                logging.info(f"📊 Haftalık normal rapor (Excel) gruba gönderildi: {start_date} - {end_date}")
             except Exception as e:
-                logging.error(f"📊 Gruba haftalık normal rapor gönderilemedi: {e}")
+                logging.error(f"📊 Gruba haftalık normal rapor (Excel) gönderilemedi: {e}")
         else:
-            logging.error("📊 GROUP_ID ayarlanmamış, haftalık normal rapor gönderilemedi")
+            logging.error("📊 GROUP_ID ayarlanmamış, haftalık normal rapor (Excel) gönderilemedi")
+
+        os.unlink(excel_dosyasi)
     except Exception as e:
-        logging.error(f"📊 Haftalık normal rapor job hatası: {e}")
+        logging.error(f"📊 Haftalık normal rapor (Excel) job hatası: {e}")
 
 # YENİ: GÜNCELLENMİŞ HAFTALIK EKSİK RAPOR JOB FONKSİYONU
+# REVİZYON 3: HAFTALIK EKSİK RAPOR JOB FONKSİYONU (Pazar 09:35, Excel + performans analizi)
 async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her Pazar 10:00'da haftalık eksik raporu gruba gönder"""
+    """Her Pazar 09:35'de haftalık eksik raporu (Excel) gruba gönder ve performans analizi ekle"""
     try:
         today = dt.datetime.now(TZ).date()
         now_time = dt.datetime.now(TZ).time()
         
-        # Sadece Pazar günü ve saat 10:00'da çalıştır
+        # Sadece Pazar günü ve saat 09:35'de çalıştır
         if today.weekday() != 6:  # 0=Pazartesi, 6=Pazar
             return
-        if not (9 <= now_time.hour <= 10):  # Saat 10:00 civarında
+        if not (9 <= now_time.hour <= 10):  # Saat 09:35 civarında
             return
         
         # Haftalık eksik rapor tarih aralığı: Haftalık normal raporla BİREBİR AYNI
-        end_date = today - dt.timedelta(days=1)  # Dün (Cumartesi)
-        start_date = end_date - dt.timedelta(days=6)  # 7 gün önce (Pazartesi)
+        end_date = today - dt.timedelta(days=1)  # Cumartesi
+        start_date = end_date - dt.timedelta(days=6)  # Önceki Pazar
         
-        logging.info(f"📊 Haftalık eksik rapor tetiklendi: {start_date} - {end_date}")
+        logging.info(f"📊 Haftalık eksik rapor (Excel) tetiklendi: {start_date} - {end_date}")
         
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3323,6 +3414,11 @@ async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
 
         excel_dosyasi = await create_missing_reports_excel(analiz, start_date, end_date, gunler)
         mesaj = format_missing_reports_message(analiz, start_date, end_date, gunler)
+        
+        # PERFORMANS ANALİZİ EKLE: En iyi 1 şantiye ve en kötü 3 şantiye
+        performans_notu = await generate_performans_analizi(analiz, start_date, end_date)
+        mesaj += "\n\n📈 HAFTALIK PERFORMANS ANALİZİ:\n"
+        mesaj += performans_notu
 
         if GROUP_ID:
             try:
@@ -3331,7 +3427,7 @@ async def haftalik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
                         chat_id=GROUP_ID,
                         document=file,
                         filename=f"Haftalik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
-                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                        caption=f"📊 HAFTALIK EKSİK RAPOR ANALİZİ (Excel)\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
                     )
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
                 logging.info(f"📊 Haftalık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
@@ -3378,23 +3474,24 @@ async def aylik_normal_rapor_job(context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"🗓️ Aylık normal rapor job hatası: {e}")
 
 # YENİ: GÜNCELLENMİŞ AYLIK EKSİK RAPOR JOB FONKSİYONU
+# REVİZYON 5: AYLIK EKSİK RAPOR JOB FONKSİYONU (Ayın 1'i 12:05, Excel)
 async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
-    """Her ayın 1'inde 08:45'de aylık eksik raporu gruba gönder"""
+    """Her ayın 1'inde 12:05'de aylık eksik raporu (Excel) gruba gönder"""
     try:
         today = dt.datetime.now(TZ).date()
         now_time = dt.datetime.now(TZ).time()
         
-        # Sadece ayın 1'inde ve saat 08:45'de çalıştır
+        # Sadece ayın 1'inde ve saat 12:05'de çalıştır
         if today.day != 1:
             return
-        if not (8 <= now_time.hour <= 9):  # Saat 08:45 civarında
+        if not (11 <= now_time.hour <= 13):  # Saat 12:05 civarında
             return
         
         # Aylık eksik rapor tarih aralığı: Aylık normal raporla BİREBİR AYNI
         end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
         start_date = end_date.replace(day=1)  # Önceki ayın 1'i
         
-        logging.info(f"🗓️ Aylık eksik rapor tetiklendi: {start_date} - {end_date}")
+        logging.info(f"🗓️ Aylık eksik rapor (Excel) tetiklendi: {start_date} - {end_date}")
         
         analiz, gunler = await analyze_missing_reports(start_date, end_date)
         
@@ -3412,7 +3509,7 @@ async def aylik_eksik_rapor_job(context: ContextTypes.DEFAULT_TYPE):
                         chat_id=GROUP_ID,
                         document=file,
                         filename=f"Aylik_Eksik_Rapor_Analizi_{start_date.strftime('%d.%m.%Y')}_{end_date.strftime('%d.%m.%Y')}.xlsx",
-                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+                        caption=f"🗓️ AYLIK EKSİK RAPOR ANALİZİ (Excel)\n{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
                     )
                 await context.bot.send_message(chat_id=GROUP_ID, text=mesaj)
                 logging.info(f"🗓️ Aylık eksik rapor analizi gruba gönderildi: {start_date} - {end_date}")
@@ -4422,6 +4519,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         raise e
 
 # YENİ: GÜNCELLENMİŞ ZAMANLAMA SİSTEMİ
+# REVİZYON 7: ZAMANLAMA SİSTEMİ GÜNCELLEMESİ
 def schedule_jobs(app):
     jq = app.job_queue
     
@@ -4442,26 +4540,26 @@ def schedule_jobs(app):
     ilk_kontrol_job = jq.run_daily(ilk_rapor_kontrol, time=dt.time(15, 0, tzinfo=TZ))
     son_kontrol_job = jq.run_daily(son_rapor_kontrol, time=dt.time(17, 30, tzinfo=TZ))
     
-    # YENİ: HAFTALIK NORMAL RAPOR - HER PAZAR 09:00
-    jq.run_daily(haftalik_normal_rapor_job, time=dt.time(9, 0, tzinfo=TZ), days=(6,))  # 6 = Pazar
+    # YENİ: HAFTALIK NORMAL RAPOR - HER PAZAR 09:30 (Excel)
+    jq.run_daily(haftalik_normal_rapor_job, time=dt.time(9, 30, tzinfo=TZ), days=(6,))  # 6 = Pazar
     
-    # YENİ: HAFTALIK EKSİK RAPOR - HER PAZAR 10:00
-    jq.run_daily(haftalik_eksik_rapor_job, time=dt.time(10, 0, tzinfo=TZ), days=(6,))  # 6 = Pazar
+    # YENİ: HAFTALIK EKSİK RAPOR - HER PAZAR 09:35 (Excel + performans analizi)
+    jq.run_daily(haftalik_eksik_rapor_job, time=dt.time(9, 35, tzinfo=TZ), days=(6,))  # 6 = Pazar
     
-    # YENİ: AYLIK NORMAL RAPOR - HER AYIN 1'İ 08:30
-    jq.run_daily(aylik_normal_rapor_job, time=dt.time(8, 30, tzinfo=TZ))
+    # YENİ: AYLIK NORMAL RAPOR - HER AYIN 1'İ 12:00 (Excel)
+    jq.run_daily(aylik_normal_rapor_job, time=dt.time(12, 0, tzinfo=TZ))
     
-    # YENİ: AYLIK EKSİK RAPOR - HER AYIN 1'İ 08:45
-    jq.run_daily(aylik_eksik_rapor_job, time=dt.time(8, 45, tzinfo=TZ))
+    # YENİ: AYLIK EKSİK RAPOR - HER AYIN 1'İ 12:05 (Excel)
+    jq.run_daily(aylik_eksik_rapor_job, time=dt.time(12, 5, tzinfo=TZ))
     
     jq.run_daily(yedekleme_gorevi, time=dt.time(23, 0, tzinfo=TZ))
     jq.run_daily(lambda context: asyncio.create_task(async_yedekle_postgres()), time=dt.time(23, 10, tzinfo=TZ))
     
     logging.info("⏰ Tüm zamanlamalar ayarlandı ✅")
-    logging.info("   - Haftalık normal rapor: Pazar 09:00")
-    logging.info("   - Haftalık eksik rapor: Pazar 10:00")
-    logging.info("   - Aylık normal rapor: Ayın 1'i 08:30")
-    logging.info("   - Aylık eksik rapor: Ayın 1'i 08:45")
+    logging.info("   - Haftalık normal rapor (Excel): Pazar 09:30")
+    logging.info("   - Haftalık eksik rapor (Excel+performans): Pazar 09:35")
+    logging.info("   - Aylık normal rapor (Excel): Ayın 1'i 12:00")
+    logging.info("   - Aylık eksik rapor (Excel): Ayın 1'i 12:05")
 
 # YENİ: DÜZELTİLMİŞ HAFTALIK RAPOR FONKSİYONU (geriye uyumluluk için)
 async def haftalik_grup_raporu_duzeltilmis(context: ContextTypes.DEFAULT_TYPE):
