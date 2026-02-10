@@ -468,7 +468,6 @@ SABIT_SANTIYE_SORUMLULARI = {
     "KÖKSARAY": "Erdoğan Karamısır",
     "OHP": "Erdoğan Karamısır"  # OPSİYONEL ama bilgi amaçlı kalabilir
 }
-}
 
 # Giriş doğrulama fonksiyonları
 def validate_user_input(text, max_length=5000):
