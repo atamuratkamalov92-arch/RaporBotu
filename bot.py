@@ -2826,22 +2826,30 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # YENİ: Haftalık performans analizi ekle - TAM 7 GÜN
         haftalik_performans = ""
         try:
-            # DÜZELTME: Haftanın tamamını analiz et (7 gün)
+            # Haftanın tamamını analiz et (7 gün)
             hafta_bitis = bugun  # Bugün
             hafta_baslangic = hafta_bitis - dt.timedelta(days=6)  # 7 gün önce
             
-            # Haftanın adını belirle
-            gun_adlari = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
-            hafta_adi = f"{hafta_baslangic.strftime('%d.%m')}-{hafta_bitis.strftime('%d.%m.%Y')}"
-            
             analiz, gunler = await analyze_missing_reports(hafta_baslangic, hafta_bitis)
             if analiz:
-                haftalik_performans = await generate_performans_analizi(analiz, hafta_baslangic, hafta_bitis)
-                # Başlık ekle
-                haftalik_performans = f"📅 HAFTA: {hafta_adi} ({len(gunler)} gün)\n\n" + haftalik_performans
+                haftalik_performans = await generate_performans_analizi(analiz, hafta_baslangic, hafta_bitis, "haftalik")
         except Exception as e:
-            logging.error(f"Performans analizi hatası: {e}")
-            haftalik_performans = "⚠️ Performans analizi oluşturulamadı."
+            logging.error(f"Haftalık performans analizi hatası: {e}")
+            haftalik_performans = "⚠️ Haftalık performans analizi oluşturulamadı."
+        
+        # YENİ: Aylık performans analizi ekle
+        aylik_performans = ""
+        try:
+            # Ayın tamamını analiz et
+            ay_bitis = bugun  # Bugüne kadar
+            ay_baslangic = bugun.replace(day=1)  # Ayın 1'i
+            
+            analiz_aylik, gunler_aylik = await analyze_missing_reports(ay_baslangic, ay_bitis)
+            if analiz_aylik:
+                aylik_performans = await generate_performans_analizi(analiz_aylik, ay_baslangic, ay_bitis, "aylik")
+        except Exception as e:
+            logging.error(f"Aylık performans analizi hatası: {e}")
+            aylik_performans = "⚠️ Aylık performans analizi oluşturulamadı."
         
         mesaj = "📊 GENEL İSTATİSTİKLER \n\n"
         
@@ -2873,14 +2881,20 @@ async def istatistik_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             mesaj += "• Başarı Oranı: %0.0\n"
         
-        # YENİ: Haftalık performans analizi ekle
-        mesaj += f"\n{haftalik_performans}"
+        # Haftalık performans analizi ekle
+        if haftalik_performans:
+            mesaj += f"\n{haftalik_performans}"
+        
+        # Aylık performans analizi ekle
+        if aylik_performans:
+            mesaj += f"\n\n{aylik_performans}"
         
         # Mesaj çok uzunsa böl
         if len(mesaj) > 4000:
             part1 = mesaj[:4000]
             part2 = mesaj[4000:]
             await update.message.reply_text(part1)
+            await asyncio.sleep(0.5)
             await update.message.reply_text(part2)
         else:
             await update.message.reply_text(mesaj)
@@ -3177,30 +3191,26 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     
     return mesaj
 
-# REVİZYON 6: PERFORMANS ANALİZİ FONKSİYONU (GÜNCELLENMİŞ - HİÇ GÖNDERMEYENLER DAHİL)
-async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date) -> str:
-    """Haftalık performans analizi oluştur: En iyi 1 şantiye ve en kötü 3 şantiye"""
+# REVİZYON 6: PERFORMANS ANALİZİ FONKSİYONU (GÜNCELLENMİŞ - TÜM ŞANTİYELER)
+async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date, period_type="haftalik") -> str:
+    """Performans analizi oluştur: En iyi 1 şantiye ve en kötü 3 şantiye"""
     try:
-        # Aktif şantiyeleri filtrele (pasif olanları hariç tut)
-        aktif_santiyeler = {}
-        for santiye, a in analiz.items():
-            # Şantiyenin aktif olup olmadığını kontrol et (Excel'deki Aktif/Pasif durumu)
-            santiye_aktif = False
-            if santiye in santiye_sorumlulari:
-                for sorumlu_id in santiye_sorumlulari[santiye]:
-                    if sorumlu_id in rapor_sorumlulari:  # Aktif kullanıcı listesinde varsa
-                        santiye_aktif = True
-                        break
-            
-            if santiye_aktif:
-                aktif_santiyeler[santiye] = a
+        # TÜM şantiyeleri analiz et (aktif/pasif ayrımı YOK)
+        # Not: OPSİYONEL şantiyeler (DATA CENTR, OHP) hariç tutulur
         
-        if not aktif_santiyeler:
-            return "⚠️ Bu hafta aktif şantiye bulunamadı."
+        # OPSİYONEL şantiyeleri filtrele
+        filtrelenmis_analiz = {}
+        for santiye, a in analiz.items():
+            if santiye in OPSIYONEL_SANTIYELER:
+                continue  # Opsiyonel şantiyeleri atla
+            filtrelenmis_analiz[santiye] = a
+        
+        if not filtrelenmis_analiz:
+            return "⚠️ Analiz edilecek şantiye bulunamadı."
         
         # Performans hesaplama: Eksik rapor yüzdesine göre sırala
         performans_listesi = []
-        for santiye, a in aktif_santiyeler.items():
+        for santiye, a in filtrelenmis_analiz.items():
             eksik_yuzde = (len(a['eksik_gunler']) / a['toplam_gun']) * 100 if a['toplam_gun'] > 0 else 100
             performans_listesi.append((santiye, eksik_yuzde, len(a['eksik_gunler']), a['toplam_gun']))
         
@@ -3208,6 +3218,14 @@ async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_dat
         performans_listesi.sort(key=lambda x: x[1])
         
         mesaj = ""
+        
+        # Dönem tipine göre başlık
+        if period_type == "aylik":
+            mesaj += f"📅 AYLIK PERFORMANS ANALİZİ\n"
+        else:
+            mesaj += f"📅 HAFTALIK PERFORMANS ANALİZİ\n"
+        
+        mesaj += f"📆 {start_date.strftime('%d.%m')}-{end_date.strftime('%d.%m.%Y')} ({len(gunler)} gün)\n\n"
         
         # EN İYİ 1 ŞANTİYE (eksiksiz olanlardan)
         eksiksiz_santiyeler = [p for p in performans_listesi if p[1] == 0]
@@ -3222,7 +3240,7 @@ async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_dat
             mesaj += f"• {en_iyi[0]}: %{en_iyi[1]:.1f} eksik ({en_iyi[2]}/{en_iyi[3]} gün)\n\n"
         
         # EN KÖTÜ 3 ŞANTİYE (en yüksek eksik yüzdesine sahip olanlar)
-        # DÜZELTME: Sıralamayı eksik yüzdesine göre yap, sonra en kötü 3'ü al
+        # Sıralamayı eksik yüzdesine göre yap, sonra en kötü 3'ü al
         performans_listesi_kotu = sorted(performans_listesi, key=lambda x: x[1], reverse=True)
         
         # HİÇ RAPOR GÖNDERMEYENLER (%100 eksik) öncelikli olsun
@@ -3256,13 +3274,13 @@ async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_dat
             mesaj += "✅ Tüm şantiyeler eksiksiz rapor vermiş! Harika iş! 🎉\n"
         
         # Ek bilgi: Kaç şantiye eksiksiz, kaçı eksikli, kaçı hiç göndermemiş
-        toplam_aktif = len(aktif_santiyeler)
+        toplam_santiye = len(filtrelenmis_analiz)
         eksiksiz_sayisi = len(eksiksiz_santiyeler)
         eksikli_sayisi = len([p for p in performans_listesi if p[1] > 0 and p[1] < 100])
         hic_gondermeyen_sayisi = len(hic_gondermeyenler)
         
         mesaj += f"\n📊 ÖZET:\n"
-        mesaj += f"• Toplam Aktif Şantiye: {toplam_aktif}\n"
+        mesaj += f"• Toplam Şantiye: {toplam_santiye}\n"
         mesaj += f"• Eksiksiz: {eksiksiz_sayisi} şantiye\n"
         if eksikli_sayisi > 0:
             mesaj += f"• Eksik Raporu Olan: {eksikli_sayisi} şantiye\n"
