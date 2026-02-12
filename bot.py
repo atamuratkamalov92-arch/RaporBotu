@@ -3156,6 +3156,74 @@ def format_missing_reports_message(analiz: Dict, start_date: dt.date, end_date: 
     mesaj += f"• Toplam EKSİK RAPOR: {toplam_eksik_rapor}\n"
     
     return mesaj
+# REVİZYON 6: PERFORMANS ANALİZİ FONKSİYONU (GÜNCELLENMİŞ - TÜM ŞANTİYELER)
+async def generate_performans_analizi(analiz: Dict, start_date: dt.date, end_date: dt.date, gunler: List, period_type="aylik") -> str:
+    """AYLIK performans analizi oluştur: En iyi 3 şantiye, en kötü 3 şantiye, hiç göndermeyenler"""
+    try:
+        # TÜM şantiyeleri analiz et (aktif/pasif ayrımı YOK)
+        # Not: OPSİYONEL şantiyeler (DATA CENTR, OHP) hariç tutulur
+        
+        # OPSİYONEL şantiyeleri filtrele
+        filtrelenmis_analiz = {}
+        for santiye, a in analiz.items():
+            if santiye in OPSIYONEL_SANTIYELER:
+                continue  # Opsiyonel şantiyeleri atla
+            filtrelenmis_analiz[santiye] = a
+        
+        if not filtrelenmis_analiz:
+            return "⚠️ Analiz edilecek şantiye bulunamadı."
+        
+        # Performans hesaplama
+        performans_listesi = []
+        for santiye, a in filtrelenmis_analiz.items():
+            eksik_gun = len(a['eksik_gunler'])
+            toplam_gun = a['toplam_gun']
+            performans_listesi.append((santiye, eksik_gun, toplam_gun))
+        
+        # Eksik güne göre sırala (en az eksik = en iyi)
+        performans_listesi.sort(key=lambda x: x[1])
+        
+        mesaj = ""
+        
+        # SADECE AYLIK ANALİZ
+        mesaj += f"📅 AYLIK PERFORMANS ANALİZİ\n"
+        mesaj += f"📆 {start_date.strftime('%d.%m')}-{end_date.strftime('%d.%m.%Y')} ({len(gunler)} gün)\n\n"
+        
+        # EN İYİ 3 ŞANTİYE (eksiksiz veya en az eksik)
+        eksiksiz_santiyeler = [p for p in performans_listesi if p[1] == 0]
+        en_iyi_liste = eksiksiz_santiyeler[:3] if len(eksiksiz_santiyeler) >= 3 else eksiksiz_santiyeler
+        
+        if en_iyi_liste:
+            mesaj += f"🏆 EN İYİ PERFORMANS – TOP {len(en_iyi_liste)}:\n"
+            for santiye, eksik, toplam in en_iyi_liste:
+                mesaj += f"• {santiye}: {eksik}/{toplam} gün\n"
+            mesaj += "\n"
+        
+        # EN KÖTÜ 3 ŞANTİYE (en çok eksik, ama %100 olmayanlar)
+        # Önce %100 olmayanları filtrele
+        kotu_adaylar = [p for p in performans_listesi if p[1] > 0 and p[1] < p[2]]  # 0 < eksik < toplam
+        if kotu_adaylar:
+            # Eksik sayısına göre ters sırala
+            kotu_adaylar.sort(key=lambda x: x[1], reverse=True)
+            en_kotu_liste = kotu_adaylar[:3]
+            
+            mesaj += f"⚠️ KÖTÜ PERFORMANSLI ŞANTİYELER – TOP {len(en_kotu_liste)}:\n"
+            for santiye, eksik, toplam in en_kotu_liste:
+                mesaj += f"• {santiye}: {eksik}/{toplam} gün\n"
+            mesaj += "\n"
+        
+        # HİÇ RAPOR GÖNDERMEYENLER (%100 eksik)
+        hic_gondermeyenler = [p for p in performans_listesi if p[1] == p[2] and p[2] > 0]  # eksik == toplam
+        
+        if hic_gondermeyenler:
+            mesaj += f"🔴 HİÇ RAPOR GÖNDERMEYEN ŞANTİYELER ({len(hic_gondermeyenler)}):\n"
+            for santiye, eksik, toplam in hic_gondermeyenler:
+                mesaj += f"• {santiye}: {eksik}/{toplam} gün - HİÇ RAPOR YOK!\n"
+        
+        return mesaj  # ÖZET YOK
+    except Exception as e:
+        logging.error(f"Performans analizi hatası: {e}")
+        return "⚠️ Performans analizi oluşturulamadı."
 
 async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_kontrol(update, context):
