@@ -1049,7 +1049,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 
 9. TARİH ALGILAMA:
    - Format: YYYY-AA-GG
-   - Örnek: "13.11.2025" → "2025-11-13"
+   - Örnek: "13.11.2026" → "2026-11-13"
    - Tarih yoksa bugünün tarihini kullan
 
 10. ŞANTİYE NORMALİZASYONU:
@@ -1113,7 +1113,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
     - genel_toplam: 23 (1 + 20 + 2 = 23, kullanıcının 25'i yanlış!)
 
 15. ÖZEL DURUM - ÇALIŞMA YOK RAPORU:
-    "06.12.2025 LOT13 çalışma yok" veya "LOT13 bugün iş yok, personel yok"
+    "06.12.2026 LOT13 çalışma yok" veya "LOT13 bugün iş yok, personel yok"
     ÇÖZÜM:
     - staff: 0
     - calisan: 0
@@ -1125,7 +1125,7 @@ Sen bir "Rapor Analiz Asistanısın". Görevin, kullanıcıların Telegram üzer
 16. ÖRNEK ÇIKTI FORMATI:
 [
   {
-    "date": "2025-11-13",
+    "date": "2026-11-13",
     "site": "LOT13",
     "staff": 13,
     "calisan": 5,
@@ -1649,7 +1649,7 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                 await msg.reply_text(
                     "❌ Bu mesaj bir rapor olarak algılanmadı.\n\n"
                     "Lütfen şantiye, tarih ve iş bilgilerini içeren bir rapor gönderin.\n"
-                    "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
+                    "Örnek: \"01.11.2026 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
                     "Not: 'Çalışma yok' raporları da kabul edilir: \"OHP bugün çalışma yok\""
                 )
                 return
@@ -1696,11 +1696,11 @@ async def yeni_gpt_rapor_isleme(update: Update, context: ContextTypes.DEFAULT_TY
                     await msg.reply_text(
                         "❌ Rapor bulunamadı.\n\n"
                         "Lütfen şantiye raporunuzu aşağıdaki formatta gönderin:\n"
-                        "• Tarih (01.01.2025)\n" 
+                        "• Tarih (01.01.2026)\n" 
                         "• Şantiye adı (LOT13, BWC, SKP vb.)\n"
                         "• Yapılan işler\n"
                         "• Personel bilgisi\n\n"
-                        "Örnek: \"01.11.2025 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
+                        "Örnek: \"01.11.2026 LOT13 2.kat kablo çekimi 5 kişi\"\n\n"
                         "Not: 'Çalışma yok' raporları da kabul edilir: \"OHP bugün çalışma yok\""
                     )
                 return
@@ -3232,7 +3232,7 @@ async def eksik_rapor_excel_cmd(update: Update, context: ContextTypes.DEFAULT_TY
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📋 EKSİK RAPOR EXCEL RAPORU\n\n"
-            "Kullanım: `/eksik_rapor_excel 01.11.2025 30.11.2025`\n"
+            "Kullanım: `/eksik_rapor_excel 01.11.2026 30.11.2026`\n"
             "Belirtilen tarih aralığı için eksik rapor analizi Excel'i oluşturur."
         )
         return
@@ -3436,7 +3436,7 @@ async def aylik_normal_rapor_job(context: ContextTypes.DEFAULT_TYPE):
             return
         
         # Aylık rapor tarih aralığı: Bir önceki takvim ayının TAMAMI
-        # Örnek: 01.12.2025 08:30 gönderimi için 01.11.2025 - 30.11.2025
+        # Örnek: 01.12.2026 08:30 gönderimi için 01.11.2026 - 30.11.2026
         end_date = today.replace(day=1) - dt.timedelta(days=1)  # Önceki ayın son günü
         start_date = end_date.replace(day=1)  # Önceki ayın 1'i
         
@@ -3680,7 +3680,7 @@ async def tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📅 Tarih Aralığı Kullanımı:\n\n"
-            "`/tariharaligi 01.11.2025 15.11.2025`\n"
+            "`/tariharaligi 01.11.2026 15.11.2026`\n"
             "Belirtilen tarih aralığı için detaylı rapor oluşturur."
         )
         return
@@ -3709,7 +3709,7 @@ async def excel_tariharaligi_cmd(update: Update, context: ContextTypes.DEFAULT_T
     if not context.args or len(context.args) != 2:
         await update.message.reply_text(
             "📅 Excel Tarih Aralığı Raporu\n\n"
-            "Kullanım: `/excel_tariharaligi 01.11.2025 15.11.2025`\n"
+            "Kullanım: `/excel_tariharaligi 01.11.2026 15.11.2026`\n"
             "Belirtilen tarih aralığı için Excel raporu oluşturur."
         )
         return
