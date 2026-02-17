@@ -445,10 +445,10 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'MMP', 'RMC', 'PİRAMİT', 'MOS',]
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'RMC', 'PİRAMİT', 'MOS',]
 
 # OPSİYONEL ŞANTİYELER (rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz)
-OPSIYONEL_SANTIYELER = ['OHP', 'DATA CENTR']  # OHP opsiyonel oldu, DATA CENTR yeni eklendi
+OPSIYONEL_SANTIYELER = ['OHP', 'DATA CENTR', 'MMP']  # OHP, MMP ve DATA CENTR opsiyonel oldu
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
@@ -460,12 +460,11 @@ SANTIYE_USERNAME_MAPPING = {
     'LOT13': ['Adnan_Keleş'],
     'LOT71': ['Adnan_Keleş'],
     'YHP': ['Orhan_Ceylan'],
-    'MMP': ['Orhan_Ceylan'],
     'RMC': ['Orhan_Ceylan'],
     'TYM': ['Orhan_Ceylan'],
     'PİRAMİT': ['ON5428'],
     'MOS': ['Orhan_Ceylan'],
-    # OHP ve DATA CENTR opsiyonel olduğu için kaldırıldı
+    # OHP, MMP ve DATA CENTR opsiyonel olduğu için kaldırıldı
 }
 
 # Giriş doğrulama fonksiyonları
