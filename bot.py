@@ -2779,7 +2779,7 @@ async def eksikraporlar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if santiye in ["Belli değil", "Tümü"]:
                     continue
                 sorumlular = santiye_sorumlulari.get(santiye, [])
-                mesaj += f"🏗️ {santiye} ({len(sorumlular)} sorumlu)\n\n"
+                mesaj += f"🏗️ {santiye}\n\n"
         
         if durum['rapor_veren_santiyeler']:
             mesaj += f"✅ Rapor İleten Şantiyeler ({len(durum['rapor_veren_santiyeler'])}):\n"
