@@ -3925,7 +3925,7 @@ SABIT_SANTIYE_SORUMLULARI = {
 
 # YENİ: DİNAMİK EXCEL RAPORU OLUŞTURMA FONKSİYONU BELIRLI TARIH ARALIGI ICIN
 async def create_excel_report(start_date, end_date, rapor_baslik):
-    """Güncellendi: Günler satırlarda, şantiyeler sütunlarda (her şantiye için 7 alt sütun)"""
+    """Güncellendi: Günler satırlarda, önce GENEL TOPLAM sütunları, sonra şantiyeler (her biri 7 sütun)"""
     try:
         # 1. Tarih aralığındaki tüm günleri listele
         gunler = []
@@ -3961,7 +3961,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             if isinstance(tarih, dt.datetime):
                 tarih = tarih.date()
             proje_adi = normalize_site_name(proje_adi)
-            # Şantiye adını sabit listedeki isimle eşleştir
             for sabit_santiye in SABIT_SANTIYE_SORUMLULARI.keys():
                 if sabit_santiye in proje_adi or proje_adi in sabit_santiye:
                     proje_adi = sabit_santiye
@@ -3970,7 +3969,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 continue
             if proje_adi not in rapor_dict:
                 rapor_dict[proje_adi] = {}
-            # AI analizini parse et
             try:
                 ai_data = safe_json_loads(ai_analysis)
                 yeni_format = ai_data.get('yeni_sabit_format', {})
@@ -4036,11 +4034,15 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         number_format = '# ##0'
         
         # Sütun tanımları
-        COL_TARIH = 1                     # A
-        COL_SANTIYE_START = 2              # B'den itibaren şantiye sütunları
+        COL_TARIH = 1                                # A
+        COL_GENEL_START = 2                          # B (GENEL TOPLAM'ın ilk sütunu)
+        # GENEL TOPLAM 7 sütun kaplar: B'den H'ye
+        GENEL_SUTUN_ADEDI = 7
+        # İlk şantiye sütunu: COL_GENEL_START + GENEL_SUTUN_ADEDI = 2+7 = 9 → I sütunu
+        COL_SANTIYE_START = COL_GENEL_START + GENEL_SUTUN_ADEDI  # I
         
-        # Toplam sütun sayısı = 1 (tarih) + (şantiye sayısı * 7)
-        toplam_sutun_sayisi = 1 + len(santiye_sirasi) * 7
+        # Toplam sütun sayısı = 1 (tarih) + 7 (genel) + (şantiye sayısı * 7)
+        toplam_sutun_sayisi = 1 + GENEL_SUTUN_ADEDI + len(santiye_sirasi) * 7
         
         # 1. SATIR: ANA BAŞLIK (tüm sütunlar birleşik)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=toplam_sutun_sayisi)
@@ -4048,7 +4050,23 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         title_cell.font = baslik_font
         title_cell.alignment = center_align
         
-        # 2. SATIR: ŞANTİYE BAŞLIKLARI (her şantiye için 7 sütun birleşik)
+        # 2. SATIR: ÜST BAŞLIKLAR
+        # A2: TARIH
+        a2 = ws.cell(row=2, column=COL_TARIH, value="TARIH")
+        a2.font = header_font
+        a2.fill = header_fill
+        a2.alignment = center_align
+        a2.border = thin_border
+        
+        # B2:H2: GENEL TOPLAM (7 sütun birleşik)
+        ws.merge_cells(start_row=2, start_column=COL_GENEL_START, end_row=2, end_column=COL_GENEL_START+GENEL_SUTUN_ADEDI-1)
+        genel_baslik = ws.cell(row=2, column=COL_GENEL_START, value="GENEL TOPLAM")
+        genel_baslik.font = header_font
+        genel_baslik.fill = header_fill
+        genel_baslik.alignment = center_align
+        genel_baslik.border = thin_border
+        
+        # Her şantiye için 7 sütunluk başlık (I2'den itibaren)
         col_idx = COL_SANTIYE_START
         for santiye in santiye_sirasi:
             end_col = col_idx + 6
@@ -4060,8 +4078,19 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             cell.border = thin_border
             col_idx = end_col + 1
         
-        # 3. SATIR: KATEGORİ BAŞLIKLARI (her şantiye için ayrı ayrı)
+        # 3. SATIR: ALT BAŞLIKLAR (kategoriler)
         kategoriler = ["Staff", "Çalışan", "Ambarcı", "Mobilizasyon", "İzinli", "Dış Görev", "Toplam"]
+        
+        # GENEL TOPLAM kategorileri (B3:H3)
+        for i, kategori in enumerate(kategoriler):
+            col = COL_GENEL_START + i
+            cell = ws.cell(row=3, column=col, value=kategori)
+            cell.font = subheader_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+        
+        # Her şantiye için kategoriler
         col_idx = COL_SANTIYE_START
         for santiye in santiye_sirasi:
             for i, kategori in enumerate(kategoriler):
@@ -4081,6 +4110,40 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             tarih_cell.font = normal_font
             tarih_cell.border = thin_border
             
+            # Önce GENEL TOPLAM için tüm şantiyelerin o günkü değerlerini topla
+            genel_toplam = {k: 0 for k in kategoriler[:-1]}  # "Toplam" hariç, onu sonra hesapla
+            for santiye in santiye_sirasi:
+                gun_rapor = rapor_dict.get(santiye, {}).get(gun, None)
+                if gun_rapor and gun_rapor['has_data']:
+                    genel_toplam['Staff'] += gun_rapor['staff']
+                    genel_toplam['Çalışan'] += gun_rapor['calisan']
+                    genel_toplam['Ambarcı'] += gun_rapor['ambarci']
+                    genel_toplam['Mobilizasyon'] += gun_rapor['mobilizasyon']
+                    genel_toplam['İzinli'] += gun_rapor['izinli']
+                    genel_toplam['Dış Görev'] += gun_rapor['dis_gorev']
+            
+            # GENEL TOPLAM sütunlarını doldur (B:H)
+            for i, key in enumerate(['Staff', 'Çalışan', 'Ambarcı', 'Mobilizasyon', 'İzinli', 'Dış Görev']):
+                deger = genel_toplam[key]
+                cell = ws.cell(row=row_idx, column=COL_GENEL_START + i, value=deger if deger != 0 else "")
+                if deger != 0:
+                    cell.number_format = number_format
+                    cell.fill = data_fill
+                cell.alignment = center_align
+                cell.font = normal_font
+                cell.border = thin_border
+            
+            # GENEL TOPLAM - Toplam sütunu (H sütunu)
+            toplam_deger = sum(genel_toplam[k] for k in ['Staff','Çalışan','Ambarcı','Mobilizasyon','İzinli'])
+            toplam_cell = ws.cell(row=row_idx, column=COL_GENEL_START + 6, value=toplam_deger if toplam_deger != 0 else "")
+            if toplam_deger != 0:
+                toplam_cell.number_format = number_format
+                toplam_cell.fill = toplam_fill
+            toplam_cell.alignment = center_align
+            toplam_cell.font = bold_font
+            toplam_cell.border = thin_border
+            
+            # Şimdi her şantiye için sütunları doldur
             col_idx = COL_SANTIYE_START
             for santiye in santiye_sirasi:
                 gun_rapor = rapor_dict.get(santiye, {}).get(gun, None)
@@ -4094,7 +4157,6 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                         cell.font = bold_font
                         cell.border = thin_border
                     else:
-                        # Normal veri – her kategori ayrı hücre
                         degerler = [
                             gun_rapor['staff'],
                             gun_rapor['calisan'],
@@ -4111,10 +4173,10 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                             cell.alignment = center_align
                             cell.font = normal_font
                             cell.border = thin_border
-                        # Toplam sütunu (ilk 5 kategori toplamı – dış görev hariç)
-                        toplam_deger = sum(degerler[:5])  # Staff, Çalışan, Ambarcı, Mobilizasyon, İzinli
-                        toplam_cell = ws.cell(row=row_idx, column=col_idx + 6, value=toplam_deger if toplam_deger != 0 else "")
-                        if toplam_deger != 0:
+                        # Şantiye toplamı (ilk 5 kategori)
+                        santiye_toplam = sum(degerler[:5])
+                        toplam_cell = ws.cell(row=row_idx, column=col_idx + 6, value=santiye_toplam if santiye_toplam != 0 else "")
+                        if santiye_toplam != 0:
                             toplam_cell.number_format = number_format
                             toplam_cell.fill = toplam_fill
                         toplam_cell.alignment = center_align
@@ -4131,40 +4193,64 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
                 col_idx += 7
             row_idx += 1
         
-        # TOPLAM SATIRI (her şantiye için tüm günlerin toplamı)
+        # TOPLAM SATIRI (her sütun için tüm günlerin toplamı)
         toplam_satir = row_idx
         ws.cell(row=toplam_satir, column=COL_TARIH, value="TOPLAM").font = bold_font
         ws.cell(row=toplam_satir, column=COL_TARIH).border = thin_border
         
+        # GENEL TOPLAM sütunları için toplam (B'den H'ye)
+        for col in range(COL_GENEL_START, COL_GENEL_START + GENEL_SUTUN_ADEDI):
+            baslangic_satir = 4
+            bitis_satir = toplam_satir - 1
+            hucre_aralik = f"{get_column_letter(col)}{baslangic_satir}:{get_column_letter(col)}{bitis_satir}"
+            formül = f"=SUM({hucre_aralik})"
+            cell = ws.cell(row=toplam_satir, column=col, value=formül)
+            cell.number_format = number_format
+            cell.alignment = center_align
+            cell.font = normal_font
+            cell.border = thin_border
+        
+        # Şantiye sütunları için toplam
         col_idx = COL_SANTIYE_START
         for santiye in santiye_sirasi:
-            for j in range(7):  # her kategori için toplam
+            for j in range(7):
+                col = col_idx + j
                 baslangic_satir = 4
                 bitis_satir = toplam_satir - 1
-                hucre_aralik = f"{get_column_letter(col_idx + j)}{baslangic_satir}:{get_column_letter(col_idx + j)}{bitis_satir}"
+                hucre_aralik = f"{get_column_letter(col)}{baslangic_satir}:{get_column_letter(col)}{bitis_satir}"
                 formül = f"=SUM({hucre_aralik})"
-                cell = ws.cell(row=toplam_satir, column=col_idx + j, value=formül)
+                cell = ws.cell(row=toplam_satir, column=col, value=formül)
                 cell.number_format = number_format
                 cell.alignment = center_align
                 cell.font = normal_font
                 cell.border = thin_border
             col_idx += 7
         
-        # EKSİK RAPOR SATIRI (her gün için eksik şantiye sayısı)
+        # EKSİK RAPOR SATIRI (her sütun için eksik rapor sayısı)
         eksik_satir = toplam_satir + 1
         ws.cell(row=eksik_satir, column=COL_TARIH, value="Eksik Rapor").font = bold_font
         ws.cell(row=eksik_satir, column=COL_TARIH).border = thin_border
         
+        # GENEL TOPLAM sütunları için eksik rapor sayısı (✗ sayısı)
+        # Genel Toplam sütunlarında ✗ olmaz (çünkü onlar toplam), ama tutarlılık için boş bırakabiliriz veya formül koymayız.
+        # Görselde genel toplamda eksik rapor satırı yok gibi, ama biz yine de boş bırakalım.
+        for col in range(COL_GENEL_START, COL_GENEL_START + GENEL_SUTUN_ADEDI):
+            ws.cell(row=eksik_satir, column=col).border = thin_border
+        
+        # Şantiye sütunları için eksik rapor sayısı (her sütun için ayrı)
         col_idx = COL_SANTIYE_START
         for santiye in santiye_sirasi:
-            # Her şantiye için eksik gün sayısı
+            # Her şantiye için 7 sütun, ama eksik rapor sadece "Staff" sütununda ✗ var, diğerleri boş olabilir.
+            # Ancak biz her sütun için ayrı ayrı ✗ sayısını hesaplayabiliriz (sadece Staff sütunu için değil, tüm sütunlar aynı durumda)
+            # Daha basit: Her şantiye bloğunun ilk sütunundaki ✗ sayısını al ve 7 sütuna yay (birleştir)
+            start_col = col_idx
+            end_col = col_idx + 6
             baslangic_satir = 4
             bitis_satir = toplam_satir - 1
-            hucre_aralik = f"{get_column_letter(col_idx)}{baslangic_satir}:{get_column_letter(col_idx)}{bitis_satir}"
+            hucre_aralik = f"{get_column_letter(start_col)}{baslangic_satir}:{get_column_letter(start_col)}{bitis_satir}"
             formül = f'=COUNTIF({hucre_aralik},"✗")'
-            # Sadece ilk sütuna yaz (7 sütun birleşik)
-            ws.merge_cells(start_row=eksik_satir, start_column=col_idx, end_row=eksik_satir, end_column=col_idx+6)
-            cell = ws.cell(row=eksik_satir, column=col_idx, value=formül)
+            ws.merge_cells(start_row=eksik_satir, start_column=start_col, end_row=eksik_satir, end_column=end_col)
+            cell = ws.cell(row=eksik_satir, column=start_col, value=formül)
             cell.number_format = number_format
             cell.alignment = center_align
             cell.fill = eksik_rapor_fill
@@ -4173,7 +4259,11 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
             col_idx += 7
         
         # Sütun genişlikleri
-        ws.column_dimensions['A'].width = 15  # Tarih
+        ws.column_dimensions['A'].width = 15  # TARIH
+        # GENEL TOPLAM sütunları (B-H)
+        for col in range(COL_GENEL_START, COL_GENEL_START + GENEL_SUTUN_ADEDI):
+            ws.column_dimensions[get_column_letter(col)].width = 10
+        # Şantiye sütunları
         for i in range(len(santiye_sirasi) * 7):
             col_letter = get_column_letter(COL_SANTIYE_START + i)
             ws.column_dimensions[col_letter].width = 10
@@ -4185,7 +4275,7 @@ async def create_excel_report(start_date, end_date, rapor_baslik):
         # Otomatik filtre
         ws.auto_filter.ref = f"A3:{get_column_letter(toplam_sutun_sayisi)}{eksik_satir}"
         
-        # Birleştirilmiş hücrelerin kenar çizgilerini tamamla (mevcut kodun aynısı)
+        # Birleştirilmiş hücrelerin kenar çizgilerini tamamla
         for merged_range in list(ws.merged_cells.ranges):
             min_col, min_row, max_col, max_row = merged_range.min_col, merged_range.min_row, merged_range.max_col, merged_range.max_row
             # Üst kenar
