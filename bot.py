@@ -1,7 +1,7 @@
 """
 📋 CHANGELOG - bot.py v4.7.7
 
-✅ OHP ŞANTİYESİ OPSİYONEL MOD
+✅ OHP, KOKSARAY, DATA CENTR VE MMP ŞANTİYESİ OPSİYONEL MOD
 - OHP şantiyesi artık opsiyonel rapor modunda çalışıyor
 - Rapor gönderilirse işlenir, gönderilmezse eksik listesine dahil edilmez
 - Hatırlatma mesajlarında görünmez
@@ -445,17 +445,16 @@ user_role_cache = {}
 user_role_cache_time = 0
 
 # Sabit şantiye listesi - TÜM raporlarda kullanılacak
-SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'KÖKSARAY', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'RMC', 'PİRAMİT', 'MOS',]
+SABIT_SANTIYELER = ['BWC', 'DMC', 'STADYUM', 'LOT13', 'LOT71', 'SKP', 'YHP', 'TYM', 'RMC', 'PİRAMİT', 'MOS',]
 
 # OPSİYONEL ŞANTİYELER (rapor gönderilirse işlenir, gönderilmezse eksik sayılmaz)
-OPSIYONEL_SANTIYELER = ['OHP', 'DATA CENTR', 'MMP']  # OHP, MMP ve DATA CENTR opsiyonel oldu
+OPSIYONEL_SANTIYELER = ['OHP', 'DATA CENTR', 'MMP', 'KÖKSARAY']  # OHP, MMP,KÖKSARAY ve DATA CENTR opsiyonel oldu
 
 # Şantiye bazlı kullanıcı adı (username) eşlemesi - HATIRLATMA MESAJLARI İÇİN
 SANTIYE_USERNAME_MAPPING = {
     'BWC': ['YsF1434'],
     'SKP': ['uzyusufmutlu'],
     'DMC': ['uzyusufmutlu'],
-    'KÖKSARAY': ['Erdoğan_Karamısır'],
     'STADYUM': ['Adnan_Keleş'],
     'LOT13': ['Adnan_Keleş'],
     'LOT71': ['Adnan_Keleş'],
@@ -464,7 +463,7 @@ SANTIYE_USERNAME_MAPPING = {
     'TYM': ['Orhan_Ceylan'],
     'PİRAMİT': ['ON5428'],
     'MOS': ['Orhan_Ceylan'],
-    # OHP, MMP ve DATA CENTR opsiyonel olduğu için kaldırıldı
+    # OHP, MMP, KOKSARAY ve DATA CENTR opsiyonel olduğu için kaldırıldı
 }
 
 # Giriş doğrulama fonksiyonları
