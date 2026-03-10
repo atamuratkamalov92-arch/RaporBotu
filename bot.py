@@ -454,7 +454,7 @@ OPSIYONEL_SANTIYELER = ['OHP', 'DATA CENTR', 'MMP', 'KÖKSARAY']  # OHP, MMP,KÖ
 SANTIYE_USERNAME_MAPPING = {
     'BWC': ['YsF1434'],
     'SKP': ['uzyusufmutlu'],
-    'DMC': ['uzyusufmutlu'],
+    'DMC': ['umut61x'],
     'STADYUM': ['Adnan_Keleş'],
     'LOT13': ['Adnan_Keleş'],
     'LOT71': ['Adnan_Keleş'],
@@ -3908,7 +3908,7 @@ async def fix_sequences_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 SABIT_SANTIYE_SORUMLULARI = {
     "BWC": "Yusuf Özçelik",
     "SKP": "Yusuf Mutlu", 
-    "DMC": "Yusuf Mutlu",
+    "DMC": "Umut Ali",
     "PİRAMİT": "Onur Çetin",
     "LOT13": "Adnan Keleş",
     "LOT71": "Adnan Keleş", 
